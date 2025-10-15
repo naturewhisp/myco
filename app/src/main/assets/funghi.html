@@ -14,16 +14,38 @@
             font-family: 'Inter', sans-serif;
         }
         #map { height: 400px; border-radius: 0.75rem; border: 2px solid #374151; }
+        .blur-background {
+            filter: blur(4px);
+            transition: filter 0.3s ease-out;
+        }
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white flex flex-col items-center min-h-screen p-4">
+    <div id="modal-loader" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 p-8 rounded-2xl shadow-2xl flex flex-col items-center">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400"></div>
+            <p id="modal-loader-text" class="mt-4 text-white"></p>
+        </div>
+    </div>
 
-    <div class="w-full max-w-4xl mx-auto">
+    <div id="main-content" class="w-full max-w-4xl mx-auto mt-8">
         <div class="bg-gray-800 shadow-2xl rounded-2xl p-6 md:p-10 text-center">
             
             <!-- Intestazione -->
             <div class="mb-8">
-                <svg class="mx-auto h-16 w-16 text-green-400 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <img src="ic_launcher.webp" class="mx-auto h-16 w-16 mb-4" alt="App Icon">
+                <svg style="display: none;" class="mx-auto h-16 w-16 text-green-400 mb-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M11.35 3.836c.244-.21.533-.328.845-.328s.6.118.845.328l.104.092c.307.262.715.368 1.112.298l.128-.022c.51-.088.994.194 1.248.64l.001.002c.245.43.702.684 1.18.62l.142-.018c.542-.068 1.056.25 1.28.76l.001.002c.21.48.653.8 1.14.8h.158c.556 0 1.05.378 1.22.907l.002.005c.16.48.583.818 1.074.818h.142c.622 0 1.125.503 1.125 1.125v.142c0 .49.338.914.818 1.074l.005.002c.528-.17.907.67.907 1.22v.158c0 .487-.264.935-.684 1.18l-.002.001c-.446-.254-.728.738-.64 1.248l.022.128c.07.397-.036.805-.298 1.112l-.092.104c-.21.244-.328.533-.328.845s.118.6.328.845l.092.104c.262.307.368.715.298 1.112l-.022.128c-.088.51.194.994.64 1.248l.002.001c.43.245.684.702.62 1.18l-.018.142c-.068.542.25 1.056.76 1.28l.002.001c.48.21.8.653.8 1.14v.158c0 .556-.378 1.05-.907 1.22l-.005.002c-.48-.16-.818.583-.818 1.074v.142c0 .622-.503 1.125-1.125 1.125h-.142c-.49 0-.914.338-1.074.818l-.002.005c-.17.528-.67-.907-1.22-.907h-.158c-.487 0-.935-.264-1.18-.684l-.001-.002c-.254-.446-.738-.728-1.248-.64l-.128.022c-.397-.07-.805-.036-1.112-.298l-.104-.092c-.244-.21-.533-.328-.845-.328s-.6.118-.845.328l-.104.092c-.307.262-.715.368-1.112.298l-.128-.022c-.51-.088-.994.194-1.248.64l-.001.002c-.245.43-.702.684-1.18.62l-.142-.018c-.542-.068-1.056.25-1.28.76l-.001.002c-.21.48-.653.8-1.14.8h-.158c-.556 0-1.05.378-1.22.907l-.002.005c-.16.48-.583.818-1.074.818H5.625c-.622 0-1.125-.503-1.125-1.125v-.142c0-.49-.338-.914-.818-1.074l-.005-.002c-.528-.17-.907-.67-.907-1.22v-.158c0-.487.264-.935.684-1.18l.002-.001c.446-.254.728-.738.64-1.248l-.022-.128c-.07-.397.036-.805.298-1.112l.092-.104c.21-.244.328-.533.328-.845s-.118-.6-.328-.845L4.01 18.06c-.262-.307-.368-.715-.298-1.112l.022-.128c.088-.51-.194-.994-.64-1.248l-.002-.001c-.43-.245-.684-.702-.62-1.18l.018-.142c.068-.542-.25-1.056-.76-1.28l-.002-.001c-.48-.21-.8-.653-.8-1.14v-.158c0-.556.378-1.05.907-1.22l.005-.002c.48-.16.818-.583.818-1.074V7.125c0-.622.503-1.125 1.125-1.125h.142c.49 0 .914-.338 1.074-.818l.002-.005c.17-.528.67-.907 1.22-.907h.158c.487 0 .935.264 1.18.684l.001.002c.254-.446.738.728 1.248.64l.128-.022c.397-.07.805.036 1.112.298l.104.092Z" />
                 </svg>
                 <h1 class="text-3xl md:text-4xl font-bold text-white tracking-tight">Stima Crescita Funghi Porcini</h1>
@@ -33,13 +55,14 @@
             <!-- Input di ricerca -->
             <form id="search-form" class="max-w-xl mx-auto mb-8">
                 <div class="flex flex-col sm:flex-row gap-2">
+                    <label for="location-input" class="sr-only">Luogo</label>
                     <input id="location-input" type="text" placeholder="Digita un luogo..."
                            class="w-full bg-gray-700 border-2 border-gray-600 rounded-lg py-3 px-4 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition duration-300">
                     <button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300 whitespace-nowrap">
                         Cerca
                     </button>
                     <button type="button" id="geolocate-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition duration-300" title="Usa la mia posizione">
-                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                         <svg class="h-6 w-6 mx-auto" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                             <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
@@ -98,29 +121,30 @@
         </div>
     </div>
 
-    <script>
-        const searchForm = document.getElementById('search-form');
-        const locationInput = document.getElementById('location-input');
-        const geolocateBtn = document.getElementById('geolocate-btn');
-        const mapContainer = document.getElementById('map-container');
-        const resultsContainer = document.getElementById('results-container');
-        const forecastGrid = document.getElementById('forecast-grid');
-        const locationNameEl = document.getElementById('location-name');
-        const habitatInfoEl = document.getElementById('habitat-info');
-        const bonusInfoEl = document.getElementById('bonus-info');
-        const altitudeInfoEl = document.getElementById('altitude-info');
-        const seasonInfoEl = document.getElementById('season-info');
-        const growthPhaseInfoEl = document.getElementById('growth-phase-info');
-        const rainInfoEl = document.getElementById('rain-info');
-        const tempInfoEl = document.getElementById('temp-info');
-        const moonPhaseInfoEl = document.getElementById('moon-phase-info');
-        const slopeInfoEl = document.getElementById('slope-info');
-        const summaryContainer = document.getElementById('summary-container');
-        const summaryText = document.getElementById('summary-text');
-        const loader = document.getElementById('loader');
-        const loaderText = document.getElementById('loader-text');
-        const errorMessage = document.getElementById('error-message');
-        const errorText = document.getElementById('error-text');
+        <script>
+            const searchForm = document.getElementById('search-form');
+            const locationInput = document.getElementById('location-input');
+            const geolocateBtn = document.getElementById('geolocate-btn');
+            const mapContainer = document.getElementById('map-container');
+            const resultsContainer = document.getElementById('results-container');
+            const forecastGrid = document.getElementById('forecast-grid');
+            const locationNameEl = document.getElementById('location-name');
+            const habitatInfoEl = document.getElementById('habitat-info');
+            const bonusInfoEl = document.getElementById('bonus-info');
+            const altitudeInfoEl = document.getElementById('altitude-info');
+            const seasonInfoEl = document.getElementById('season-info');
+            const growthPhaseInfoEl = document.getElementById('growth-phase-info');
+            const rainInfoEl = document.getElementById('rain-info');
+            const tempInfoEl = document.getElementById('temp-info');
+            const moonPhaseInfoEl = document.getElementById('moon-phase-info');
+            const slopeInfoEl = document.getElementById('slope-info');
+            const summaryContainer = document.getElementById('summary-container');
+            const summaryText = document.getElementById('summary-text');
+            const errorMessage = document.getElementById('error-message');
+            const errorText = document.getElementById('error-text');
+            const modalLoader = document.getElementById('modal-loader');
+            const modalLoaderText = document.getElementById('modal-loader-text');
+            const mainContent = document.getElementById('main-content');
         
         let map;
         let marker;
@@ -149,19 +173,31 @@
             const { lat, lng } = e.latlng;
             marker.setLatLng(e.latlng);
 
-            loaderText.textContent = "Analisi del punto selezionato in corso...";
-            loader.classList.remove('hidden');
+            modalLoaderText.textContent = "Analisi del punto selezionato in corso...";
+            modalLoader.classList.remove('hidden');
+            mainContent.classList.add('blur-background');
             resultsContainer.classList.add('hidden');
             errorMessage.classList.add('hidden');
 
-            try {
+            const analysisPromise = (async () => {
                 const vegetationData = await analyzeHabitat(lat, lng);
                 await fetchMushroomForecast(lat, lng, "Punto selezionato", vegetationData);
+            })();
+
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('L\'analisi ha impiegato troppo tempo. Riprova.')), 25000)
+            );
+
+            try {
+                await Promise.race([analysisPromise, timeoutPromise]);
             } catch (error) {
-                 console.error("Errore durante l'analisi del punto cliccato:", error);
+                 console.error("Errore durante l'analisi o timeout:", error);
                  errorText.innerHTML = `<strong>Oops!</strong> ${error.message}`;
                  errorMessage.classList.remove('hidden');
-                 loader.classList.add('hidden');
+                 errorMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } finally {
+                modalLoader.classList.add('hidden');
+                mainContent.classList.remove('blur-background');
             }
         }
 
@@ -170,8 +206,9 @@
             const query = locationInput.value.trim();
             if (!query) return;
 
-            loaderText.textContent = "Ricerca della località in corso...";
-            loader.classList.remove('hidden');
+            modalLoaderText.textContent = "Ricerca della località in corso...";
+            modalLoader.classList.remove('hidden');
+            mainContent.classList.add('blur-background');
             resultsContainer.classList.add('hidden');
             errorMessage.classList.add('hidden');
             mapContainer.classList.add('hidden');
@@ -190,7 +227,8 @@
                 errorText.innerHTML = `<strong>Oops!</strong> ${error.message}`;
                 errorMessage.classList.remove('hidden');
             } finally {
-                loader.classList.add('hidden');
+                modalLoader.classList.add('hidden');
+                mainContent.classList.remove('blur-background');
             }
         });
 
@@ -205,8 +243,9 @@
                 return;
             }
 
-            loaderText.textContent = "Acquisizione della posizione in corso...";
-            loader.classList.remove('hidden');
+            modalLoaderText.textContent = "Acquisizione della posizione in corso...";
+            modalLoader.classList.remove('hidden');
+            mainContent.classList.add('blur-background');
             resultsContainer.classList.add('hidden');
             errorMessage.classList.add('hidden');
             mapContainer.classList.add('hidden');
@@ -214,14 +253,14 @@
             navigator.geolocation.getCurrentPosition(
                 (position) => {
                     const { latitude, longitude } = position.coords;
-                    loader.classList.add('hidden');
                     initializeMap(latitude, longitude);
                     
                     const fakeEvent = { latlng: { lat: latitude, lng: longitude } };
                     onMapClick(fakeEvent);
                 },
                 (error) => {
-                    loader.classList.add('hidden');
+                    modalLoader.classList.add('hidden');
+                    mainContent.classList.remove('blur-background');
                     let message = 'Non è stato possibile recuperare la tua posizione.';
                     switch (error.code) {
                         case error.PERMISSION_DENIED:
@@ -348,8 +387,6 @@
             } catch (error) {
                 console.error("Fetch error:", error);
                 throw error;
-            } finally {
-                loader.classList.add('hidden');
             }
         }
         
@@ -697,6 +734,7 @@
             });
             
             resultsContainer.classList.remove('hidden');
+            mapContainer.scrollIntoView({ behavior: 'smooth' });
         }
     </script>
 </body>

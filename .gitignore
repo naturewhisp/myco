@@ -1,0 +1,44 @@
+gitignore# ===================================================================
+# File generati e cartelle di build
+# ===================================================================
+# Cartella di build principale, generata da Gradle.
+build/
+
+# File APK generati
+*.apk
+*.aab
+
+# ===================================================================
+# File specifici dell'IDE (Android Studio / IntelliJ)
+# ===================================================================
+# Cartelle di configurazione dell'IDE
+.idea/
+
+# File di configurazione locale dell'IDE
+*.iml
+.gradle/
+local.properties
+/app/src/debug/
+
+# Log, cache e altri file temporanei
+*.log
+.DS_Store
+captures/
+.cxx/
+
+# ===================================================================
+# File di firma (MOLTO IMPORTANTE)
+# ===================================================================
+# Mai versionare i file di keystore, contengono le chiavi di firma!
+*.jks
+*.keystore
+keystores/
+
+# ===================================================================
+# Altri file generati
+# ===================================================================
+# File generati da servizi come Google Services
+/app/google-services.json
+
+# File di mapping di ProGuard (utili per il debug ma spesso non versionati)
+/app/build/outputs/mapping/release/mapping.txt

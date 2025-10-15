@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Previsione Crescita Funghi Porcini</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Leaflet.js per la mappa interattiva -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        #map { height: 400px; border-radius: 0.75rem; border: 2px solid #374151; }
+    </style>
+</head>
+<body class="bg-gray-900 text-white flex flex-col items-center min-h-screen p-4">
+
+    <div class="w-full max-w-4xl mx-auto">
+        <div class="bg-gray-800 shadow-2xl rounded-2xl p-6 md:p-10 text-center">
+            
+            <!-- Intestazione -->
+            <div class="mb-8">
+                <svg class="mx-auto h-16 w-16 text-green-400 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M11.35 3.836c.244-.21.533-.328.845-.328s.6.118.845.328l.104.092c.307.262.715.368 1.112.298l.128-.022c.51-.088.994.194 1.248.64l.001.002c.245.43.702.684 1.18.62l.142-.018c.542-.068 1.056.25 1.28.76l.001.002c.21.48.653.8 1.14.8h.158c.556 0 1.05.378 1.22.907l.002.005c.16.48.583.818 1.074.818h.142c.622 0 1.125.503 1.125 1.125v.142c0 .49.338.914.818 1.074l.005.002c.528-.17.907.67.907 1.22v.158c0 .487-.264.935-.684 1.18l-.002.001c-.446-.254-.728.738-.64 1.248l.022.128c.07.397-.036.805-.298 1.112l-.092.104c-.21.244-.328.533-.328.845s.118.6.328.845l.092.104c.262.307.368.715.298 1.112l-.022.128c-.088.51.194.994.64 1.248l.002.001c.43.245.684.702.62 1.18l-.018.142c-.068.542.25 1.056.76 1.28l.002.001c.48.21.8.653.8 1.14v.158c0 .556-.378 1.05-.907 1.22l-.005.002c-.48-.16-.818.583-.818 1.074v.142c0 .622-.503 1.125-1.125 1.125h-.142c-.49 0-.914.338-1.074.818l-.002.005c-.17.528-.67-.907-1.22-.907h-.158c-.487 0-.935-.264-1.18-.684l-.001-.002c-.254-.446-.738-.728-1.248-.64l-.128.022c-.397-.07-.805-.036-1.112-.298l-.104-.092c-.244-.21-.533-.328-.845-.328s-.6.118-.845.328l-.104.092c-.307.262-.715.368-1.112.298l-.128-.022c-.51-.088-.994.194-1.248.64l-.001.002c-.245.43-.702.684-1.18.62l-.142-.018c-.542-.068-1.056.25-1.28.76l-.001.002c-.21.48-.653.8-1.14.8h-.158c-.556 0-1.05.378-1.22.907l-.002.005c-.16.48-.583.818-1.074.818H5.625c-.622 0-1.125-.503-1.125-1.125v-.142c0-.49-.338-.914-.818-1.074l-.005-.002c-.528-.17-.907-.67-.907-1.22v-.158c0-.487.264-.935.684-1.18l.002-.001c.446-.254.728-.738.64-1.248l-.022-.128c-.07-.397.036-.805.298-1.112l.092-.104c.21-.244.328-.533.328-.845s-.118-.6-.328-.845L4.01 18.06c-.262-.307-.368-.715-.298-1.112l.022-.128c.088-.51-.194-.994-.64-1.248l-.002-.001c-.43-.245-.684-.702-.62-1.18l.018-.142c.068-.542-.25-1.056-.76-1.28l-.002-.001c-.48-.21-.8-.653-.8-1.14v-.158c0-.556.378-1.05.907-1.22l.005-.002c.48-.16.818-.583.818-1.074V7.125c0-.622.503-1.125 1.125-1.125h.142c.49 0 .914-.338 1.074-.818l.002-.005c.17-.528.67-.907 1.22-.907h.158c.487 0 .935.264 1.18.684l.001.002c.254-.446.738.728 1.248.64l.128-.022c.397-.07.805.036 1.112.298l.104.092Z" />
+                </svg>
+                <h1 class="text-3xl md:text-4xl font-bold text-white tracking-tight">Stima Crescita Funghi Porcini</h1>
+                <p class="text-gray-400 mt-2 max-w-2xl mx-auto">Digita una località o usa la tua posizione, poi clicca sulla mappa.</p>
+            </div>
+
+            <!-- Input di ricerca -->
+            <form id="search-form" class="max-w-xl mx-auto mb-8">
+                <div class="flex flex-col sm:flex-row gap-2">
+                    <input id="location-input" type="text" placeholder="Digita un luogo..."
+                           class="w-full bg-gray-700 border-2 border-gray-600 rounded-lg py-3 px-4 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition duration-300">
+                    <button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300 whitespace-nowrap">
+                        Cerca
+                    </button>
+                    <button type="button" id="geolocate-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition duration-300" title="Usa la mia posizione">
+                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                    </button>
+                </div>
+            </form>
+            
+             <!-- Contenitore Mappa -->
+            <div id="map-container" class="hidden w-full max-w-3xl mx-auto mb-6">
+                <p id="map-instruction" class="mb-2 text-green-300">Clicca sulla mappa per selezionare il punto esatto da analizzare.</p>
+                <div id="map"></div>
+            </div>
+
+            <!-- Area Risultati -->
+            <div id="results-container" class="hidden">
+                 <h2 id="location-name" class="text-2xl font-semibold text-green-300 mb-4">Risultati per il punto selezionato</h2>
+                
+                <!-- Info Analisi -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 text-left mb-6 text-sm bg-gray-700/50 p-4 rounded-lg">
+                    <div id="growth-phase-info" class="col-span-full text-teal-300 font-semibold text-base border-b border-gray-600 pb-3 mb-2"></div>
+                    <div id="habitat-info" class="text-yellow-300"></div>
+                    <div id="bonus-info" class="text-cyan-300"></div>
+                    <div id="altitude-info" class="text-purple-300"></div>
+                    <div id="season-info" class="text-orange-300"></div>
+                    <div id="rain-info" class="text-blue-300"></div>
+                    <div id="temp-info" class="text-red-300"></div>
+                    <div id="moon-phase-info" class="text-gray-300"></div>
+                    <div id="slope-info" class="text-indigo-300"></div>
+                </div>
+
+                <!-- Griglia Previsioni -->
+                <div id="forecast-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4"></div>
+                
+                <!-- Analisi in parole semplici -->
+                <div id="summary-container" class="hidden mt-8 text-sm text-gray-300 bg-gray-700/50 rounded-lg p-4 border border-gray-600">
+                    <h3 class="font-bold text-base text-white mb-2">Analisi in parole semplici</h3>
+                    <p id="summary-text"></p>
+                </div>
+
+                <!-- Disclaimer -->
+                <div class="mt-4 text-sm text-gray-500">
+                    <p><strong>Nota bene:</strong> Questa è una stima algoritmica. La crescita fungina è un fenomeno biologico complesso. Usa queste informazioni come un indicatore e non come una certezza.</p>
+                </div>
+            </div>
+
+            <!-- Stato di caricamento -->
+            <div id="loader" class="hidden flex flex-col items-center justify-center py-10">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400"></div>
+                <p id="loader-text" class="mt-4 text-gray-400"></p>
+            </div>
+
+            <!-- Messaggio di errore -->
+             <div id="error-message" class="hidden bg-red-900/50 border border-red-700 text-red-300 px-4 py-3 rounded-lg mt-6">
+                <p id="error-text"><strong>Oops!</strong> Non è stato possibile recuperare i dati. Riprova più tardi.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const searchForm = document.getElementById('search-form');
+        const locationInput = document.getElementById('location-input');
+        const geolocateBtn = document.getElementById('geolocate-btn');
+        const mapContainer = document.getElementById('map-container');
+        const resultsContainer = document.getElementById('results-container');
+        const forecastGrid = document.getElementById('forecast-grid');
+        const locationNameEl = document.getElementById('location-name');
+        const habitatInfoEl = document.getElementById('habitat-info');
+        const bonusInfoEl = document.getElementById('bonus-info');
+        const altitudeInfoEl = document.getElementById('altitude-info');
+        const seasonInfoEl = document.getElementById('season-info');
+        const growthPhaseInfoEl = document.getElementById('growth-phase-info');
+        const rainInfoEl = document.getElementById('rain-info');
+        const tempInfoEl = document.getElementById('temp-info');
+        const moonPhaseInfoEl = document.getElementById('moon-phase-info');
+        const slopeInfoEl = document.getElementById('slope-info');
+        const summaryContainer = document.getElementById('summary-container');
+        const summaryText = document.getElementById('summary-text');
+        const loader = document.getElementById('loader');
+        const loaderText = document.getElementById('loader-text');
+        const errorMessage = document.getElementById('error-message');
+        const errorText = document.getElementById('error-text');
+        
+        let map;
+        let marker;
+
+        function initializeMap(lat, lon) {
+            mapContainer.classList.remove('hidden');
+            if (map) {
+                map.setView([lat, lon], 13);
+            } else {
+                map = L.map('map').setView([lat, lon], 13);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '© <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                }).addTo(map);
+                map.on('click', onMapClick);
+            }
+
+            if (marker) {
+                marker.setLatLng([lat, lon]);
+            } else {
+                marker = L.marker([lat, lon]).addTo(map);
+            }
+        }
+
+        async function onMapClick(e) {
+            const { lat, lng } = e.latlng;
+            marker.setLatLng(e.latlng);
+
+            loaderText.textContent = "Analisi del punto selezionato in corso...";
+            loader.classList.remove('hidden');
+            resultsContainer.classList.add('hidden');
+            errorMessage.classList.add('hidden');
+
+            try {
+                const vegetationData = await analyzeHabitat(lat, lng);
+                await fetchMushroomForecast(lat, lng, "Punto selezionato", vegetationData);
+            } catch (error) {
+                 console.error("Errore durante l'analisi del punto cliccato:", error);
+                 errorText.innerHTML = `<strong>Oops!</strong> ${error.message}`;
+                 errorMessage.classList.remove('hidden');
+                 loader.classList.add('hidden');
+            }
+        }
+
+        searchForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const query = locationInput.value.trim();
+            if (!query) return;
+
+            loaderText.textContent = "Ricerca della località in corso...";
+            loader.classList.remove('hidden');
+            resultsContainer.classList.add('hidden');
+            errorMessage.classList.add('hidden');
+            mapContainer.classList.add('hidden');
+
+            try {
+                const geoUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
+                const geoResponse = await fetch(geoUrl);
+                if (!geoResponse.ok) throw new Error('Errore nella ricerca della località.');
+                const geoData = await geoResponse.json();
+                if (!geoData || geoData.length === 0) throw new Error('Località non trovata. Prova un nome più specifico.');
+                
+                const { lat, lon } = geoData[0];
+                initializeMap(lat, lon);
+            } catch (error) {
+                console.error("Errore nel processo di ricerca:", error);
+                errorText.innerHTML = `<strong>Oops!</strong> ${error.message}`;
+                errorMessage.classList.remove('hidden');
+            } finally {
+                loader.classList.add('hidden');
+            }
+        });
+
+        geolocateBtn.addEventListener('click', () => {
+            if (!navigator.geolocation || !window.isSecureContext) {
+                let msg = 'La geolocalizzazione non è supportata dal tuo browser.';
+                if (!window.isSecureContext) {
+                    msg = 'La geolocalizzazione è disponibile solo su connessioni sicure (HTTPS).';
+                }
+                errorText.innerHTML = `<strong>Oops!</strong> ${msg}`;
+                errorMessage.classList.remove('hidden');
+                return;
+            }
+
+            loaderText.textContent = "Acquisizione della posizione in corso...";
+            loader.classList.remove('hidden');
+            resultsContainer.classList.add('hidden');
+            errorMessage.classList.add('hidden');
+            mapContainer.classList.add('hidden');
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const { latitude, longitude } = position.coords;
+                    loader.classList.add('hidden');
+                    initializeMap(latitude, longitude);
+                    
+                    const fakeEvent = { latlng: { lat: latitude, lng: longitude } };
+                    onMapClick(fakeEvent);
+                },
+                (error) => {
+                    loader.classList.add('hidden');
+                    let message = 'Non è stato possibile recuperare la tua posizione.';
+                    switch (error.code) {
+                        case error.PERMISSION_DENIED:
+                            message = 'Hai negato il permesso per la geolocalizzazione. Se il browser non te l-ha chiesto, la causa potrebbe essere una connessione non sicura (non HTTPS).';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            message = 'Le informazioni sulla posizione non sono disponibili.';
+                            break;
+                        case error.TIMEOUT:
+                            message = 'La richiesta per ottenere la posizione è scaduta.';
+                            break;
+                    }
+                    errorText.innerHTML = `<strong>Oops!</strong> ${message}`;
+                    errorMessage.classList.remove('hidden');
+                },
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+            );
+        });
+
+        async function analyzeHabitat(lat, lon) {
+            const radius = 1500;
+            const overpassEndpoints = [
+                'https://overpass-api.de/api/interpreter',
+                'https://overpass.kumi.systems/api/interpreter',
+                'https://overpass.openstreetmap.fr/api/interpreter'
+            ];
+
+            let baseScore = 0.7; 
+            let baseText = "Analisi habitat non disponibile.";
+            let success = false;
+
+            const baseQuery = `[out:json];(nwr["natural"="wood"](around:${radius},${lat},${lon});nwr["landuse"="forest"](around:${radius},${lat},${lon}););out body;`;
+
+            for (const endpoint of overpassEndpoints) {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 8000); 
+                    
+                    const overpassUrl = `${endpoint}?data=${encodeURIComponent(baseQuery)}`;
+                    const response = await fetch(overpassUrl, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        const forestElementsCount = data.elements.length;
+
+                        if (forestElementsCount > 15) {
+                            baseScore = 1.0;
+                            baseText = "🌳 Habitat: Ideale (punto immerso in area boschiva).";
+                        } else if (forestElementsCount > 4) {
+                            baseScore = 0.95;
+                            baseText = "🌳 Habitat: Promettente (vicinanza a boschi e foreste).";
+                        } else if (forestElementsCount > 0) {
+                            baseScore = 0.6;
+                            baseText = "🌳 Habitat: Misto (presenza di aree verdi ma non estese).";
+                        } else {
+                            baseScore = 0.1;
+                            baseText = "🌳 Habitat: Non ideale (assenza di boschi nelle immediate vicinanze).";
+                        }
+                        success = true;
+                        break; 
+                    }
+                } catch (error) {
+                    console.warn(`Endpoint ${endpoint} non ha risposto:`, error.name);
+                }
+            }
+
+            if (!success) {
+                console.error("Tutti gli endpoint per l'analisi dell'habitat di base non sono disponibili.");
+            }
+
+            let finalScore = baseScore;
+            let bonusText = "ℹ️ Bonus: Nessun dato specifico sul tipo di albero trovato.";
+            
+            if (success) { 
+                const specificQuery = `[out:json];(nwr["leaf_type"~"broadleaved|needleleaved"](around:${radius},${lat},${lon});nwr["genus"~"Fagus|Quercus|Castanea|Pinus|Picea|Abies"](around:${radius},${lat},${lon}););out body;`;
+                let bonusSuccess = false;
+                for (const endpoint of overpassEndpoints) {
+                    try {
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 8000);
+                        
+                        const specificOverpassUrl = `${endpoint}?data=${encodeURIComponent(specificQuery)}`;
+                        const specificResponse = await fetch(specificOverpassUrl, { signal: controller.signal });
+                        clearTimeout(timeoutId);
+
+                        if (specificResponse.ok) {
+                            const specificData = await specificResponse.json();
+                            if (specificData.elements.length > 0) {
+                                finalScore = Math.min(1.0, baseScore * 1.15);
+                                bonusText = "✅ Bonus: Trovata vegetazione compatibile! Punteggio habitat aumentato.";
+                            }
+                            bonusSuccess = true;
+                            break;
+                        }
+                    } catch (bonusError) {
+                        console.warn(`Endpoint bonus ${endpoint} non ha risposto:`, bonusError.name);
+                    }
+                }
+                if (!bonusSuccess) {
+                    console.warn("La ricerca bonus vegetazione non è andata a buon fine.");
+                }
+            } else {
+                bonusText = ""; 
+            }
+            
+            return { score: finalScore, text: baseText, bonusText: bonusText };
+        }
+        
+        async function fetchMushroomForecast(lat, lon, name, vegetation) {
+            forecastGrid.innerHTML = '';
+            
+            const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&past_days=14&hourly=temperature_2m,relativehumidity_2m,precipitation&daily=weathercode&forecast_days=11&timezone=auto`;
+
+            try {
+                const response = await fetch(apiUrl);
+                if (!response.ok) throw new Error('Non è stato possibile recuperare i dati meteo.');
+                const data = await response.json();
+                
+                const elevation = data.elevation;
+                const processedData = processWeatherData(data);
+                displayForecast(processedData, name, vegetation, elevation);
+
+            } catch (error) {
+                console.error("Fetch error:", error);
+                throw error;
+            } finally {
+                loader.classList.add('hidden');
+            }
+        }
+        
+        function processWeatherData(data) {
+            const dailyData = {};
+            const hourlyTimes = data.hourly.time;
+            
+            for (let i = 0; i < hourlyTimes.length; i++) {
+                const date = hourlyTimes[i].split('T')[0];
+                if (!dailyData[date]) {
+                    dailyData[date] = { temps: [], precips: [], humidities: [], weathercode: null };
+                }
+                dailyData[date].temps.push(data.hourly.temperature_2m[i]);
+                dailyData[date].precips.push(data.hourly.precipitation[i]);
+                dailyData[date].humidities.push(data.hourly.relativehumidity_2m[i]);
+            }
+            
+            const dailyTimes = data.daily.time;
+            for (let i=0; i < dailyTimes.length; i++) {
+                const date = dailyTimes[i];
+                if(dailyData[date]) {
+                    dailyData[date].weathercode = data.daily.weathercode[i];
+                }
+            }
+
+            return Object.keys(dailyData).map(date => {
+                const day = dailyData[date];
+                const avgTemp = day.temps.reduce((a, b) => a + b, 0) / day.temps.length;
+                const totalPrecip = day.precips.reduce((a, b) => a + b, 0);
+                const avgHumidity = day.humidities.reduce((a, b) => a + b, 0) / day.humidities.length;
+                return { date, avgTemp, totalPrecip, avgHumidity, weathercode: day.weathercode };
+            }).sort((a,b) => new Date(a.date) - new Date(b.date));
+        }
+
+        function calculateWeatherScore(dayIndex, allData) {
+            let score = 0;
+            if (!allData[dayIndex]) return 0;
+            const rainWindow = allData.slice(Math.max(0, dayIndex - 10), dayIndex - 2);
+            const totalRainLast10Days = rainWindow.reduce((sum, day) => sum + (day.totalPrecip || 0), 0);
+            if (totalRainLast10Days > 40) score += 40; else if (totalRainLast10Days > 25) score += 35; else if (totalRainLast10Days > 15) score += 25; else if (totalRainLast10Days > 5) score += 10;
+            
+            const tempWindow = allData.slice(Math.max(0, dayIndex - 5), dayIndex);
+            const avgTempLast5Days = tempWindow.length > 0 ? tempWindow.reduce((sum, day) => sum + day.avgTemp, 0) / tempWindow.length : 0;
+            if (avgTempLast5Days >= 14 && avgTempLast5Days <= 22) score += 30; else if (avgTempLast5Days >= 10 && avgTempLast5Days < 25) score += 15;
+            
+            const humidityWindow = allData.slice(Math.max(0, dayIndex - 3), dayIndex + 1);
+            const avgHumidityRecent = humidityWindow.length > 0 ? humidityWindow.reduce((sum, day) => sum + day.avgHumidity, 0) / humidityWindow.length : 0;
+            if (avgHumidityRecent > 85) score += 15; else if (avgHumidityRecent > 75) score += 10;
+
+            if (dayIndex > 4 && totalRainLast10Days > 15) {
+                const tempBefore = allData[Math.max(0, dayIndex - 4)].avgTemp; 
+                const tempAfter = allData[Math.max(0, dayIndex - 1)].avgTemp;
+                if (tempBefore - tempAfter > 6) score += 10;
+            }
+            return Math.min(score, 100);
+        }
+
+        function calculateAltitudeScore(elevation) {
+            let score, text;
+            if (elevation < 200) {
+                score = 0.7; 
+                text = `🏔️ Altitudine: ${Math.round(elevation)}m (Bassa, impatto moderato).`;
+            } else if (elevation < 400) {
+                score = 0.9; 
+                text = `🏔️ Altitudine: ${Math.round(elevation)}m (Collinare, favorevole).`;
+            } else if (elevation <= 1400) {
+                score = 1.0;
+                text = `🏔️ Altitudine: ${Math.round(elevation)}m (Ideale).`;
+            } else if (elevation <= 1800) {
+                score = 0.9; 
+                text = `🏔️ Altitudine: ${Math.round(elevation)}m (Montana, buona ma con stagione breve).`;
+            } else {
+                score = 0.6;
+                text = `🏔️ Altitudine: ${Math.round(elevation)}m (Elevata, meno favorevole).`;
+            }
+            return { score, text };
+        }
+
+        function calculateSeasonalityScore() {
+            const month = new Date().getMonth(); 
+            let score, text;
+            const monthNames = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
+            const currentMonthName = monthNames[month];
+
+            switch (month) {
+                case 8: case 9: score = 1.0; text = `🗓️ Stagione: ${currentMonthName} (Picco della stagione).`; break;
+                case 4: case 5: score = 0.9; text = `🗓️ Stagione: ${currentMonthName} (Buona stagione primaverile).`; break;
+                case 10: score = 0.7; text = `🗓️ Stagione: ${currentMonthName} (Fine stagione, possibile con clima mite).`; break;
+                case 6: case 7: score = 0.5; text = `🗓️ Stagione: ${currentMonthName} (Estivo, crescita legata a temporali).`; break;
+                case 3: score = 0.4; text = `🗓️ Stagione: ${currentMonthName} (Inizio stagione, ancora presto).`; break;
+                default: score = 0.1; text = `🗓️ Stagione: ${currentMonthName} (Fuori stagione).`; break;
+            }
+            return { score, text };
+        }
+
+        function calculateGrowthPhase(processedData) {
+            const todayIndex = 14;
+            let triggerDayIndex = -1;
+
+            for (let i = todayIndex; i >= 0; i--) {
+                if (processedData[i] && processedData[i].totalPrecip > 10) {
+                    triggerDayIndex = i;
+                    break;
+                }
+                if (i >= 2) {
+                    const threeDayRain = (processedData[i]?.totalPrecip || 0) + 
+                                         (processedData[i-1]?.totalPrecip || 0) + 
+                                         (processedData[i-2]?.totalPrecip || 0);
+                    if (threeDayRain > 15) {
+                        triggerDayIndex = i - 2;
+                        break;
+                    }
+                }
+            }
+
+            if (triggerDayIndex === -1) {
+                return { text: "⏳ Fase: Crescita assente (in attesa di piogge)." };
+            }
+
+            const daysSinceTrigger = todayIndex - triggerDayIndex;
+
+            if (daysSinceTrigger <= 4) {
+                return { text: `⏳ Fase: In crescita (piogge recenti ${daysSinceTrigger} giorni fa).` };
+            } else if (daysSinceTrigger <= 7) {
+                const daysToHarvest = 8 - daysSinceTrigger;
+                return { text: `⏳ Fase: Maturazione finale (raccolta stimata in ${daysToHarvest}-${daysToHarvest+2} giorni).` };
+            } else if (daysSinceTrigger <= 12) {
+                return { text: "⏳ Fase: Periodo ideale per la raccolta!" };
+            } else {
+                return { text: "⏳ Fase: Ciclo di crescita in esaurimento." };
+            }
+        }
+        
+        function getMoonPhase(date = new Date()) {
+            const knownNewMoon = new Date('2000-01-06T18:14:00Z');
+            const daysSinceKnownNewMoon = (date - knownNewMoon) / (1000 * 60 * 60 * 24);
+            const lunarCycleDays = 29.53058867;
+            const currentCyclePos = daysSinceKnownNewMoon % lunarCycleDays;
+
+            let phaseText = ""; let emoji = ""; let favorable = false;
+
+            if (currentCyclePos < 1.845)      { phaseText = "Luna Nuova"; emoji = "🌑"; favorable = true; }
+            else if (currentCyclePos < 5.535) { phaseText = "Crescente"; emoji = "🌒"; favorable = true; }
+            else if (currentCyclePos < 9.225) { phaseText = "Primo Quarto"; emoji = "🌓"; }
+            else if (currentCyclePos < 12.915){ phaseText = "Gibbosa Crescente"; emoji = "🌔"; }
+            else if (currentCyclePos < 16.605){ phaseText = "Luna Piena"; emoji = "🌕"; }
+            else if (currentCyclePos < 20.295){ phaseText = "Gibbosa Calante"; emoji = "🌖"; }
+            else if (currentCyclePos < 23.985){ phaseText = "Ultimo Quarto"; emoji = "🌗"; }
+            else                              { phaseText = "Calante"; emoji = "🌘"; }
+            
+            return { text: phaseText, emoji: emoji, favorable: favorable };
+        }
+
+        function getSlopeRecommendation(seasonality, avgTemp) {
+            const month = new Date().getMonth();
+            let text = "";
+            let emoji = "🧭";
+
+            if (seasonality.score < 0.2) { 
+                text = "Versante: Indifferente (fuori stagione).";
+            } else if (month >= 5 && month <= 7) { 
+                text = "Versante: Prediligi versanti a NORD (più freschi e umidi).";
+            } else if (month === 4 || month >= 9) { 
+                text = "Versante: Prediligi versanti a SUD (più caldi e soleggiati).";
+            } else { 
+                 text = "Versante: Controlla tutte le esposizioni, con preferenza per EST.";
+            }
+            return { text: `${emoji} ${text}` };
+        }
+        
+        function getWeatherIcon(code) {
+            if (code === null) return '';
+            let svg = '';
+            switch (true) {
+                case (code === 0): // Sole
+                    svg = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-yellow-300" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 14.95a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414l-.707.707zm-2.12-2.122a1 1 0 000-1.414l.707-.707a1 1 0 101.414 1.414l-.707.707a1 1 0 00-1.414 0zM12 17a1 1 0 100 2h-1a1 1 0 100-2h1z" clip-rule="evenodd" /></svg>`;
+                    break;
+                case (code >= 1 && code <= 3): // Nuvoloso
+                    svg = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-300" viewBox="0 0 20 20" fill="currentColor"><path d="M5.5 16a3.5 3.5 0 01-.369-6.98 4 4 0 117.753-1.977A4.5 4.5 0 1113.5 16h-8z" /></svg>`;
+                    break;
+                 case (code >= 51 && code <= 67 || code >= 80 && code <= 82): // Pioggia
+                    svg = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-300" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M15.707 8.707a1 1 0 00-1.414-1.414l-4 4a1 1 0 001.414 1.414l4-4zM5.707 8.707a1 1 0 01-1.414-1.414l4-4a1 1 0 111.414 1.414l-4 4z" clip-rule="evenodd" /><path d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" /></svg>`;
+                    break;
+                 case (code >= 95 && code <= 99): // Temporale
+                    svg = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor"><path d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>`;
+                    break;
+                default: // Nuvole
+                     svg = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-300" viewBox="0 0 20 20" fill="currentColor"><path d="M5.5 16a3.5 3.5 0 01-.369-6.98 4 4 0 117.753-1.977A4.5 4.5 0 1113.5 16h-8z" /></svg>`;
+                    break;
+            }
+            return `<div class="absolute top-1 right-1">${svg}</div>`;
+        }
+
+        function analyzeFutureTrend(processedData) {
+            const todayIndex = 14;
+            const futureWindow = processedData.slice(todayIndex + 1, todayIndex + 6);
+            if(futureWindow.length < 5) return "";
+
+            const futureRain = futureWindow.reduce((sum, day) => sum + day.totalPrecip, 0);
+
+            if (futureRain > 15) {
+                return "Inoltre, le piogge significative previste nei prossimi giorni potrebbero innescare una **nuova e promettente 'buttata'** tra circa 7-10 giorni.";
+            } else if (futureRain < 2) {
+                return "Guardando al futuro, il tempo si manterrà stabile e asciutto. Questo significa che l'umidità del terreno calerà, **riducendo gradualmente il potenziale di crescita** se non arriveranno nuove piogge.";
+            } else {
+                 return "Nei prossimi giorni il tempo si manterrà variabile ma senza piogge decisive, quindi la situazione di crescita dovrebbe rimanere simile a quella attuale.";
+            }
+        }
+        
+        function generateSummaryText(weatherScore, vegetation, altitude, seasonality, totalRain, futureTrend) {
+            let summary = "";
+            const scores = [
+                { name: 'habitat', value: vegetation.score, text: `l'habitat ${vegetation.text.includes('Ideale') ? 'ideale' : 'promettente'}` },
+                { name: 'season', value: seasonality.score, text: `la stagione, che è al suo picco` },
+                { name: 'altitude', value: altitude.score, text: `l'altitudine` },
+                { name: 'weather', value: weatherScore / 100, text: `le condizioni meteo` }
+            ];
+
+            const overallPotential = (weatherScore / 100) * vegetation.score * altitude.score * seasonality.score;
+            if (overallPotential > 0.6) summary += "Il potenziale generale è ottimo. ";
+            else if (overallPotential > 0.3) summary += "Le condizioni generali sono buone. ";
+            else summary += "Il potenziale di crescita è moderato. ";
+
+            const strongest = scores.filter(s => s.value >= 0.95).sort((a, b) => b.value - a.value);
+            if (strongest.length > 1) {
+                const strongPoints = strongest.map(s => s.text).join(' e ');
+                summary += `I punti di forza sono ${strongPoints}, che creano una base eccellente. `;
+            } else if (strongest.length === 1) {
+                 summary += `Il punto di forza principale è ${strongest[0].text}. `;
+            }
+
+            const limiting = scores.filter(s => s.value < 0.9).sort((a, b) => a.value - b.value);
+            if (limiting.length > 0) {
+                const mainLimiter = limiting[0];
+                summary += "Tuttavia, "
+                if (mainLimiter.name === 'weather') {
+                    summary += `la pioggia solo sufficiente (${Math.round(totalRain)}mm) limita il potenziale di una 'buttata' più abbondante, mantenendo le probabilità su questi livelli. `;
+                } else if (mainLimiter.name === 'altitude') {
+                    summary += `l'altitudine non perfettamente ideale sta frenando leggermente il risultato finale. `;
+                } else if (mainLimiter.name === 'habitat') {
+                     summary += `l'habitat non ottimale è il principale fattore limitante. `;
+                } else if (mainLimiter.name === 'season') {
+                     summary += `la stagione non è ancora al suo picco, e questo è il principale fattore limitante. `;
+                }
+            } else {
+                 summary += "Tutti i fattori sono allineati in modo ottimale per una buona crescita. "
+            }
+            
+            summary += futureTrend;
+
+            return summary;
+        }
+
+        function displayForecast(processedData, name, vegetation, elevation) {
+            const altitude = calculateAltitudeScore(elevation);
+            const seasonality = calculateSeasonalityScore();
+            const growthPhase = calculateGrowthPhase(processedData);
+            const moonPhase = getMoonPhase(new Date());
+
+            const firstForecastIndex = 14;
+            let rainText = "🌧️ Pioggia: Dati insufficienti.";
+            let tempText = "🌡️ Temp.: Dati insufficienti.";
+            let totalRainLast10Days = 0;
+            let avgTempLast5Days = 0;
+
+            if (processedData.length > firstForecastIndex) {
+                const rainWindow = processedData.slice(firstForecastIndex - 10, firstForecastIndex - 2);
+                if (rainWindow.length > 0) {
+                    totalRainLast10Days = rainWindow.reduce((sum, day) => sum + day.totalPrecip, 0);
+                    if (totalRainLast10Days > 40) rainText = `🌧️ Pioggia: ${Math.round(totalRainLast10Days)}mm (Ottimale).`;
+                    else if (totalRainLast10Days > 25) rainText = `🌧️ Pioggia: ${Math.round(totalRainLast10Days)}mm (Molto buona).`;
+                    else if (totalRainLast10Days > 15) rainText = `🌧️ Pioggia: ${Math.round(totalRainLast10Days)}mm (Buona).`;
+                    else if (totalRainLast10Days > 5) rainText = `🌧️ Pioggia: ${Math.round(totalRainLast10Days)}mm (Sufficiente).`;
+                    else rainText = `🌧️ Pioggia: ${Math.round(totalRainLast10Days)}mm (Scarsa).`;
+                }
+                
+                const tempWindow = processedData.slice(firstForecastIndex - 5, firstForecastIndex);
+                 if (tempWindow.length > 0) {
+                    avgTempLast5Days = tempWindow.reduce((sum, day) => sum + day.avgTemp, 0) / tempWindow.length;
+                    if (avgTempLast5Days >= 14 && avgTempLast5Days <= 22) tempText = `🌡️ Temp.: ${avgTempLast5Days.toFixed(1)}°C (Ideale).`;
+                    else if (avgTempLast5Days >= 10 && avgTempLast5Days < 25) tempText = `🌡️ Temp.: ${avgTempLast5Days.toFixed(1)}°C (Favorevole).`;
+                    else if (avgTempLast5Days < 10) tempText = `🌡️ Temp.: ${avgTempLast5Days.toFixed(1)}°C (Troppo freddo).`;
+                    else tempText = `🌡️ Temp.: ${avgTempLast5Days.toFixed(1)}°C (Troppo caldo).`;
+                }
+            }
+
+            const slopeRecommendation = getSlopeRecommendation(seasonality, avgTempLast5Days);
+            
+            locationNameEl.textContent = name;
+            growthPhaseInfoEl.textContent = growthPhase.text;
+            habitatInfoEl.textContent = vegetation.text;
+            bonusInfoEl.textContent = vegetation.bonusText;
+            altitudeInfoEl.textContent = altitude.text;
+            seasonInfoEl.textContent = seasonality.text;
+            rainInfoEl.textContent = rainText;
+            tempInfoEl.textContent = tempText;
+            moonPhaseInfoEl.textContent = `${moonPhase.emoji} Luna: ${moonPhase.text} ${moonPhase.favorable ? '(Favorevole)' : '(Meno favorevole)'}`;
+            slopeInfoEl.textContent = slopeRecommendation.text;
+            
+            const forecastDays = processedData.slice(-11);
+            const futureTrendText = analyzeFutureTrend(processedData);
+
+            forecastGrid.innerHTML = '';
+            forecastDays.forEach((dayData, index) => {
+                const fullDataIndex = processedData.findIndex(d => d.date === dayData.date);
+                const rawWeatherScore = calculateWeatherScore(fullDataIndex, processedData);
+                
+                const weightedWeatherScore = 100 * Math.pow(rawWeatherScore / 100, 1.2);
+
+                const finalProbability = Math.round(weightedWeatherScore * vegetation.score * altitude.score * seasonality.score);
+
+                if (index === 0) {
+                     summaryText.innerHTML = generateSummaryText(rawWeatherScore, vegetation, altitude, seasonality, totalRainLast10Days, futureTrendText).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                     summaryContainer.classList.remove('hidden');
+                }
+
+                const date = new Date(dayData.date);
+                date.setUTCHours(12);
+                const dayOfWeek = date.toLocaleString('it-IT', { weekday: 'short' });
+                const dayOfMonth = date.toLocaleString('it-IT', { day: '2-digit', month: '2-digit' });
+
+                let bgColor = 'bg-gray-700/50'; let progressColor = 'bg-gray-500'; let textColor = 'text-white';
+                if (finalProbability > 65) { bgColor = 'bg-green-800/50'; progressColor = 'bg-green-400';
+                } else if (finalProbability > 40) { bgColor = 'bg-yellow-800/50'; progressColor = 'bg-yellow-400';
+                } else if (finalProbability > 15) { bgColor = 'bg-orange-800/50'; progressColor = 'bg-orange-400';
+                } else { textColor = 'text-gray-400'; }
+                
+                const weatherIcon = getWeatherIcon(dayData.weathercode);
+
+                const card = `
+                    <div class="relative rounded-xl p-4 text-center ${bgColor} border border-gray-700/50 flex flex-col justify-between h-full">
+                        ${weatherIcon}
+                        <div><p class="font-semibold ${textColor}">${dayOfWeek}</p><p class="text-sm text-gray-400">${dayOfMonth}</p></div>
+                        <div class="my-4">
+                            <p class="text-3xl font-bold ${textColor}">${finalProbability}<span class="text-xl font-medium text-gray-400">%</span></p>
+                            <p class="text-xs text-gray-300">Probabilità</p>
+                        </div>
+                        <div>
+                            <div class="w-full bg-gray-600/50 rounded-full h-2.5">
+                                <div class="${progressColor} h-2.5 rounded-full" style="width: ${finalProbability}%"></div>
+                            </div>
+                        </div>
+                    </div>`;
+                forecastGrid.innerHTML += card;
+            });
+            
+            resultsContainer.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 package github.naturewhisp.myco;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.webkit.GeolocationPermissions;
@@ -13,10 +14,11 @@ import androidx.core.app.ActivityCompat;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 public class MainActivity extends AppCompatActivity {
 
-    private WebView webView;
     private GeolocationPermissions.Callback geolocationCallback;
     private String geolocationOrigin;
 
@@ -35,15 +37,22 @@ public class MainActivity extends AppCompatActivity {
             }
     );
 
+    @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        webView = findViewById(R.id.webview);
+        WebView webView = findViewById(R.id.webview);
         WebSettings webSettings = webView.getSettings();
         webSettings.setJavaScriptEnabled(true);
         webSettings.setGeolocationEnabled(true);
+
+        ViewCompat.setOnApplyWindowInsetsListener(webView, (v, insets) -> {
+            int statusBarHeight = insets.getInsets(WindowInsetsCompat.Type.systemBars()).top;
+            v.setPadding(0, statusBarHeight, 0, 0);
+            return insets;
+        });
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override

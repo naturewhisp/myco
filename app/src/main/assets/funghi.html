@@ -9,6 +9,7 @@
     <!-- Leaflet.js per la mappa interattiva -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="js/logic.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -442,27 +443,6 @@
                 if (tempBefore - tempAfter > 6) score += 10;
             }
             return Math.min(score, 100);
-        }
-
-        function calculateAltitudeScore(elevation) {
-            let score, text;
-            if (elevation < 200) {
-                score = 0.7; 
-                text = `🏔️ Altitudine: ${Math.round(elevation)}m (Bassa, impatto moderato).`;
-            } else if (elevation < 400) {
-                score = 0.9; 
-                text = `🏔️ Altitudine: ${Math.round(elevation)}m (Collinare, favorevole).`;
-            } else if (elevation <= 1400) {
-                score = 1.0;
-                text = `🏔️ Altitudine: ${Math.round(elevation)}m (Ideale).`;
-            } else if (elevation <= 1800) {
-                score = 0.9; 
-                text = `🏔️ Altitudine: ${Math.round(elevation)}m (Montana, buona ma con stagione breve).`;
-            } else {
-                score = 0.6;
-                text = `🏔️ Altitudine: ${Math.round(elevation)}m (Elevata, meno favorevole).`;
-            }
-            return { score, text };
         }
 
         function calculateSeasonalityScore() {

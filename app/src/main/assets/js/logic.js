@@ -19,6 +19,26 @@ function calculateAltitudeScore(elevation) {
     return { score, text };
 }
 
+async function fetchOverpassData(endpoints, query) {
+    for (const endpoint of endpoints) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+            const overpassUrl = `${endpoint}?data=${encodeURIComponent(query)}`;
+            const response = await fetch(overpassUrl, { signal: controller.signal });
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+                return await response.json();
+            }
+        } catch (error) {
+            console.warn(`Endpoint ${endpoint} non ha risposto:`, error.name);
+        }
+    }
+    return null;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { calculateAltitudeScore };
+    module.exports = { calculateAltitudeScore, fetchOverpassData };
 }

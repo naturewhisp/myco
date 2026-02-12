@@ -39,6 +39,26 @@ async function fetchOverpassData(endpoints, query) {
     return null;
 }
 
+function getMoonPhase(date = new Date()) {
+    const knownNewMoon = new Date('2000-01-06T18:14:00Z');
+    const daysSinceKnownNewMoon = (date - knownNewMoon) / (1000 * 60 * 60 * 24);
+    const lunarCycleDays = 29.53058867;
+    const currentCyclePos = daysSinceKnownNewMoon % lunarCycleDays;
+
+    let phaseText = ""; let emoji = ""; let favorable = false;
+
+    if (currentCyclePos < 1.845)      { phaseText = "Luna Nuova"; emoji = "🌑"; favorable = true; }
+    else if (currentCyclePos < 5.535) { phaseText = "Crescente"; emoji = "🌒"; favorable = true; }
+    else if (currentCyclePos < 9.225) { phaseText = "Primo Quarto"; emoji = "🌓"; }
+    else if (currentCyclePos < 12.915){ phaseText = "Gibbosa Crescente"; emoji = "🌔"; }
+    else if (currentCyclePos < 16.605){ phaseText = "Luna Piena"; emoji = "🌕"; }
+    else if (currentCyclePos < 20.295){ phaseText = "Gibbosa Calante"; emoji = "🌖"; }
+    else if (currentCyclePos < 23.985){ phaseText = "Ultimo Quarto"; emoji = "🌗"; }
+    else                              { phaseText = "Calante"; emoji = "🌘"; }
+
+    return { text: phaseText, emoji: emoji, favorable: favorable };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { calculateAltitudeScore, fetchOverpassData };
+    module.exports = { calculateAltitudeScore, fetchOverpassData, getMoonPhase };
 }

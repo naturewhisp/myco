@@ -170,8 +170,11 @@
             errorMessage.classList.add('hidden');
 
             const analysisPromise = (async () => {
-                const vegetationData = await analyzeHabitat(lat, lng);
-                await fetchMushroomForecast(lat, lng, "Punto selezionato", vegetationData);
+                const [vegetationData, weatherData] = await Promise.all([
+                    analyzeHabitat(lat, lng),
+                    fetchWeatherData(lat, lng)
+                ]);
+                displayMushroomForecast(weatherData, "Punto selezionato", vegetationData);
             })();
 
             const timeoutPromise = new Promise((_, reject) =>
@@ -328,24 +331,24 @@
             return { score: finalScore, text: baseText, bonusText: bonusText };
         }
         
-        async function fetchMushroomForecast(lat, lon, name, vegetation) {
-            forecastGrid.innerHTML = '';
-            
+        async function fetchWeatherData(lat, lon) {
             const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&past_days=14&hourly=temperature_2m,relativehumidity_2m,precipitation&daily=weathercode&forecast_days=11&timezone=auto`;
 
             try {
                 const response = await fetch(apiUrl);
                 if (!response.ok) throw new Error('Non è stato possibile recuperare i dati meteo.');
-                const data = await response.json();
-                
-                const elevation = data.elevation;
-                const processedData = processWeatherData(data);
-                displayForecast(processedData, name, vegetation, elevation);
-
+                return await response.json();
             } catch (error) {
                 console.error("Fetch error:", error);
                 throw error;
             }
+        }
+
+        function displayMushroomForecast(data, name, vegetation) {
+            forecastGrid.innerHTML = '';
+            const elevation = data.elevation;
+            const processedData = processWeatherData(data);
+            displayForecast(processedData, name, vegetation, elevation);
         }
         
         function processWeatherData(data) {

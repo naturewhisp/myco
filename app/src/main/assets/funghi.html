@@ -280,77 +280,45 @@
 
             let baseScore = 0.7; 
             let baseText = "Analisi habitat non disponibile.";
-            let success = false;
 
             const baseQuery = `[out:json];(nwr["natural"="wood"](around:${radius},${lat},${lon});nwr["landuse"="forest"](around:${radius},${lat},${lon}););out body;`;
 
-            for (const endpoint of overpassEndpoints) {
-                try {
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 8000); 
-                    
-                    const overpassUrl = `${endpoint}?data=${encodeURIComponent(baseQuery)}`;
-                    const response = await fetch(overpassUrl, { signal: controller.signal });
-                    clearTimeout(timeoutId);
+            const data = await fetchOverpassData(overpassEndpoints, baseQuery);
 
-                    if (response.ok) {
-                        const data = await response.json();
-                        const forestElementsCount = data.elements.length;
+            if (data) {
+                const forestElementsCount = data.elements.length;
 
-                        if (forestElementsCount > 15) {
-                            baseScore = 1.0;
-                            baseText = "🌳 Habitat: Ideale (punto immerso in area boschiva).";
-                        } else if (forestElementsCount > 4) {
-                            baseScore = 0.95;
-                            baseText = "🌳 Habitat: Promettente (vicinanza a boschi e foreste).";
-                        } else if (forestElementsCount > 0) {
-                            baseScore = 0.6;
-                            baseText = "🌳 Habitat: Misto (presenza di aree verdi ma non estese).";
-                        } else {
-                            baseScore = 0.1;
-                            baseText = "🌳 Habitat: Non ideale (assenza di boschi nelle immediate vicinanze).";
-                        }
-                        success = true;
-                        break; 
-                    }
-                } catch (error) {
-                    console.warn(`Endpoint ${endpoint} non ha risposto:`, error.name);
+                if (forestElementsCount > 15) {
+                    baseScore = 1.0;
+                    baseText = "🌳 Habitat: Ideale (punto immerso in area boschiva).";
+                } else if (forestElementsCount > 4) {
+                    baseScore = 0.95;
+                    baseText = "🌳 Habitat: Promettente (vicinanza a boschi e foreste).";
+                } else if (forestElementsCount > 0) {
+                    baseScore = 0.6;
+                    baseText = "🌳 Habitat: Misto (presenza di aree verdi ma non estese).";
+                } else {
+                    baseScore = 0.1;
+                    baseText = "🌳 Habitat: Non ideale (assenza di boschi nelle immediate vicinanze).";
                 }
-            }
-
-            if (!success) {
+            } else {
                 console.error("Tutti gli endpoint per l'analisi dell'habitat di base non sono disponibili.");
             }
 
             let finalScore = baseScore;
             let bonusText = "ℹ️ Bonus: Nessun dato specifico sul tipo di albero trovato.";
             
-            if (success) { 
+            if (data) {
                 const specificQuery = `[out:json];(nwr["leaf_type"~"broadleaved|needleleaved"](around:${radius},${lat},${lon});nwr["genus"~"Fagus|Quercus|Castanea|Pinus|Picea|Abies"](around:${radius},${lat},${lon}););out body;`;
-                let bonusSuccess = false;
-                for (const endpoint of overpassEndpoints) {
-                    try {
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 8000);
-                        
-                        const specificOverpassUrl = `${endpoint}?data=${encodeURIComponent(specificQuery)}`;
-                        const specificResponse = await fetch(specificOverpassUrl, { signal: controller.signal });
-                        clearTimeout(timeoutId);
 
-                        if (specificResponse.ok) {
-                            const specificData = await specificResponse.json();
-                            if (specificData.elements.length > 0) {
-                                finalScore = Math.min(1.0, baseScore * 1.15);
-                                bonusText = "✅ Bonus: Trovata vegetazione compatibile! Punteggio habitat aumentato.";
-                            }
-                            bonusSuccess = true;
-                            break;
-                        }
-                    } catch (bonusError) {
-                        console.warn(`Endpoint bonus ${endpoint} non ha risposto:`, bonusError.name);
+                const specificData = await fetchOverpassData(overpassEndpoints, specificQuery);
+
+                if (specificData) {
+                    if (specificData.elements.length > 0) {
+                        finalScore = Math.min(1.0, baseScore * 1.15);
+                        bonusText = "✅ Bonus: Trovata vegetazione compatibile! Punteggio habitat aumentato.";
                     }
-                }
-                if (!bonusSuccess) {
+                } else {
                     console.warn("La ricerca bonus vegetazione non è andata a buon fine.");
                 }
             } else {

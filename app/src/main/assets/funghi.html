@@ -627,6 +627,10 @@
             const futureTrendText = analyzeFutureTrend(processedData);
 
             forecastGrid.innerHTML = '';
+
+            const weekdayFormatter = new Intl.DateTimeFormat('it-IT', { weekday: 'short' });
+            const monthFormatter = new Intl.DateTimeFormat('it-IT', { day: '2-digit', month: '2-digit' });
+
             forecastDays.forEach((dayData, index) => {
                 const fullDataIndex = processedData.findIndex(d => d.date === dayData.date);
                 const rawWeatherScore = calculateWeatherScore(fullDataIndex, processedData);
@@ -642,8 +646,8 @@
 
                 const date = new Date(dayData.date);
                 date.setUTCHours(12);
-                const dayOfWeek = date.toLocaleString('it-IT', { weekday: 'short' });
-                const dayOfMonth = date.toLocaleString('it-IT', { day: '2-digit', month: '2-digit' });
+                const dayOfWeek = weekdayFormatter.format(date);
+                const dayOfMonth = monthFormatter.format(date);
 
                 let bgColor = 'bg-gray-700/50'; let progressColor = 'bg-gray-500'; let textColor = 'text-white';
                 if (finalProbability > 65) { bgColor = 'bg-green-800/50'; progressColor = 'bg-green-400';

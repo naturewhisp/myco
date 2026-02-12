@@ -1,3 +1,13 @@
+
+const GROWTH_PARAMETERS = {
+    TODAY_INDEX: 14,
+    RAIN_TRIGGER_THRESHOLD: 10,
+    CUMULATIVE_RAIN_THRESHOLD: 15,
+    GROWTH_PHASE_DAYS: 4,
+    MATURATION_PHASE_DAYS: 7,
+    HARVEST_PHASE_DAYS: 12
+};
+
 function processWeatherData(data) {
     const dailyData = {};
     const hourlyTimes = data.hourly.time;
@@ -30,11 +40,11 @@ function processWeatherData(data) {
 }
 
 function calculateGrowthPhase(processedData) {
-    const todayIndex = 14;
+    const todayIndex = GROWTH_PARAMETERS.TODAY_INDEX;
     let triggerDayIndex = -1;
 
     for (let i = todayIndex; i >= 0; i--) {
-        if (processedData[i] && processedData[i].totalPrecip > 10) {
+        if (processedData[i] && processedData[i].totalPrecip > GROWTH_PARAMETERS.RAIN_TRIGGER_THRESHOLD) {
             triggerDayIndex = i;
             break;
         }
@@ -42,7 +52,7 @@ function calculateGrowthPhase(processedData) {
             const threeDayRain = (processedData[i]?.totalPrecip || 0) +
                                  (processedData[i-1]?.totalPrecip || 0) +
                                  (processedData[i-2]?.totalPrecip || 0);
-            if (threeDayRain > 15) {
+            if (threeDayRain > GROWTH_PARAMETERS.CUMULATIVE_RAIN_THRESHOLD) {
                 triggerDayIndex = i - 2;
                 break;
             }
@@ -55,12 +65,12 @@ function calculateGrowthPhase(processedData) {
 
     const daysSinceTrigger = todayIndex - triggerDayIndex;
 
-    if (daysSinceTrigger <= 4) {
+    if (daysSinceTrigger <= GROWTH_PARAMETERS.GROWTH_PHASE_DAYS) {
         return { text: `⏳ Fase: In crescita (piogge recenti ${daysSinceTrigger} giorni fa).` };
-    } else if (daysSinceTrigger <= 7) {
-        const daysToHarvest = 8 - daysSinceTrigger;
+    } else if (daysSinceTrigger <= GROWTH_PARAMETERS.MATURATION_PHASE_DAYS) {
+        const daysToHarvest = (GROWTH_PARAMETERS.MATURATION_PHASE_DAYS + 1) - daysSinceTrigger;
         return { text: `⏳ Fase: Maturazione finale (raccolta stimata in ${daysToHarvest}-${daysToHarvest+2} giorni).` };
-    } else if (daysSinceTrigger <= 12) {
+    } else if (daysSinceTrigger <= GROWTH_PARAMETERS.HARVEST_PHASE_DAYS) {
         return { text: "⏳ Fase: Periodo ideale per la raccolta!" };
     } else {
         return { text: "⏳ Fase: Ciclo di crescita in esaurimento." };
@@ -85,7 +95,7 @@ function getSlopeRecommendation(seasonality, avgTemp) {
 }
 
 function analyzeFutureTrend(processedData) {
-    const todayIndex = 14;
+    const todayIndex = GROWTH_PARAMETERS.TODAY_INDEX;
     const futureWindow = processedData.slice(todayIndex + 1, todayIndex + 6);
     if(futureWindow.length < 5) return "";
 
@@ -150,6 +160,7 @@ if (typeof module !== 'undefined' && module.exports) {
         calculateGrowthPhase,
         getSlopeRecommendation,
         analyzeFutureTrend,
-        generateSummaryText
+        generateSummaryText,
+        GROWTH_PARAMETERS
     };
 }

@@ -382,29 +382,6 @@
             }).sort((a,b) => new Date(a.date) - new Date(b.date));
         }
 
-        function calculateWeatherScore(dayIndex, allData) {
-            let score = 0;
-            if (!allData[dayIndex]) return 0;
-            const rainWindow = allData.slice(Math.max(0, dayIndex - 10), dayIndex - 2);
-            const totalRainLast10Days = rainWindow.reduce((sum, day) => sum + (day.totalPrecip || 0), 0);
-            if (totalRainLast10Days > 40) score += 40; else if (totalRainLast10Days > 25) score += 35; else if (totalRainLast10Days > 15) score += 25; else if (totalRainLast10Days > 5) score += 10;
-            
-            const tempWindow = allData.slice(Math.max(0, dayIndex - 5), dayIndex);
-            const avgTempLast5Days = tempWindow.length > 0 ? tempWindow.reduce((sum, day) => sum + day.avgTemp, 0) / tempWindow.length : 0;
-            if (avgTempLast5Days >= 14 && avgTempLast5Days <= 22) score += 30; else if (avgTempLast5Days >= 10 && avgTempLast5Days < 25) score += 15;
-            
-            const humidityWindow = allData.slice(Math.max(0, dayIndex - 3), dayIndex + 1);
-            const avgHumidityRecent = humidityWindow.length > 0 ? humidityWindow.reduce((sum, day) => sum + day.avgHumidity, 0) / humidityWindow.length : 0;
-            if (avgHumidityRecent > 85) score += 15; else if (avgHumidityRecent > 75) score += 10;
-
-            if (dayIndex > 4 && totalRainLast10Days > 15) {
-                const tempBefore = allData[Math.max(0, dayIndex - 4)].avgTemp; 
-                const tempAfter = allData[Math.max(0, dayIndex - 1)].avgTemp;
-                if (tempBefore - tempAfter > 6) score += 10;
-            }
-            return Math.min(score, 100);
-        }
-
         function calculateSeasonalityScore() {
             const month = new Date().getMonth(); 
             let score, text;
@@ -577,20 +554,15 @@
                 const rainWindow = processedData.slice(firstForecastIndex - 10, firstForecastIndex - 2);
                 if (rainWindow.length > 0) {
                     totalRainLast10Days = rainWindow.reduce((sum, day) => sum + day.totalPrecip, 0);
-                    if (totalRainLast10Days > 40) rainText = `🌧️ Pioggia: ${Math.round(totalRainLast10Days)}mm (Ottimale).`;
-                    else if (totalRainLast10Days > 25) rainText = `🌧️ Pioggia: ${Math.round(totalRainLast10Days)}mm (Molto buona).`;
-                    else if (totalRainLast10Days > 15) rainText = `🌧️ Pioggia: ${Math.round(totalRainLast10Days)}mm (Buona).`;
-                    else if (totalRainLast10Days > 5) rainText = `🌧️ Pioggia: ${Math.round(totalRainLast10Days)}mm (Sufficiente).`;
-                    else rainText = `🌧️ Pioggia: ${Math.round(totalRainLast10Days)}mm (Scarsa).`;
+                    const status = getRainStatus(totalRainLast10Days);
+                    rainText = `🌧️ Pioggia: ${Math.round(totalRainLast10Days)}mm (${status.label}).`;
                 }
                 
                 const tempWindow = processedData.slice(firstForecastIndex - 5, firstForecastIndex);
                  if (tempWindow.length > 0) {
                     avgTempLast5Days = tempWindow.reduce((sum, day) => sum + day.avgTemp, 0) / tempWindow.length;
-                    if (avgTempLast5Days >= 14 && avgTempLast5Days <= 22) tempText = `🌡️ Temp.: ${avgTempLast5Days.toFixed(1)}°C (Ideale).`;
-                    else if (avgTempLast5Days >= 10 && avgTempLast5Days < 25) tempText = `🌡️ Temp.: ${avgTempLast5Days.toFixed(1)}°C (Favorevole).`;
-                    else if (avgTempLast5Days < 10) tempText = `🌡️ Temp.: ${avgTempLast5Days.toFixed(1)}°C (Troppo freddo).`;
-                    else tempText = `🌡️ Temp.: ${avgTempLast5Days.toFixed(1)}°C (Troppo caldo).`;
+                    const status = getTempStatus(avgTempLast5Days);
+                    tempText = `🌡️ Temp.: ${avgTempLast5Days.toFixed(1)}°C (${status.label}).`;
                 }
             }
 

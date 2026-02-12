@@ -382,22 +382,6 @@
             }).sort((a,b) => new Date(a.date) - new Date(b.date));
         }
 
-        function calculateSeasonalityScore() {
-            const month = new Date().getMonth(); 
-            let score, text;
-            const monthNames = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
-            const currentMonthName = monthNames[month];
-
-            switch (month) {
-                case 8: case 9: score = 1.0; text = `🗓️ Stagione: ${currentMonthName} (Picco della stagione).`; break;
-                case 4: case 5: score = 0.9; text = `🗓️ Stagione: ${currentMonthName} (Buona stagione primaverile).`; break;
-                case 10: score = 0.7; text = `🗓️ Stagione: ${currentMonthName} (Fine stagione, possibile con clima mite).`; break;
-                case 6: case 7: score = 0.5; text = `🗓️ Stagione: ${currentMonthName} (Estivo, crescita legata a temporali).`; break;
-                case 3: score = 0.4; text = `🗓️ Stagione: ${currentMonthName} (Inizio stagione, ancora presto).`; break;
-                default: score = 0.1; text = `🗓️ Stagione: ${currentMonthName} (Fuori stagione).`; break;
-            }
-            return { score, text };
-        }
 
         function calculateGrowthPhase(processedData) {
             const todayIndex = 14;
@@ -540,7 +524,7 @@
 
         function displayForecast(processedData, name, vegetation, elevation) {
             const altitude = calculateAltitudeScore(elevation);
-            const seasonality = calculateSeasonalityScore();
+            const seasonality = calculateSeasonalityScore(new Date().getMonth());
             const growthPhase = calculateGrowthPhase(processedData);
             const moonPhase = getMoonPhase(new Date());
 

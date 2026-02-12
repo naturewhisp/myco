@@ -144,6 +144,49 @@ function calculateWeatherScore(dayIndex, allData) {
     return Math.min(score, 100);
 }
 
+const SEASONALITY_THRESHOLDS = {
+    PEAK: { months: [8, 9], score: 1.0, labelKey: "PEAK" },
+    SPRING: { months: [4, 5], score: 0.9, labelKey: "SPRING" },
+    LATE: { months: [10], score: 0.7, labelKey: "LATE" },
+    SUMMER: { months: [6, 7], score: 0.5, labelKey: "SUMMER" },
+    EARLY: { months: [3], score: 0.4, labelKey: "EARLY" },
+    OFF_SEASON: { score: 0.1, labelKey: "OFF_SEASON" }
+};
+
+const TEXT_RESOURCES = {
+    it: {
+        MONTHS: ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"],
+        SEASONALITY: {
+            PEAK: "Picco della stagione",
+            SPRING: "Buona stagione primaverile",
+            LATE: "Fine stagione, possibile con clima mite",
+            SUMMER: "Estivo, crescita legata a temporali",
+            EARLY: "Inizio stagione, ancora presto",
+            OFF_SEASON: "Fuori stagione"
+        }
+    }
+};
+
+function calculateSeasonalityScore(month, lang = 'it') {
+    const resources = TEXT_RESOURCES[lang] || TEXT_RESOURCES.it;
+    const monthName = resources.MONTHS[month];
+
+    let threshold = SEASONALITY_THRESHOLDS.OFF_SEASON;
+
+    for (const key in SEASONALITY_THRESHOLDS) {
+        if (SEASONALITY_THRESHOLDS[key].months && SEASONALITY_THRESHOLDS[key].months.includes(month)) {
+            threshold = SEASONALITY_THRESHOLDS[key];
+            break;
+        }
+    }
+
+    const seasonDesc = resources.SEASONALITY[threshold.labelKey];
+    return {
+        score: threshold.score,
+        text: `🗓️ Stagione: ${monthName} (${seasonDesc}).`
+    };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         calculateAltitudeScore,
@@ -152,6 +195,8 @@ if (typeof module !== 'undefined' && module.exports) {
         calculateWeatherScore,
         getRainStatus,
         getTempStatus,
-        WEATHER_THRESHOLDS
+        calculateSeasonalityScore,
+        WEATHER_THRESHOLDS,
+        SEASONALITY_THRESHOLDS
     };
 }

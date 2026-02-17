@@ -46,7 +46,7 @@ describe('forecast_logic tests', () => {
     test('calculateGrowthPhase - trigger day recent (<= 4 days)', () => {
         // Mock data where index 14 is today. Trigger at 14-2 = 12.
         // Days since trigger = 2.
-        const processedData = new Array(20).fill({ totalPrecip: 0 });
+        const processedData = Array.from({ length: 20 }, () => ({ totalPrecip: 0 }));
         processedData[12] = { totalPrecip: 15 }; // Trigger day
 
         const result = calculateGrowthPhase(processedData);
@@ -55,7 +55,7 @@ describe('forecast_logic tests', () => {
 
     test('calculateGrowthPhase - trigger day intermediate (5-7 days)', () => {
         // Trigger at 14-6 = 8.
-        const processedData = new Array(20).fill({ totalPrecip: 0 });
+        const processedData = Array.from({ length: 20 }, () => ({ totalPrecip: 0 }));
         processedData[8] = { totalPrecip: 15 };
 
         const result = calculateGrowthPhase(processedData);
@@ -64,7 +64,7 @@ describe('forecast_logic tests', () => {
 
     test('calculateGrowthPhase - trigger day ideal (8-12 days)', () => {
         // Trigger at 14-10 = 4.
-        const processedData = new Array(20).fill({ totalPrecip: 0 });
+        const processedData = Array.from({ length: 20 }, () => ({ totalPrecip: 0 }));
         processedData[4] = { totalPrecip: 15 };
 
         const result = calculateGrowthPhase(processedData);
@@ -73,7 +73,7 @@ describe('forecast_logic tests', () => {
 
     test('calculateGrowthPhase - trigger day old (> 12 days)', () => {
         // Trigger at 14-13 = 1.
-        const processedData = new Array(20).fill({ totalPrecip: 0 });
+        const processedData = Array.from({ length: 20 }, () => ({ totalPrecip: 0 }));
         processedData[1] = { totalPrecip: 15 };
 
         const result = calculateGrowthPhase(processedData);
@@ -81,14 +81,14 @@ describe('forecast_logic tests', () => {
     });
 
     test('calculateGrowthPhase - no trigger', () => {
-        const processedData = new Array(20).fill({ totalPrecip: 0 });
+        const processedData = Array.from({ length: 20 }, () => ({ totalPrecip: 0 }));
         const result = calculateGrowthPhase(processedData);
         assert.match(result.text, /Crescita assente/);
     });
 
     test('calculateGrowthPhase - cumulative rain trigger', () => {
         // Trigger with 3-day cumulative rain > 15
-        const processedData = new Array(20).fill({ totalPrecip: 0 });
+        const processedData = Array.from({ length: 20 }, () => ({ totalPrecip: 0 }));
         processedData[12] = { totalPrecip: 6 };
         processedData[11] = { totalPrecip: 6 };
         processedData[10] = { totalPrecip: 6 }; // Sum 18 > 15
@@ -144,7 +144,7 @@ describe('forecast_logic tests', () => {
 
     test('analyzeFutureTrend - Heavy Rain', () => {
         const todayIndex = 14;
-        const processedData = new Array(25).fill({ totalPrecip: 0 });
+        const processedData = Array.from({ length: 25 }, () => ({ totalPrecip: 0 }));
         // Future window is 15 to 19 (5 days)
         processedData[15] = { totalPrecip: 10 };
         processedData[16] = { totalPrecip: 10 }; // Total 20 > 15
@@ -154,13 +154,13 @@ describe('forecast_logic tests', () => {
     });
 
     test('analyzeFutureTrend - Dry', () => {
-        const processedData = new Array(25).fill({ totalPrecip: 0 }); // Total 0 < 2
+        const processedData = Array.from({ length: 25 }, () => ({ totalPrecip: 0 })); // Total 0 < 2
         const result = analyzeFutureTrend(processedData);
         assert.match(result, /tempo si manterrà stabile e asciutto/);
     });
 
     test('analyzeFutureTrend - Variable', () => {
-        const processedData = new Array(25).fill({ totalPrecip: 0 });
+        const processedData = Array.from({ length: 25 }, () => ({ totalPrecip: 0 }));
         processedData[15] = { totalPrecip: 5 }; // Total 5 (between 2 and 15)
         const result = analyzeFutureTrend(processedData);
         assert.match(result, /tempo si manterrà variabile/);

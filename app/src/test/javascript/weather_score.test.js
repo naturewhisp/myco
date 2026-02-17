@@ -5,13 +5,13 @@ const { calculateWeatherScore, getRainStatus, getTempStatus, WEATHER_THRESHOLDS 
 test('getRainStatus', () => {
     assert.strictEqual(getRainStatus(41).label, "Ottimale");
     assert.strictEqual(getRainStatus(40.1).label, "Ottimale");
-    assert.strictEqual(getRainStatus(40).label, "Molto buona"); // > 40 check
+    assert.strictEqual(getRainStatus(40).label, "Ottimale"); // >= 40 check
     assert.strictEqual(getRainStatus(26).label, "Molto buona");
-    assert.strictEqual(getRainStatus(25).label, "Buona");
+    assert.strictEqual(getRainStatus(25).label, "Molto buona");
     assert.strictEqual(getRainStatus(16).label, "Buona");
-    assert.strictEqual(getRainStatus(15).label, "Sufficiente");
+    assert.strictEqual(getRainStatus(15).label, "Buona");
     assert.strictEqual(getRainStatus(6).label, "Sufficiente");
-    assert.strictEqual(getRainStatus(5).label, "Scarsa");
+    assert.strictEqual(getRainStatus(5).label, "Sufficiente");
     assert.strictEqual(getRainStatus(0).label, "Scarsa");
 });
 
@@ -27,6 +27,15 @@ test('getTempStatus', () => {
 
     assert.strictEqual(getTempStatus(9.9).label, "Troppo freddo");
     assert.strictEqual(getTempStatus(25).label, "Troppo caldo");
+});
+
+test('getHumidityScore', () => {
+    const { getHumidityScore } = require('../../main/assets/js/logic.js');
+    assert.strictEqual(getHumidityScore(86), 15);
+    assert.strictEqual(getHumidityScore(85), 15); // >= 85 check
+    assert.strictEqual(getHumidityScore(80), 10);
+    assert.strictEqual(getHumidityScore(75), 10); // >= 75 check
+    assert.strictEqual(getHumidityScore(70), 0);
 });
 
 test('calculateWeatherScore - Optimal Conditions', () => {
@@ -71,12 +80,12 @@ test('calculateWeatherScore - Shock Bonus', () => {
     allData[9] = { ...allData[9], avgTemp: 13 }; // 20 - 13 = 7 > 6
 
     // Base score:
-    // Rain: 40mm -> > 25 -> 35 pts (wait, > 40 is 40pts, > 25 is 35pts. 40 is not > 40. So 35 pts)
+    // Rain: 40mm -> >= 40 -> 40 pts
     // Temp: avg around 18-20 -> Ideale -> 30 pts
     // Humidity: 50 -> 0 pts
     // Shock: 10 pts
 
-    // Total: 35 + 30 + 0 + 10 = 75.
+    // Total: 40 + 30 + 0 + 10 = 80.
 
     const score = calculateWeatherScore(10, allData);
 
@@ -85,7 +94,7 @@ test('calculateWeatherScore - Shock Bonus', () => {
     // indices 0,1,2,3,4,5,6,7.
     // all contain totalPrecip 5.
     // Sum = 40.
-    // getRainStatus(40) -> 35 pts ("Molto buona").
+    // getRainStatus(40) -> 40 pts ("Ottimale").
 
     // Temp window for day 10: slice(5, 10). Indices 5,6,7,8,9.
     // 5: 20
@@ -96,5 +105,5 @@ test('calculateWeatherScore - Shock Bonus', () => {
     // Sum = 93. Avg = 18.6.
     // getTempStatus(18.6) -> Ideale -> 30 pts.
 
-    assert.strictEqual(score, 75);
+    assert.strictEqual(score, 80);
 });

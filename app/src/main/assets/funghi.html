@@ -136,6 +136,12 @@
             const modalLoader = document.getElementById('modal-loader');
             const modalLoaderText = document.getElementById('modal-loader-text');
             const mainContent = document.getElementById('main-content');
+
+        function setSafeErrorMessage(message) {
+            errorText.innerHTML = '<strong>Oops!</strong> ';
+            errorText.appendChild(document.createTextNode(message));
+            errorMessage.classList.remove('hidden');
+        }
         
         let map;
         let marker;
@@ -186,8 +192,7 @@
                 await Promise.race([analysisPromise, timeoutPromise]);
             } catch (error) {
                  console.error("Errore durante l'analisi o timeout:", error);
-                 errorText.innerHTML = `<strong>Oops!</strong> ${error.message}`;
-                 errorMessage.classList.remove('hidden');
+                 setSafeErrorMessage(error.message);
                  errorMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
             } finally {
                 modalLoader.classList.add('hidden');
@@ -218,8 +223,7 @@
                 initializeMap(lat, lon);
             } catch (error) {
                 console.error("Errore nel processo di ricerca:", error);
-                errorText.innerHTML = `<strong>Oops!</strong> ${error.message}`;
-                errorMessage.classList.remove('hidden');
+                setSafeErrorMessage(error.message);
             } finally {
                 modalLoader.classList.add('hidden');
                 mainContent.classList.remove('blur-background');
@@ -232,8 +236,7 @@
                 if (!window.isSecureContext) {
                     msg = 'La geolocalizzazione è disponibile solo su connessioni sicure (HTTPS).';
                 }
-                errorText.innerHTML = `<strong>Oops!</strong> ${msg}`;
-                errorMessage.classList.remove('hidden');
+                setSafeErrorMessage(msg);
                 return;
             }
 
@@ -267,8 +270,7 @@
                             message = 'La richiesta per ottenere la posizione è scaduta.';
                             break;
                     }
-                    errorText.innerHTML = `<strong>Oops!</strong> ${message}`;
-                    errorMessage.classList.remove('hidden');
+                    setSafeErrorMessage(message);
                 },
                 { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
             );
@@ -413,7 +415,6 @@
 
         function updateForecastGridUI(processedData, vegetation, altitude, seasonality, totalRainLast10Days, futureTrendText) {
             forecastGrid.innerHTML = '';
-            let html = '';
             const forecastDays = processedData.slice(-11);
             const weekdayFormatter = new Intl.DateTimeFormat('it-IT', { weekday: 'short' });
             const monthFormatter = new Intl.DateTimeFormat('it-IT', { day: '2-digit', month: '2-digit' });
@@ -426,8 +427,8 @@
                 const finalProbability = Math.round(weightedWeatherScore * vegetation.score * altitude.score * seasonality.score);
 
                 if (index === 0) {
-                     const summaryHtml = generateSummaryText(rawWeatherScore, vegetation, altitude, seasonality, totalRainLast10Days, futureTrendText).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-                     updateSummaryUI(summaryHtml);
+                     const summaryRaw = generateSummaryText(rawWeatherScore, vegetation, altitude, seasonality, totalRainLast10Days, futureTrendText);
+                     updateSummaryUI(summaryRaw);
                 }
 
                 const date = new Date(dayData.date);
@@ -443,26 +444,62 @@
                 
                 const weatherIcon = getWeatherIcon(dayData.weathercode);
 
-                html += `
-                    <div class="relative rounded-xl p-4 text-center ${bgColor} border border-gray-700/50 flex flex-col justify-between h-full">
-                        ${weatherIcon}
-                        <div><p class="font-semibold ${textColor}">${dayOfWeek}</p><p class="text-sm text-gray-400">${dayOfMonth}</p></div>
-                        <div class="my-4">
-                            <p class="text-3xl font-bold ${textColor}">${finalProbability}<span class="text-xl font-medium text-gray-400">%</span></p>
-                            <p class="text-xs text-gray-300">Probabilità</p>
+                const card = document.createElement('div');
+                card.className = `relative rounded-xl p-4 text-center ${bgColor} border border-gray-700/50 flex flex-col justify-between h-full`;
+
+                card.innerHTML = `
+                    <div class="weather-icon-container"></div>
+                    <div>
+                        <p class="font-semibold day-name"></p>
+                        <p class="text-sm text-gray-400 day-date"></p>
+                    </div>
+                    <div class="my-4">
+                        <p class="text-3xl font-bold prob-container">
+                            <span class="prob-value"></span><span class="text-xl font-medium text-gray-400">%</span>
+                        </p>
+                        <p class="text-xs text-gray-300">Probabilità</p>
+                    </div>
+                    <div>
+                        <div class="w-full bg-gray-600/50 rounded-full h-2.5">
+                            <div class="progress-bar h-2.5 rounded-full"></div>
                         </div>
-                        <div>
-                            <div class="w-full bg-gray-600/50 rounded-full h-2.5">
-                                <div class="${progressColor} h-2.5 rounded-full" style="width: ${finalProbability}%"></div>
-                            </div>
-                        </div>
-                    </div>`;
+                    </div>
+                `;
+
+                if (weatherIcon) {
+                    card.querySelector('.weather-icon-container').innerHTML = weatherIcon;
+                }
+
+                const dayNameEl = card.querySelector('.day-name');
+                dayNameEl.textContent = dayOfWeek;
+                dayNameEl.classList.add(textColor);
+
+                card.querySelector('.day-date').textContent = dayOfMonth;
+
+                const probContainer = card.querySelector('.prob-container');
+                probContainer.classList.add(textColor);
+                card.querySelector('.prob-value').textContent = finalProbability;
+
+                const progressBar = card.querySelector('.progress-bar');
+                progressBar.classList.add(progressColor);
+                progressBar.style.width = `${finalProbability}%`;
+
+                forecastGrid.appendChild(card);
             });
-            forecastGrid.innerHTML = html;
         }
 
-        function updateSummaryUI(summaryHtml) {
-            summaryText.innerHTML = summaryHtml;
+        function updateSummaryUI(summaryRaw) {
+            summaryText.textContent = '';
+            const parts = summaryRaw.split(/(\*\*.*?\*\*)/g);
+            parts.forEach(part => {
+                if (part.startsWith('**') && part.endsWith('**')) {
+                    const strong = document.createElement('strong');
+                    strong.textContent = part.slice(2, -2);
+                    summaryText.appendChild(strong);
+                } else {
+                    summaryText.appendChild(document.createTextNode(part));
+                }
+            });
             summaryContainer.classList.remove('hidden');
         }
     </script>

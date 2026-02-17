@@ -47,6 +47,7 @@ public class MainActivity extends AppCompatActivity {
         WebSettings webSettings = webView.getSettings();
         webSettings.setJavaScriptEnabled(true);
         webSettings.setGeolocationEnabled(true);
+        webSettings.setAllowFileAccess(false);
 
         ViewCompat.setOnApplyWindowInsetsListener(webView, (v, insets) -> {
             int statusBarHeight = insets.getInsets(WindowInsetsCompat.Type.systemBars()).top;

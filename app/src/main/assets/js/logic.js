@@ -53,25 +53,31 @@ function getHumidityScore(avgHumidity) {
     return 0;
 }
 
-function calculateAltitudeScore(elevation) {
-    let score, text;
-    if (elevation < 200) {
-        score = 0.7;
-        text = `🏔️ Altitudine: ${Math.round(elevation)}m (Bassa, impatto moderato).`;
-    } else if (elevation < 400) {
-        score = 0.9;
-        text = `🏔️ Altitudine: ${Math.round(elevation)}m (Collinare, favorevole).`;
-    } else if (elevation <= 1400) {
-        score = 1.0;
-        text = `🏔️ Altitudine: ${Math.round(elevation)}m (Ideale).`;
-    } else if (elevation <= 1800) {
-        score = 0.9;
-        text = `🏔️ Altitudine: ${Math.round(elevation)}m (Montana, buona ma con stagione breve).`;
+function calculateAltitudeScore(elevation, lang = 'it') {
+    const resources = TEXT_RESOURCES[lang] || TEXT_RESOURCES.it;
+    const altitudeResources = resources.ALTITUDE || TEXT_RESOURCES.it.ALTITUDE;
+
+    let threshold;
+    if (elevation < ALTITUDE_THRESHOLDS.LOW.max) {
+        threshold = ALTITUDE_THRESHOLDS.LOW;
+    } else if (elevation < ALTITUDE_THRESHOLDS.HILLY.max) {
+        threshold = ALTITUDE_THRESHOLDS.HILLY;
+    } else if (elevation <= ALTITUDE_THRESHOLDS.IDEAL.max) {
+        threshold = ALTITUDE_THRESHOLDS.IDEAL;
+    } else if (elevation <= ALTITUDE_THRESHOLDS.MOUNTAIN.max) {
+        threshold = ALTITUDE_THRESHOLDS.MOUNTAIN;
     } else {
-        score = 0.6;
-        text = `🏔️ Altitudine: ${Math.round(elevation)}m (Elevata, meno favorevole).`;
+        threshold = ALTITUDE_THRESHOLDS.HIGH;
     }
-    return { score, text };
+
+    const labelKey = threshold.labelKey;
+    const desc = altitudeResources[labelKey] || TEXT_RESOURCES.it.ALTITUDE[labelKey];
+    const label = altitudeResources.LABEL || TEXT_RESOURCES.it.ALTITUDE.LABEL;
+
+    return {
+        score: threshold.score,
+        text: `🏔️ ${label}: ${Math.round(elevation)}m (${desc}).`
+    };
 }
 
 async function fetchOverpassData(endpoints, query) {
@@ -153,6 +159,14 @@ const SEASONALITY_THRESHOLDS = {
     OFF_SEASON: { score: 0.1, labelKey: "OFF_SEASON" }
 };
 
+const ALTITUDE_THRESHOLDS = {
+    LOW: { max: 200, score: 0.7, labelKey: "LOW" },
+    HILLY: { max: 400, score: 0.9, labelKey: "HILLY" },
+    IDEAL: { max: 1400, score: 1.0, labelKey: "IDEAL" },
+    MOUNTAIN: { max: 1800, score: 0.9, labelKey: "MOUNTAIN" },
+    HIGH: { score: 0.6, labelKey: "HIGH" }
+};
+
 const TEXT_RESOURCES = {
     it: {
         MONTHS: ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"],
@@ -163,13 +177,24 @@ const TEXT_RESOURCES = {
             SUMMER: "Estivo, crescita legata a temporali",
             EARLY: "Inizio stagione, ancora presto",
             OFF_SEASON: "Fuori stagione"
+        },
+        ALTITUDE: {
+            LABEL: "Altitudine",
+            LOW: "Bassa, impatto moderato",
+            HILLY: "Collinare, favorevole",
+            IDEAL: "Ideale",
+            MOUNTAIN: "Montana, buona ma con stagione breve",
+            HIGH: "Elevata, meno favorevole"
         }
     }
 };
 
 function calculateSeasonalityScore(month, lang = 'it') {
     const resources = TEXT_RESOURCES[lang] || TEXT_RESOURCES.it;
-    const monthName = resources.MONTHS[month];
+    const seasonResources = resources.SEASONALITY || TEXT_RESOURCES.it.SEASONALITY;
+    const monthsResources = resources.MONTHS || TEXT_RESOURCES.it.MONTHS;
+
+    const monthName = monthsResources[month] || TEXT_RESOURCES.it.MONTHS[month];
 
     let threshold = SEASONALITY_THRESHOLDS.OFF_SEASON;
 
@@ -180,7 +205,9 @@ function calculateSeasonalityScore(month, lang = 'it') {
         }
     }
 
-    const seasonDesc = resources.SEASONALITY[threshold.labelKey];
+    const labelKey = threshold.labelKey;
+    const seasonDesc = seasonResources[labelKey] || TEXT_RESOURCES.it.SEASONALITY[labelKey];
+
     return {
         score: threshold.score,
         text: `🗓️ Stagione: ${monthName} (${seasonDesc}).`
@@ -215,6 +242,7 @@ if (typeof module !== 'undefined' && module.exports) {
         getWeatherIconSvg,
         WEATHER_THRESHOLDS,
         SEASONALITY_THRESHOLDS,
+        ALTITUDE_THRESHOLDS,
         WEATHER_ICONS
     };
 }

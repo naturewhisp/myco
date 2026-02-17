@@ -24,7 +24,7 @@ const WEATHER_THRESHOLDS = {
 
 function getRainStatus(totalRain) {
     for (const threshold of WEATHER_THRESHOLDS.RAIN) {
-        if (totalRain > threshold.min) {
+        if (totalRain >= threshold.min) {
             return threshold;
         }
     }
@@ -46,7 +46,7 @@ function getTempStatus(avgTemp) {
 
 function getHumidityScore(avgHumidity) {
     for (const threshold of WEATHER_THRESHOLDS.HUMIDITY) {
-        if (avgHumidity > threshold.min) {
+        if (avgHumidity >= threshold.min) {
             return threshold.score;
         }
     }
@@ -211,6 +211,7 @@ if (typeof module !== 'undefined' && module.exports) {
         calculateWeatherScore,
         getRainStatus,
         getTempStatus,
+        getHumidityScore,
         calculateSeasonalityScore,
         getWeatherIconSvg,
         WEATHER_THRESHOLDS,

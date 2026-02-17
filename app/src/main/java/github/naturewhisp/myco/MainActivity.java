@@ -58,6 +58,11 @@ public class MainActivity extends AppCompatActivity {
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
+                if (!"file://".equals(origin)) {
+                    callback.invoke(origin, false, false);
+                    return;
+                }
+
                 if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                     geolocationOrigin = origin;
                     geolocationCallback = callback;

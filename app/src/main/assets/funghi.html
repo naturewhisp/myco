@@ -413,6 +413,7 @@
 
         function updateForecastGridUI(processedData, vegetation, altitude, seasonality, totalRainLast10Days, futureTrendText) {
             forecastGrid.innerHTML = '';
+            let html = '';
             const forecastDays = processedData.slice(-11);
             const weekdayFormatter = new Intl.DateTimeFormat('it-IT', { weekday: 'short' });
             const monthFormatter = new Intl.DateTimeFormat('it-IT', { day: '2-digit', month: '2-digit' });
@@ -442,7 +443,7 @@
                 
                 const weatherIcon = getWeatherIcon(dayData.weathercode);
 
-                const card = `
+                html += `
                     <div class="relative rounded-xl p-4 text-center ${bgColor} border border-gray-700/50 flex flex-col justify-between h-full">
                         ${weatherIcon}
                         <div><p class="font-semibold ${textColor}">${dayOfWeek}</p><p class="text-sm text-gray-400">${dayOfMonth}</p></div>
@@ -456,8 +457,8 @@
                             </div>
                         </div>
                     </div>`;
-                forecastGrid.innerHTML += card;
             });
+            forecastGrid.innerHTML = html;
         }
 
         function updateSummaryUI(summaryHtml) {

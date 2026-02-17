@@ -60,6 +60,12 @@ test('calculateAltitudeScore - rounding elevation', () => {
   assert.match(result.text, /1235m/);
 });
 
+test('calculateAltitudeScore - language fallback', () => {
+    const result = calculateAltitudeScore(1000, 'non-existent');
+    assert.strictEqual(result.score, 1.0);
+    assert.match(result.text, /Altitudine: 1000m \(Ideale\)/);
+});
+
 test('fetchOverpassData - success on first endpoint', async () => {
     const originalFetch = global.fetch;
     global.fetch = async (url) => {

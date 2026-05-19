@@ -22,10 +22,12 @@ public class MainActivity extends AppCompatActivity {
     private GeolocationPermissions.Callback geolocationCallback;
     private String geolocationOrigin;
 
-    private final ActivityResultLauncher<String> requestPermissionLauncher = registerForActivityResult(
-            new ActivityResultContracts.RequestPermission(),
-            isGranted -> {
-                if (isGranted) {
+    private final ActivityResultLauncher<String[]> requestPermissionsLauncher = registerForActivityResult(
+            new ActivityResultContracts.RequestMultiplePermissions(),
+            result -> {
+                Boolean fineLocationGranted = result.getOrDefault(Manifest.permission.ACCESS_FINE_LOCATION, false);
+                Boolean coarseLocationGranted = result.getOrDefault(Manifest.permission.ACCESS_COARSE_LOCATION, false);
+                if ((fineLocationGranted != null && fineLocationGranted) || (coarseLocationGranted != null && coarseLocationGranted)) {
                     if (geolocationCallback != null) {
                         geolocationCallback.invoke(geolocationOrigin, true, false);
                     }
@@ -44,9 +46,11 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         WebView webView = findViewById(R.id.webview);
+        webView.setBackgroundColor(0xFF0B0F19);
         WebSettings webSettings = webView.getSettings();
         webSettings.setJavaScriptEnabled(true);
         webSettings.setGeolocationEnabled(true);
+        webSettings.setDomStorageEnabled(true);
         webSettings.setAllowFileAccess(false);
 
         ViewCompat.setOnApplyWindowInsetsListener(webView, (v, insets) -> {
@@ -58,15 +62,16 @@ public class MainActivity extends AppCompatActivity {
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-                if (!"file://".equals(origin)) {
-                    callback.invoke(origin, false, false);
-                    return;
-                }
+                boolean hasFine = ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+                boolean hasCoarse = ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
 
-                if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                if (!hasFine && !hasCoarse) {
                     geolocationOrigin = origin;
                     geolocationCallback = callback;
-                    requestPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION);
+                    requestPermissionsLauncher.launch(new String[]{
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                    });
                 } else {
                     callback.invoke(origin, true, false);
                 }

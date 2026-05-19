@@ -42,3 +42,9 @@ keystores/
 
 # File di mapping di ProGuard (utili per il debug ma spesso non versionati)
 /app/build/outputs/mapping/release/mapping.txt
+
+# Gradle Wrapper
+gradlew
+gradlew.bat
+gradle/wrapper/
+

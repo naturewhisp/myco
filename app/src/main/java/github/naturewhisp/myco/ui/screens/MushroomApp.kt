@@ -12,7 +12,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Search
@@ -23,8 +31,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.Canvas
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -219,14 +232,48 @@ fun MushroomApp(
             if (viewModel.selectedLatLng != null && !viewModel.isLoading && viewModel.errorMessage == null) {
                 Spacer(modifier = Modifier.height(24.dp))
                 
-                Text(
-                    text = viewModel.locationName,
-                    color = Color(0xFF34D399),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Start
-                )
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = viewModel.locationName,
+                        color = Color(0xFF34D399),
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Start
+                    )
+
+                    if (viewModel.isFromCache) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x1F34D399))
+                                .border(1.dp, Color(0x6634D399), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = "Dati da cache locale",
+                                    tint = Color(0xFF34D399),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(
+                                    text = "Offline Safe",
+                                    color = Color(0xFF34D399),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Probability & Metrics Card
@@ -370,23 +417,104 @@ fun MushroomApp(
                     }
                 }
 
-                // Simple Summary Card
-                if (viewModel.summaryText.isNotEmpty()) {
+                // Summary Card (AI or Fallback)
+                if (viewModel.summaryText.isNotEmpty() || viewModel.isAiLoading) {
                     Spacer(modifier = Modifier.height(24.dp))
                     GlassmorphicCard(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = "Analisi in parole semplici",
-                            color = Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                        Text(
-                            text = viewModel.summaryText,
-                            color = Color(0xFFCBD5E1),
-                            fontSize = 14.sp,
-                            lineHeight = 22.sp
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Analisi in parole semplici",
+                                color = Color.White,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+
+                            // Gemini Nano Badge – minimal chip
+                            if (viewModel.useLocalAi && viewModel.localAiService.isAvailable()) {
+                                val geminiGradient = Brush.linearGradient(
+                                    colors = listOf(
+                                        Color(0xFF9BC5FF),
+                                        Color(0xFFD3B7FF),
+                                        Color(0xFFFF9B9B)
+                                    )
+                                )
+                                val infiniteTransition = rememberInfiniteTransition(label = "geminiSparkleAnim")
+                                val sparkleAlpha by infiniteTransition.animateFloat(
+                                    initialValue = 0.6f,
+                                    targetValue = 1.0f,
+                                    animationSpec = infiniteRepeatable(
+                                        animation = tween(1600, easing = LinearEasing),
+                                        repeatMode = RepeatMode.Reverse
+                                    ),
+                                    label = "sparkleAlpha"
+                                )
+
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(Color(0x1A9BC5FF))
+                                        .border(
+                                            width = 0.6.dp,
+                                            brush = Brush.linearGradient(
+                                                colors = listOf(
+                                                    Color(0xFF9BC5FF).copy(alpha = 0.5f),
+                                                    Color(0xFFD3B7FF).copy(alpha = 0.5f)
+                                                )
+                                            ),
+                                            shape = RoundedCornerShape(20.dp)
+                                        )
+                                        .padding(horizontal = 7.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    // 4-pointed sparkle star
+                                    Canvas(
+                                        modifier = Modifier
+                                            .size(7.dp)
+                                            .graphicsLayer(alpha = sparkleAlpha)
+                                    ) {
+                                        val w = size.width
+                                        val h = size.height
+                                        val path = Path().apply {
+                                            moveTo(w / 2f, 0f)
+                                            quadraticBezierTo(w * 0.5f, h * 0.5f, w, h * 0.5f)
+                                            quadraticBezierTo(w * 0.5f, h * 0.5f, w / 2f, h)
+                                            quadraticBezierTo(w * 0.5f, h * 0.5f, 0f, h * 0.5f)
+                                            quadraticBezierTo(w * 0.5f, h * 0.5f, w / 2f, 0f)
+                                            close()
+                                        }
+                                        drawPath(path = path, brush = geminiGradient)
+                                    }
+                                    Text(
+                                        text = "Nano",
+                                        style = TextStyle(
+                                            brush = geminiGradient,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            letterSpacing = 0.3.sp
+                                        ),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        if (viewModel.isAiLoading) {
+                            ShimmerSummaryLoader()
+                        } else {
+                            TypewriterText(
+                                text = viewModel.summaryText,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
 
@@ -643,11 +771,17 @@ fun SettingsDialog(
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )
-                                Text(
-                                    text = viewModel.aiStatusText,
-                                    color = if (viewModel.aiStatusText.contains("pronto")) Color(0xFF34D399) else Color(0xFF94A3B8),
-                                    fontSize = 10.sp
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    StatusLed(statusText = viewModel.aiStatusText)
+                                    Text(
+                                        text = viewModel.aiStatusText,
+                                        color = if (viewModel.aiStatusText.contains("pronto")) Color(0xFF34D399) else Color(0xFF94A3B8),
+                                        fontSize = 10.sp
+                                    )
+                                }
                             }
                             Switch(
                                 checked = useLocalAiActive,
@@ -719,3 +853,148 @@ fun SettingsDialog(
         }
     }
 }
+
+@Composable
+fun StatusLed(statusText: String) {
+    val isReady = statusText.contains("pronto")
+    val isDownloading = statusText.contains("corso")
+
+    val color = when {
+        isReady -> Color(0xFF34D399) // Green
+        isDownloading -> Color(0xFFF59E0B) // Orange
+        else -> Color(0xFF64748B) // Gray
+    }
+
+    if (isReady) {
+        val transition = rememberInfiniteTransition(label = "pulse")
+        val alpha by transition.animateFloat(
+            initialValue = 0.4f,
+            targetValue = 1.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1000, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "pulseAlpha"
+        )
+
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(color.copy(alpha = alpha))
+                .border(1.dp, color, CircleShape)
+        )
+    } else if (isDownloading) {
+        val transition = rememberInfiniteTransition(label = "blink")
+        val visible by transition.animateFloat(
+            initialValue = 0.0f,
+            targetValue = 1.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 500, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "blinkVisibility"
+        )
+
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(if (visible > 0.5f) color else Color.Transparent)
+                .border(1.dp, color, CircleShape)
+        )
+    } else {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(color)
+                .border(1.dp, color.copy(alpha = 0.5f), CircleShape)
+        )
+    }
+}
+
+@Composable
+fun ShimmerSummaryLoader() {
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val translateAnim by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1000f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "shimmerTranslation"
+    )
+
+    val shimmerColors = listOf(
+        Color(0xFF1E293B),
+        Color(0xFF334155),
+        Color(0xFF1E293B)
+    )
+
+    val brush = Brush.linearGradient(
+        colors = shimmerColors,
+        start = Offset(translateAnim - 300f, translateAnim - 300f),
+        end = Offset(translateAnim, translateAnim)
+    )
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .height(14.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(brush)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .height(14.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(brush)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .height(14.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(brush)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.5f)
+                .height(14.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(brush)
+        )
+    }
+}
+
+@Composable
+fun TypewriterText(
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    var textToDisplay by remember { mutableStateOf("") }
+
+    LaunchedEffect(text) {
+        textToDisplay = ""
+        for (i in 1..text.length) {
+            textToDisplay = text.substring(0, i)
+            kotlinx.coroutines.delay(10)
+        }
+    }
+
+    Text(
+        text = textToDisplay,
+        color = Color(0xFFCBD5E1),
+        fontSize = 14.sp,
+        lineHeight = 22.sp,
+        modifier = modifier
+    )
+}
+

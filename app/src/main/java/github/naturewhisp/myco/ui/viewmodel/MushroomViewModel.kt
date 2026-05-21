@@ -10,6 +10,7 @@ import github.naturewhisp.myco.network.LocalAiService
 import github.naturewhisp.myco.repository.CacheManager
 import github.naturewhisp.myco.repository.MushroomRepository
 import github.naturewhisp.myco.utils.MushroomAlgorithms
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -43,6 +44,10 @@ class MushroomViewModel(
     var searchQuery by mutableStateOf("")
     var isLoading by mutableStateOf(false)
         private set
+    var isAiLoading by mutableStateOf(false)
+        private set
+    var isFromCache by mutableStateOf(false)
+        private set
     var loadingText by mutableStateOf("")
         private set
     var errorMessage by mutableStateOf<String?>(null)
@@ -50,6 +55,8 @@ class MushroomViewModel(
     var showMap by mutableStateOf(false)
         private set
     var showSettings by mutableStateOf(false)
+
+    private var aiJob: Job? = null
 
     // Results States
     var locationName by mutableStateOf("")
@@ -177,6 +184,7 @@ class MushroomViewModel(
     }
 
     fun selectLocation(lat: Double, lon: Double, displayName: String = "Punto selezionato") {
+        aiJob?.cancel()
         viewModelScope.launch {
             isLoading = true
             loadingText = "Analisi del punto selezionato in corso..."
@@ -185,6 +193,12 @@ class MushroomViewModel(
             showMap = true
 
             try {
+                // Check if weather is cached
+                val roundedLat = String.format(Locale.US, "%.4f", lat)
+                val roundedLon = String.format(Locale.US, "%.4f", lon)
+                val weatherCacheKey = "weather_${roundedLat}_${roundedLon}"
+                isFromCache = cacheManager.getCachedData(weatherCacheKey, github.naturewhisp.myco.model.WeatherResponse::class.java, 60 * 60 * 1000) != null
+
                 // Fetch weather and habitat details
                 val weatherDeferred = async { repository.fetchWeather(lat, lon) }
                 val habitatDeferred = async { repository.fetchHabitat(lat, lon) }
@@ -284,46 +298,79 @@ class MushroomViewModel(
 
                 val futureTrend = MushroomAlgorithms.analyzeFutureTrend(processedDays)
 
-                var localAiSummary: String? = null
+                // Dismiss main full-screen loader immediately
+                isLoading = false
+
+                // Process AI summary in background coroutine
+                summaryText = ""
                 if (useLocalAi && localAiService.isAvailable()) {
-                    loadingText = "Ottimizzazione con IA on-device..."
+                    isAiLoading = true
+                    aiJob = viewModelScope.launch {
+                        try {
+                            val prompt = """
+                                Sei un esperto micologo. Genera un'analisi in parole semplici in lingua italiana basandoti su questi dati:
+                                - Località: $displayName
+                                - Habitat: $habitatBaseText (Punteggio: $finalHabitatScore/1.0)
+                                - Altitudine: ${altitudeScore.text} (Punteggio: ${altitudeScore.score}/1.0)
+                                - Stagione: ${seasonalityScore.text} (Punteggio: ${seasonalityScore.score}/1.0)
+                                - Pioggia ultimi 10 giorni: $rainTextVal
+                                - Temperatura media ultimi 5 giorni: $tempTextVal
+                                - Luna: ${moonPhase.text} (${if (moonPhase.favorable) "Favorevole" else "Ininfluente"})
+                                - Esposizione versante consigliata: $slopeTextVal
+                                - Tendenza futura: $futureTrend
 
-                    val prompt = """
-                        Sei un esperto micologo. Genera un'analisi in parole semplici in lingua italiana basandoti su questi dati:
-                        - Località: $displayName
-                        - Habitat: $habitatBaseText (Punteggio: $finalHabitatScore/1.0)
-                        - Altitudine: ${altitudeScore.text} (Punteggio: ${altitudeScore.score}/1.0)
-                        - Stagione: ${seasonalityScore.text} (Punteggio: ${seasonalityScore.score}/1.0)
-                        - Pioggia ultimi 10 giorni: $rainTextVal
-                        - Temperatura media ultimi 5 giorni: $tempTextVal
-                        - Luna: ${moonPhase.text} (${if (moonPhase.favorable) "Favorevole" else "Ininfluente"})
-                        - Esposizione versante consigliata: $slopeTextVal
-                        - Tendenza futura: $futureTrend
+                                Genera un riassunto di massimo 4 frasi, in tono professionale da micologo, spiegando le probabilità e i fattori favorevoli o sfavorevoli per la crescita dei funghi porcini. Non aggiungere preamboli o saluti.
+                            """.trimIndent()
 
-                        Genera un riassunto di massimo 4 frasi, in tono professionale da micologo, spiegando le probabilità e i fattori favorevoli o sfavorevoli per la crescita dei funghi porcini. Non aggiungere preamboli o saluti.
-                    """.trimIndent()
-
-                    localAiSummary = localAiService.generateAdvancedSummary(prompt)
+                            val localAiSummary = localAiService.generateAdvancedSummary(prompt)
+                            summaryText = localAiSummary ?: MushroomAlgorithms.generateSummaryText(
+                                weatherScore = rawWeatherScore.toDouble(),
+                                habitatScore = finalHabitatScore,
+                                habitatText = habitatBaseText,
+                                altitudeScore = altitudeScore.score,
+                                altitudeText = altitudeScore.text,
+                                seasonalityScore = seasonalityScore.score,
+                                seasonalityText = seasonalityScore.text,
+                                totalRain = totalRainLast10Days,
+                                futureTrend = futureTrend
+                            )
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            summaryText = MushroomAlgorithms.generateSummaryText(
+                                weatherScore = rawWeatherScore.toDouble(),
+                                habitatScore = finalHabitatScore,
+                                habitatText = habitatBaseText,
+                                altitudeScore = altitudeScore.score,
+                                altitudeText = altitudeScore.text,
+                                seasonalityScore = seasonalityScore.score,
+                                seasonalityText = seasonalityScore.text,
+                                totalRain = totalRainLast10Days,
+                                futureTrend = futureTrend
+                            )
+                        } finally {
+                            isAiLoading = false
+                        }
+                    }
+                } else {
+                    isAiLoading = false
+                    summaryText = MushroomAlgorithms.generateSummaryText(
+                        weatherScore = rawWeatherScore.toDouble(),
+                        habitatScore = finalHabitatScore,
+                        habitatText = habitatBaseText,
+                        altitudeScore = altitudeScore.score,
+                        altitudeText = altitudeScore.text,
+                        seasonalityScore = seasonalityScore.score,
+                        seasonalityText = seasonalityScore.text,
+                        totalRain = totalRainLast10Days,
+                        futureTrend = futureTrend
+                    )
                 }
-
-                summaryText = localAiSummary ?: MushroomAlgorithms.generateSummaryText(
-                    weatherScore = rawWeatherScore.toDouble(),
-                    habitatScore = finalHabitatScore,
-                    habitatText = habitatBaseText,
-                    altitudeScore = altitudeScore.score,
-                    altitudeText = altitudeScore.text,
-                    seasonalityScore = seasonalityScore.score,
-                    seasonalityText = seasonalityScore.text,
-                    totalRain = totalRainLast10Days,
-                    futureTrend = futureTrend
-                )
 
                 updateCacheSize()
 
             } catch (e: Exception) {
                 e.printStackTrace()
                 errorMessage = e.message ?: "Errore durante il caricamento e l'analisi dei dati."
-            } finally {
                 isLoading = false
             }
         }

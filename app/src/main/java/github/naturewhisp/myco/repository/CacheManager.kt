@@ -3,6 +3,9 @@ package github.naturewhisp.myco.repository
 import android.content.Context
 import android.content.SharedPreferences
 import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import github.naturewhisp.myco.model.SavedLocation
+import java.util.Locale
 
 class CacheManager(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("myco_cache", Context.MODE_PRIVATE)
@@ -13,6 +16,10 @@ class CacheManager(context: Context) {
         private const val KEY_RADIUS = "settings_radius"
         private const val KEY_THRESHOLD = "settings_threshold"
         private const val KEY_CACHE_ENABLED = "settings_cache_enabled"
+        private const val KEY_USE_LOCAL_AI = "settings_use_local_ai"
+        private const val KEY_RECENT_LOCATIONS = "recent_locations"
+        private const val KEY_FAVORITE_LOCATIONS = "favorite_locations"
+        private const val MAX_RECENT = 8
     }
 
     var mapStyle: String
@@ -30,6 +37,10 @@ class CacheManager(context: Context) {
     var cacheEnabled: Boolean
         get() = prefs.getBoolean(KEY_CACHE_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_CACHE_ENABLED, value).apply()
+
+    var useLocalAi: Boolean
+        get() = prefs.getBoolean(KEY_USE_LOCAL_AI, true)
+        set(value) = prefs.edit().putBoolean(KEY_USE_LOCAL_AI, value).apply()
 
     fun <T> getCachedData(key: String, classType: Class<T>, expiryMs: Long): T? {
         if (!cacheEnabled) return null
@@ -70,11 +81,125 @@ class CacheManager(context: Context) {
         prefs.edit().putString("geo_query_${query.lowercase()}", dataJson).apply()
     }
 
+    // ── Recent locations ──────────────────────────────────────────────────────
+
+    fun getRecentLocations(): List<SavedLocation> {
+        val json = prefs.getString(KEY_RECENT_LOCATIONS, null) ?: return emptyList()
+        return try {
+            val type = object : TypeToken<List<SavedLocation>>() {}.type
+            val list = gson.fromJson<List<SavedLocation>>(json, type) ?: emptyList()
+            list.filter { loc ->
+                val name = loc.displayName
+                name != "Punto selezionato" && name != "Posizione GPS" &&
+                !name.startsWith("Punto selezionato") && !name.startsWith("Posizione GPS")
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveRecentLocation(loc: SavedLocation) {
+        val current = getRecentLocations().toMutableList()
+        // Dedup: rimuovi entry con stesse coordinate (~111m, 3 decimali)
+        val roundedLat = String.format(Locale.US, "%.3f", loc.lat)
+        val roundedLon = String.format(Locale.US, "%.3f", loc.lon)
+        current.removeAll { loc2 ->
+            String.format(Locale.US, "%.3f", loc2.lat) == roundedLat &&
+            String.format(Locale.US, "%.3f", loc2.lon) == roundedLon
+        }
+        current.add(0, loc.copy(savedAt = System.currentTimeMillis()))
+        val trimmed = current.take(MAX_RECENT)
+        prefs.edit().putString(KEY_RECENT_LOCATIONS, gson.toJson(trimmed)).apply()
+    }
+
+    // ── Favorites ─────────────────────────────────────────────────────────────
+
+    fun getFavoriteLocations(): List<SavedLocation> {
+        val json = prefs.getString(KEY_FAVORITE_LOCATIONS, null) ?: return emptyList()
+        return try {
+            val type = object : TypeToken<List<SavedLocation>>() {}.type
+            gson.fromJson(json, type) ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    fun isFavorite(lat: Double, lon: Double): Boolean {
+        val rLat = String.format(Locale.US, "%.3f", lat)
+        val rLon = String.format(Locale.US, "%.3f", lon)
+        return getFavoriteLocations().any { fav ->
+            String.format(Locale.US, "%.3f", fav.lat) == rLat &&
+            String.format(Locale.US, "%.3f", fav.lon) == rLon
+        }
+    }
+
+    fun addFavorite(loc: SavedLocation) {
+        val favs = getFavoriteLocations().toMutableList()
+        val rLat = String.format(Locale.US, "%.3f", loc.lat)
+        val rLon = String.format(Locale.US, "%.3f", loc.lon)
+        if (favs.none {
+            String.format(Locale.US, "%.3f", it.lat) == rLat &&
+            String.format(Locale.US, "%.3f", it.lon) == rLon
+        }) {
+            favs.add(0, loc.copy(isFavorite = true, savedAt = System.currentTimeMillis()))
+            prefs.edit().putString(KEY_FAVORITE_LOCATIONS, gson.toJson(favs)).apply()
+        }
+        // Aggiorna anche nella cronologia recenti
+        saveRecentLocation(loc.copy(isFavorite = true))
+    }
+
+    fun removeFavorite(lat: Double, lon: Double) {
+        val rLat = String.format(Locale.US, "%.3f", lat)
+        val rLon = String.format(Locale.US, "%.3f", lon)
+        val favs = getFavoriteLocations().toMutableList()
+        favs.removeAll {
+            String.format(Locale.US, "%.3f", it.lat) == rLat &&
+            String.format(Locale.US, "%.3f", it.lon) == rLon
+        }
+        prefs.edit().putString(KEY_FAVORITE_LOCATIONS, gson.toJson(favs)).apply()
+        // Aggiorna anche nella cronologia recenti
+        val recents = getRecentLocations().toMutableList()
+        val idx = recents.indexOfFirst {
+            String.format(Locale.US, "%.3f", it.lat) == rLat &&
+            String.format(Locale.US, "%.3f", it.lon) == rLon
+        }
+        if (idx >= 0) {
+            recents[idx] = recents[idx].copy(isFavorite = false)
+            prefs.edit().putString(KEY_RECENT_LOCATIONS, gson.toJson(recents)).apply()
+        }
+    }
+
+    // ── Cache age ─────────────────────────────────────────────────────────────
+
+    /** Restituisce l'età in ms del dato meteo in cache, null se non presente o scaduto */
+    fun getWeatherCacheAge(lat: Double, lon: Double): Long? {
+        val roundedLat = String.format(Locale.US, "%.4f", lat)
+        val roundedLon = String.format(Locale.US, "%.4f", lon)
+        val key = "weather_${roundedLat}_${roundedLon}"
+        val json = prefs.getString(key, null) ?: return null
+        return try {
+            val wrapper = gson.fromJson(json, CacheWrapper::class.java) ?: return null
+            val age = System.currentTimeMillis() - wrapper.timestamp
+            if (age < 60 * 60 * 1000L) age else null  // null se scaduto (>1h)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    // ── Clear ─────────────────────────────────────────────────────────────────
+
+    fun clearRecentLocations() {
+        prefs.edit().remove(KEY_RECENT_LOCATIONS).apply()
+    }
+
     fun clearCache() {
         val mapStyleVal = mapStyle
         val radiusVal = radius
         val thresholdVal = threshold
         val cacheEnabledVal = cacheEnabled
+        val useLocalAiVal = useLocalAi
+        val recentsJson = prefs.getString(KEY_RECENT_LOCATIONS, null)
+        val favsJson = prefs.getString(KEY_FAVORITE_LOCATIONS, null)
 
         prefs.edit().clear().apply()
 
@@ -82,18 +207,21 @@ class CacheManager(context: Context) {
         radius = radiusVal
         threshold = thresholdVal
         cacheEnabled = cacheEnabledVal
+        useLocalAi = useLocalAiVal
+        recentsJson?.let { prefs.edit().putString(KEY_RECENT_LOCATIONS, it).apply() }
+        favsJson?.let { prefs.edit().putString(KEY_FAVORITE_LOCATIONS, it).apply() }
     }
 
     fun getCacheSizeString(): String {
         val allEntries = prefs.all
+        val settingsKeys = setOf(KEY_MAP_STYLE, KEY_RADIUS, KEY_THRESHOLD, KEY_CACHE_ENABLED,
+            KEY_USE_LOCAL_AI, KEY_RECENT_LOCATIONS, KEY_FAVORITE_LOCATIONS)
         var totalChars = 0
         var cacheItemCount = 0
         for ((key, value) in allEntries) {
-            if (key != KEY_MAP_STYLE && key != KEY_RADIUS && key != KEY_THRESHOLD && key != KEY_CACHE_ENABLED) {
+            if (key !in settingsKeys) {
                 totalChars += key.length
-                if (value is String) {
-                    totalChars += value.length
-                }
+                if (value is String) totalChars += value.length
                 cacheItemCount++
             }
         }
@@ -114,3 +242,4 @@ class CacheManager(context: Context) {
         val dataJson: String
     )
 }
+

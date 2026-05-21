@@ -47,6 +47,24 @@ class MushroomRepository(private val cacheManager: CacheManager) {
         return null
     }
 
+    suspend fun reverseGeocode(latitude: Double, longitude: Double): GeocodeResult? {
+        val roundedLat = String.format(Locale.US, "%.3f", latitude)
+        val roundedLon = String.format(Locale.US, "%.3f", longitude)
+        val cacheKey = "reverse_${roundedLat}_${roundedLon}"
+
+        val cached = cacheManager.getCachedData(cacheKey, GeocodeResult::class.java, 7 * 24 * 60 * 60 * 1000L)
+        if (cached != null) return cached
+
+        return try {
+            val result = geocodingService.reverseGeocode(latitude, longitude)
+            cacheManager.saveCachedData(cacheKey, result)
+            result
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
     suspend fun fetchWeather(latitude: Double, longitude: Double): WeatherResponse {
         val roundedLat = String.format(Locale.US, "%.4f", latitude)
         val roundedLon = String.format(Locale.US, "%.4f", longitude)

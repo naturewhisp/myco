@@ -1,40 +1,71 @@
 package github.naturewhisp.myco.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.Canvas
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import github.naturewhisp.myco.model.SavedLocation
 import github.naturewhisp.myco.ui.components.*
 import github.naturewhisp.myco.ui.viewmodel.MushroomViewModel
 import github.naturewhisp.myco.utils.MushroomAlgorithms
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,6 +75,10 @@ fun MushroomApp(
 ) {
     val scrollState = rememberScrollState()
     val focusManager = LocalFocusManager.current
+    var isSearchFocused by remember { mutableStateOf(false) }
+    var searchBarWidth by remember { mutableStateOf(0) }
+    var searchBarHeight by remember { mutableStateOf(0) }
+    var isFavoritesExpanded by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -101,72 +136,254 @@ fun MushroomApp(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Search Bar Card
-            GlassmorphicCard(
-                modifier = Modifier.fillMaxWidth()
+            // Search Bar Area wrapped in Box to handle Popup overlay positioning
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { coordinates ->
+                        searchBarWidth = coordinates.size.width
+                        searchBarHeight = coordinates.size.height
+                    }
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                // Search Bar Card
+                GlassmorphicCard(
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    TextField(
-                        value = viewModel.searchQuery,
-                        onValueChange = { viewModel.updateSearchQuery(it) },
-                        placeholder = { Text("Digita una località...", color = Color(0xFF94A3B8), fontSize = 14.sp) },
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Cerca", tint = Color(0xFF94A3B8)) },
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color(0x330D1423),
-                            unfocusedContainerColor = Color(0x330D1423),
-                            disabledContainerColor = Color(0x330D1423),
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent
-                        ),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = {
-                            focusManager.clearFocus()
-                            viewModel.searchLocation()
-                        }),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(16.dp))
-                            .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(16.dp))
-                    )
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    IconButton(
-                        onClick = {
-                            focusManager.clearFocus()
-                            onGeolocateClick()
-                        },
-                        colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = Color(0xFF1E293B),
-                            contentColor = Color(0xFF34D399)
-                        ),
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.LocationOn, contentDescription = "Usa posizione")
+                        TextField(
+                            value = viewModel.searchQuery,
+                            onValueChange = { viewModel.updateSearchQuery(it) },
+                            singleLine = true,
+                            placeholder = { Text("Digita una località...", color = Color(0xFF94A3B8), fontSize = 14.sp) },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Cerca", tint = Color(0xFF94A3B8)) },
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color(0x330D1423),
+                                unfocusedContainerColor = Color(0x330D1423),
+                                disabledContainerColor = Color(0x330D1423),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent
+                            ),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(onSearch = {
+                                focusManager.clearFocus()
+                                viewModel.searchLocation()
+                                isSearchFocused = false
+                            }),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(16.dp))
+                                .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(16.dp))
+                                .onFocusChanged { focusState ->
+                                    isSearchFocused = focusState.isFocused
+                                }
+                        )
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        IconButton(
+                            onClick = {
+                                focusManager.clearFocus()
+                                onGeolocateClick()
+                                isSearchFocused = false
+                            },
+                            colors = IconButtonDefaults.iconButtonColors(
+                                containerColor = Color(0xFF1E293B),
+                                contentColor = Color(0xFF34D399)
+                            ),
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(16.dp))
+                        ) {
+                            Icon(Icons.Default.LocationOn, contentDescription = "Usa posizione")
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        IconButton(
+                            onClick = { 
+                                isSearchFocused = false
+                                viewModel.setShowSettingsDialog(true) 
+                            },
+                            colors = IconButtonDefaults.iconButtonColors(
+                                containerColor = Color(0xFF1E293B),
+                                contentColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(16.dp))
+                        ) {
+                            Icon(Icons.Default.Settings, contentDescription = "Impostazioni")
+                        }
+                    }
+                }
+
+                // Dropdown Suggestions Popup overlay
+                if (isSearchFocused && viewModel.recentLocations.isNotEmpty()) {
+                    val density = LocalDensity.current
+                    val widthDp = with(density) { searchBarWidth.toDp() }
+                    val offsetPx = searchBarHeight + with(density) { 4.dp.roundToPx() }
+
+                    Popup(
+                        alignment = Alignment.TopStart,
+                        offset = IntOffset(x = 0, y = offsetPx),
+                        onDismissRequest = { isSearchFocused = false },
+                        properties = PopupProperties(
+                            focusable = false,
+                            dismissOnClickOutside = true,
+                            dismissOnBackPress = true
+                        )
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(widthDp)
+                                .shadow(12.dp, RoundedCornerShape(16.dp))
+                                .background(Color(0xF20F172A), RoundedCornerShape(16.dp))
+                                .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(16.dp))
+                                .padding(8.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "Ricerche Recenti",
+                                    color = Color(0xFF64748B),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                                viewModel.recentLocations.take(5).forEach { loc ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                focusManager.clearFocus()
+                                                viewModel.selectSavedLocation(loc)
+                                                isSearchFocused = false
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Search,
+                                            contentDescription = null,
+                                            tint = Color(0xFF64748B),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = loc.shortName,
+                                                color = Color.White,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                            if (loc.displayName.isNotEmpty() && loc.displayName != loc.shortName) {
+                                                Text(
+                                                    text = loc.displayName,
+                                                    color = Color(0xFF94A3B8),
+                                                    fontSize = 10.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Favorites collapsible section
+            if (viewModel.favoriteLocations.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0x0DFFFFFF))
+                        .border(1.dp, Color(0x0DFFFFFF), RoundedCornerShape(16.dp))
+                        .padding(12.dp)
+                ) {
+                    // Header Row (Clickable)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isFavoritesExpanded = !isFavoritesExpanded },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = null,
+                                tint = Color(0xFFFBBF24),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "I tuoi Preferiti (${viewModel.favoriteLocations.size})",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        // Rotatable Arrow Icon
+                        val rotationAngle by animateFloatAsState(
+                            targetValue = if (isFavoritesExpanded) 180f else 0f,
+                            label = "arrowRotation"
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = if (isFavoritesExpanded) "Riduci" else "Espandi",
+                            tint = Color(0xFF94A3B8),
+                            modifier = Modifier
+                                .size(20.dp)
+                                .graphicsLayer(rotationZ = rotationAngle)
+                        )
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    IconButton(
-                        onClick = { viewModel.setShowSettingsDialog(true) },
-                        colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = Color(0xFF1E293B),
-                            contentColor = Color(0xFF94A3B8)
-                        ),
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(16.dp))
+                    // Collapsible Content
+                    AnimatedVisibility(
+                        visible = isFavoritesExpanded,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
                     ) {
-                        Icon(Icons.Default.Settings, contentDescription = "Impostazioni")
+                        Column {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                viewModel.favoriteLocations.forEach { loc ->
+                                    LocationChip(
+                                        loc = loc,
+                                        onClick = {
+                                            focusManager.clearFocus()
+                                            viewModel.selectSavedLocation(loc)
+                                        },
+                                        onRemoveClick = {
+                                            viewModel.removeFavoriteLocation(loc)
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -209,7 +426,7 @@ fun MushroomApp(
                     longitude = latLng.second,
                     mapStyle = viewModel.mapStyle,
                     onMapClick = { lat, lon ->
-                        viewModel.selectLocation(lat, lon, "Punto selezionato")
+                        viewModel.selectLocationFromMap(lat, lon)
                     }
                 )
             }
@@ -218,14 +435,71 @@ fun MushroomApp(
             if (viewModel.selectedLatLng != null && !viewModel.isLoading && viewModel.errorMessage == null) {
                 Spacer(modifier = Modifier.height(24.dp))
                 
-                Text(
-                    text = viewModel.locationName,
-                    color = Color(0xFF34D399),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Start
-                )
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = viewModel.locationName,
+                        color = Color(0xFF34D399),
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Start
+                    )
+
+                    // Stella preferito (solo se non GPS)
+                    if (!viewModel.currentLocationIsGps) {
+                        val starScale by animateFloatAsState(
+                            targetValue = if (viewModel.currentLocationIsFavorite) 1.2f else 1.0f,
+                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                            label = "starScale"
+                        )
+                        IconButton(
+                            onClick = { viewModel.toggleCurrentFavorite() },
+                            modifier = Modifier.size(36.dp).scale(starScale)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = if (viewModel.currentLocationIsFavorite)
+                                    "Rimuovi dai preferiti" else "Aggiungi ai preferiti",
+                                tint = if (viewModel.currentLocationIsFavorite)
+                                    Color(0xFFFBBF24) else Color(0xFF475569),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
+                    // Badge cache età
+                    if (viewModel.isFromCache && viewModel.cacheAgeText != null) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x1F34D399))
+                                .border(1.dp, Color(0x6634D399), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = "Dati da cache locale",
+                                    tint = Color(0xFF34D399),
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Text(
+                                    text = viewModel.cacheAgeText ?: "",
+                                    color = Color(0xFF34D399),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Probability & Metrics Card
@@ -369,23 +643,104 @@ fun MushroomApp(
                     }
                 }
 
-                // Simple Summary Card
-                if (viewModel.summaryText.isNotEmpty()) {
+                // Summary Card (AI or Fallback)
+                if (viewModel.summaryText.isNotEmpty() || viewModel.isAiLoading) {
                     Spacer(modifier = Modifier.height(24.dp))
                     GlassmorphicCard(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = "Analisi in parole semplici",
-                            color = Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                        Text(
-                            text = viewModel.summaryText,
-                            color = Color(0xFFCBD5E1),
-                            fontSize = 14.sp,
-                            lineHeight = 22.sp
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Analisi in parole semplici",
+                                color = Color.White,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+
+                            // Gemini Nano Badge – minimal chip
+                            if (viewModel.useLocalAi && viewModel.localAiService.isAvailable()) {
+                                val geminiGradient = Brush.linearGradient(
+                                    colors = listOf(
+                                        Color(0xFF9BC5FF),
+                                        Color(0xFFD3B7FF),
+                                        Color(0xFFFF9B9B)
+                                    )
+                                )
+                                val infiniteTransition = rememberInfiniteTransition(label = "geminiSparkleAnim")
+                                val sparkleAlpha by infiniteTransition.animateFloat(
+                                    initialValue = 0.6f,
+                                    targetValue = 1.0f,
+                                    animationSpec = infiniteRepeatable(
+                                        animation = tween(1600, easing = LinearEasing),
+                                        repeatMode = RepeatMode.Reverse
+                                    ),
+                                    label = "sparkleAlpha"
+                                )
+
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(Color(0x1A9BC5FF))
+                                        .border(
+                                            width = 0.6.dp,
+                                            brush = Brush.linearGradient(
+                                                colors = listOf(
+                                                    Color(0xFF9BC5FF).copy(alpha = 0.5f),
+                                                    Color(0xFFD3B7FF).copy(alpha = 0.5f)
+                                                )
+                                            ),
+                                            shape = RoundedCornerShape(20.dp)
+                                        )
+                                        .padding(horizontal = 7.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    // 4-pointed sparkle star
+                                    Canvas(
+                                        modifier = Modifier
+                                            .size(7.dp)
+                                            .graphicsLayer(alpha = sparkleAlpha)
+                                    ) {
+                                        val w = size.width
+                                        val h = size.height
+                                        val path = Path().apply {
+                                            moveTo(w / 2f, 0f)
+                                            quadraticBezierTo(w * 0.5f, h * 0.5f, w, h * 0.5f)
+                                            quadraticBezierTo(w * 0.5f, h * 0.5f, w / 2f, h)
+                                            quadraticBezierTo(w * 0.5f, h * 0.5f, 0f, h * 0.5f)
+                                            quadraticBezierTo(w * 0.5f, h * 0.5f, w / 2f, 0f)
+                                            close()
+                                        }
+                                        drawPath(path = path, brush = geminiGradient)
+                                    }
+                                    Text(
+                                        text = "Nano",
+                                        style = TextStyle(
+                                            brush = geminiGradient,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            letterSpacing = 0.3.sp
+                                        ),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        if (viewModel.isAiLoading) {
+                            ShimmerSummaryLoader()
+                        } else {
+                            TypewriterText(
+                                text = viewModel.summaryText,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
 
@@ -453,6 +808,7 @@ fun SettingsDialog(
     var radius by remember { mutableStateOf(viewModel.searchRadius.toFloat()) }
     var threshold by remember { mutableStateOf(viewModel.highlightThreshold.toFloat()) }
     var cacheActive by remember { mutableStateOf(viewModel.cacheEnabled) }
+    var useLocalAiActive by remember { mutableStateOf(viewModel.useLocalAi) }
 
     Dialog(onDismissRequest = onDismiss) {
         Box(
@@ -634,6 +990,44 @@ fun SettingsDialog(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Usa IA locale (Gemini Nano)",
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    StatusLed(statusText = viewModel.aiStatusText)
+                                    Text(
+                                        text = viewModel.aiStatusText,
+                                        color = if (viewModel.aiStatusText.contains("pronto")) Color(0xFF34D399) else Color(0xFF94A3B8),
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                            Switch(
+                                checked = useLocalAiActive,
+                                onCheckedChange = { useLocalAiActive = it },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color(0xFF34D399),
+                                    checkedTrackColor = Color(0xFF065F46)
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider(color = Color(0x14FFFFFF))
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Column {
                                 Text(
                                     text = "Spazio Utilizzato",
@@ -660,6 +1054,45 @@ fun SettingsDialog(
                                 Text("Svuota Cache", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider(color = Color(0x14FFFFFF))
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Cronologia Ricerche",
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 11.sp
+                                )
+                                Text(
+                                    text = if (viewModel.recentLocations.isEmpty()) "Vuota" else "${viewModel.recentLocations.size} località",
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Button(
+                                onClick = { viewModel.clearRecentLocations() },
+                                enabled = viewModel.recentLocations.isNotEmpty(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0x33EF4444),
+                                    contentColor = Color(0xFFF87171),
+                                    disabledContainerColor = Color(0x0DFFFFFF),
+                                    disabledContentColor = Color(0x40FFFFFF)
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Text("Cancella", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
 
@@ -668,7 +1101,7 @@ fun SettingsDialog(
                 // Apply Button
                 Button(
                     onClick = {
-                        viewModel.saveSettings(style, radius.toInt(), threshold.toInt(), cacheActive)
+                        viewModel.saveSettings(style, radius.toInt(), threshold.toInt(), cacheActive, useLocalAiActive)
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34D399)),
                     shape = RoundedCornerShape(14.dp),
@@ -685,3 +1118,148 @@ fun SettingsDialog(
         }
     }
 }
+
+@Composable
+fun StatusLed(statusText: String) {
+    val isReady = statusText.contains("pronto")
+    val isDownloading = statusText.contains("corso")
+
+    val color = when {
+        isReady -> Color(0xFF34D399) // Green
+        isDownloading -> Color(0xFFF59E0B) // Orange
+        else -> Color(0xFF64748B) // Gray
+    }
+
+    if (isReady) {
+        val transition = rememberInfiniteTransition(label = "pulse")
+        val alpha by transition.animateFloat(
+            initialValue = 0.4f,
+            targetValue = 1.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1000, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "pulseAlpha"
+        )
+
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(color.copy(alpha = alpha))
+                .border(1.dp, color, CircleShape)
+        )
+    } else if (isDownloading) {
+        val transition = rememberInfiniteTransition(label = "blink")
+        val visible by transition.animateFloat(
+            initialValue = 0.0f,
+            targetValue = 1.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 500, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "blinkVisibility"
+        )
+
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(if (visible > 0.5f) color else Color.Transparent)
+                .border(1.dp, color, CircleShape)
+        )
+    } else {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(color)
+                .border(1.dp, color.copy(alpha = 0.5f), CircleShape)
+        )
+    }
+}
+
+@Composable
+fun ShimmerSummaryLoader() {
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val translateAnim by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1000f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "shimmerTranslation"
+    )
+
+    val shimmerColors = listOf(
+        Color(0xFF1E293B),
+        Color(0xFF334155),
+        Color(0xFF1E293B)
+    )
+
+    val brush = Brush.linearGradient(
+        colors = shimmerColors,
+        start = Offset(translateAnim - 300f, translateAnim - 300f),
+        end = Offset(translateAnim, translateAnim)
+    )
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .height(14.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(brush)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .height(14.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(brush)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .height(14.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(brush)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.5f)
+                .height(14.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(brush)
+        )
+    }
+}
+
+@Composable
+fun TypewriterText(
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    var textToDisplay by remember { mutableStateOf("") }
+
+    LaunchedEffect(text) {
+        textToDisplay = ""
+        for (i in 1..text.length) {
+            textToDisplay = text.substring(0, i)
+            kotlinx.coroutines.delay(10)
+        }
+    }
+
+    Text(
+        text = textToDisplay,
+        color = Color(0xFFCBD5E1),
+        fontSize = 14.sp,
+        lineHeight = 22.sp,
+        modifier = modifier
+    )
+}
+

@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId "github.naturewhisp.myco"
-        minSdk 21
+        minSdk 31
         targetSdk 36
         versionCode 1
         versionName "1.0"
@@ -62,6 +62,9 @@ dependencies {
 
     // Google Play Services for Location
     implementation 'com.google.android.gms:play-services-location:21.2.0'
+
+    // Google AI Edge AICore for Gemini Nano
+    implementation 'com.google.ai.edge.aicore:aicore:0.0.1-exp02'
 
     // Testing
     testImplementation 'junit:junit:4.13.2'

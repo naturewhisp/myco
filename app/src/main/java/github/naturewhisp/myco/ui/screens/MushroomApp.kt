@@ -112,6 +112,7 @@ fun MushroomApp(
                     TextField(
                         value = viewModel.searchQuery,
                         onValueChange = { viewModel.updateSearchQuery(it) },
+                        singleLine = true,
                         placeholder = { Text("Digita una località...", color = Color(0xFF94A3B8), fontSize = 14.sp) },
                         leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Cerca", tint = Color(0xFF94A3B8)) },
                         colors = TextFieldDefaults.colors(
@@ -453,6 +454,7 @@ fun SettingsDialog(
     var radius by remember { mutableStateOf(viewModel.searchRadius.toFloat()) }
     var threshold by remember { mutableStateOf(viewModel.highlightThreshold.toFloat()) }
     var cacheActive by remember { mutableStateOf(viewModel.cacheEnabled) }
+    var useLocalAiActive by remember { mutableStateOf(viewModel.useLocalAi) }
 
     Dialog(onDismissRequest = onDismiss) {
         Box(
@@ -634,6 +636,38 @@ fun SettingsDialog(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Usa IA locale (Gemini Nano)",
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = viewModel.aiStatusText,
+                                    color = if (viewModel.aiStatusText.contains("pronto")) Color(0xFF34D399) else Color(0xFF94A3B8),
+                                    fontSize = 10.sp
+                                )
+                            }
+                            Switch(
+                                checked = useLocalAiActive,
+                                onCheckedChange = { useLocalAiActive = it },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color(0xFF34D399),
+                                    checkedTrackColor = Color(0xFF065F46)
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider(color = Color(0x14FFFFFF))
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Column {
                                 Text(
                                     text = "Spazio Utilizzato",
@@ -668,7 +702,7 @@ fun SettingsDialog(
                 // Apply Button
                 Button(
                     onClick = {
-                        viewModel.saveSettings(style, radius.toInt(), threshold.toInt(), cacheActive)
+                        viewModel.saveSettings(style, radius.toInt(), threshold.toInt(), cacheActive, useLocalAiActive)
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34D399)),
                     shape = RoundedCornerShape(14.dp),

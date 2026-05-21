@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import github.naturewhisp.myco.model.ProcessedDay
+import github.naturewhisp.myco.network.LocalAiService
 import github.naturewhisp.myco.repository.CacheManager
 import github.naturewhisp.myco.repository.MushroomRepository
 import github.naturewhisp.myco.utils.MushroomAlgorithms
@@ -18,7 +19,8 @@ import kotlin.math.min
 
 class MushroomViewModel(
     private val repository: MushroomRepository,
-    val cacheManager: CacheManager
+    val cacheManager: CacheManager,
+    val localAiService: LocalAiService
 ) : ViewModel() {
 
     // Settings State
@@ -29,6 +31,10 @@ class MushroomViewModel(
     var highlightThreshold by mutableStateOf(cacheManager.threshold)
         private set
     var cacheEnabled by mutableStateOf(cacheManager.cacheEnabled)
+        private set
+    var useLocalAi by mutableStateOf(cacheManager.useLocalAi)
+        private set
+    var aiStatusText by mutableStateOf("Verifica in corso...")
         private set
     var cacheSize by mutableStateOf("Vuota")
         private set
@@ -79,6 +85,21 @@ class MushroomViewModel(
 
     init {
         updateCacheSize()
+        observeLocalAiStatus()
+    }
+
+    private fun observeLocalAiStatus() {
+        viewModelScope.launch {
+            localAiService.status.collect { status ->
+                aiStatusText = when (status) {
+                    LocalAiService.Status.NOT_SUPPORTED -> "Non supportato da questo dispositivo"
+                    LocalAiService.Status.INITIALIZING -> "Configurazione in corso..."
+                    LocalAiService.Status.DOWNLOADING -> "Download modello in corso..."
+                    LocalAiService.Status.DOWNLOAD_FAILED -> "Download modello fallito"
+                    LocalAiService.Status.READY -> "Supportato e pronto"
+                }
+            }
+        }
     }
 
     fun updateSearchQuery(query: String) {
@@ -98,16 +119,18 @@ class MushroomViewModel(
         updateCacheSize()
     }
 
-    fun saveSettings(style: String, radius: Int, threshold: Int, cacheActive: Boolean) {
+    fun saveSettings(style: String, radius: Int, threshold: Int, cacheActive: Boolean, useLocalAiActive: Boolean) {
         cacheManager.mapStyle = style
         cacheManager.radius = radius
         cacheManager.threshold = threshold
         cacheManager.cacheEnabled = cacheActive
+        cacheManager.useLocalAi = useLocalAiActive
 
         mapStyle = style
         searchRadius = radius
         highlightThreshold = threshold
         cacheEnabled = cacheActive
+        useLocalAi = useLocalAiActive
 
         updateCacheSize()
         showSettings = false
@@ -260,7 +283,30 @@ class MushroomViewModel(
                 slopeText = slopeTextVal
 
                 val futureTrend = MushroomAlgorithms.analyzeFutureTrend(processedDays)
-                summaryText = MushroomAlgorithms.generateSummaryText(
+
+                var localAiSummary: String? = null
+                if (useLocalAi && localAiService.isAvailable()) {
+                    loadingText = "Ottimizzazione con IA on-device..."
+
+                    val prompt = """
+                        Sei un esperto micologo. Genera un'analisi in parole semplici in lingua italiana basandoti su questi dati:
+                        - Località: $displayName
+                        - Habitat: $habitatBaseText (Punteggio: $finalHabitatScore/1.0)
+                        - Altitudine: ${altitudeScore.text} (Punteggio: ${altitudeScore.score}/1.0)
+                        - Stagione: ${seasonalityScore.text} (Punteggio: ${seasonalityScore.score}/1.0)
+                        - Pioggia ultimi 10 giorni: $rainTextVal
+                        - Temperatura media ultimi 5 giorni: $tempTextVal
+                        - Luna: ${moonPhase.text} (${if (moonPhase.favorable) "Favorevole" else "Ininfluente"})
+                        - Esposizione versante consigliata: $slopeTextVal
+                        - Tendenza futura: $futureTrend
+
+                        Genera un riassunto di massimo 4 frasi, in tono professionale da micologo, spiegando le probabilità e i fattori favorevoli o sfavorevoli per la crescita dei funghi porcini. Non aggiungere preamboli o saluti.
+                    """.trimIndent()
+
+                    localAiSummary = localAiService.generateAdvancedSummary(prompt)
+                }
+
+                summaryText = localAiSummary ?: MushroomAlgorithms.generateSummaryText(
                     weatherScore = rawWeatherScore.toDouble(),
                     habitatScore = finalHabitatScore,
                     habitatText = habitatBaseText,

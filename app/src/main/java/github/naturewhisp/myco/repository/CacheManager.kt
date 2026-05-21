@@ -13,6 +13,7 @@ class CacheManager(context: Context) {
         private const val KEY_RADIUS = "settings_radius"
         private const val KEY_THRESHOLD = "settings_threshold"
         private const val KEY_CACHE_ENABLED = "settings_cache_enabled"
+        private const val KEY_USE_LOCAL_AI = "settings_use_local_ai"
     }
 
     var mapStyle: String
@@ -30,6 +31,10 @@ class CacheManager(context: Context) {
     var cacheEnabled: Boolean
         get() = prefs.getBoolean(KEY_CACHE_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_CACHE_ENABLED, value).apply()
+
+    var useLocalAi: Boolean
+        get() = prefs.getBoolean(KEY_USE_LOCAL_AI, true)
+        set(value) = prefs.edit().putBoolean(KEY_USE_LOCAL_AI, value).apply()
 
     fun <T> getCachedData(key: String, classType: Class<T>, expiryMs: Long): T? {
         if (!cacheEnabled) return null
@@ -75,6 +80,7 @@ class CacheManager(context: Context) {
         val radiusVal = radius
         val thresholdVal = threshold
         val cacheEnabledVal = cacheEnabled
+        val useLocalAiVal = useLocalAi
 
         prefs.edit().clear().apply()
 
@@ -82,6 +88,7 @@ class CacheManager(context: Context) {
         radius = radiusVal
         threshold = thresholdVal
         cacheEnabled = cacheEnabledVal
+        useLocalAi = useLocalAiVal
     }
 
     fun getCacheSizeString(): String {
@@ -89,7 +96,7 @@ class CacheManager(context: Context) {
         var totalChars = 0
         var cacheItemCount = 0
         for ((key, value) in allEntries) {
-            if (key != KEY_MAP_STYLE && key != KEY_RADIUS && key != KEY_THRESHOLD && key != KEY_CACHE_ENABLED) {
+            if (key != KEY_MAP_STYLE && key != KEY_RADIUS && key != KEY_THRESHOLD && key != KEY_CACHE_ENABLED && key != KEY_USE_LOCAL_AI) {
                 totalChars += key.length
                 if (value is String) {
                     totalChars += value.length

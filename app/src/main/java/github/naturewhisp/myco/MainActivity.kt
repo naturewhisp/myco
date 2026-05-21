@@ -94,16 +94,11 @@ class MainActivity : ComponentActivity() {
 
     @SuppressLint("MissingPermission")
     private fun getCurrentLocation() {
-        viewModel.selectLocation(45.0, 9.0, "Caricamento posizione...") // temporary placeholder
         fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
             if (location != null) {
-                viewModel.selectLocation(
-                    location.latitude,
-                    location.longitude,
-                    "La tua posizione"
-                )
+                viewModel.selectLocationFromGps(location.latitude, location.longitude)
             } else {
-                // Default location when GPS coordinates are unavailable (e.g. emulator, GPS disabled)
+                // GPS non disponibile (emulatore, GPS spento) — fallback su Roma
                 viewModel.selectLocation(41.8902, 12.4922, "Roma (GPS non disponibile)")
             }
         }.addOnFailureListener {

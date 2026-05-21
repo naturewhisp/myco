@@ -13,6 +13,15 @@ interface GeocodingService {
         @Query("format") format: String = "json",
         @Query("limit") limit: Int = 1
     ): List<GeocodeResult>
+
+    @GET("reverse")
+    suspend fun reverseGeocode(
+        @Query("lat") lat: Double,
+        @Query("lon") lon: Double,
+        @Query("format") format: String = "json",
+        @Query("zoom") zoom: Int = 14,
+        @Query("accept-language") lang: String = "it"
+    ): GeocodeResult
 }
 
 interface WeatherService {

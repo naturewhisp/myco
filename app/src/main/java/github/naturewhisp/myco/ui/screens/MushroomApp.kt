@@ -1,11 +1,18 @@
 package github.naturewhisp.myco.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,11 +32,14 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -42,12 +52,20 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import github.naturewhisp.myco.model.SavedLocation
 import github.naturewhisp.myco.ui.components.*
 import github.naturewhisp.myco.ui.viewmodel.MushroomViewModel
 import github.naturewhisp.myco.utils.MushroomAlgorithms
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,6 +75,10 @@ fun MushroomApp(
 ) {
     val scrollState = rememberScrollState()
     val focusManager = LocalFocusManager.current
+    var isSearchFocused by remember { mutableStateOf(false) }
+    var searchBarWidth by remember { mutableStateOf(0) }
+    var searchBarHeight by remember { mutableStateOf(0) }
+    var isFavoritesExpanded by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -114,73 +136,254 @@ fun MushroomApp(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Search Bar Card
-            GlassmorphicCard(
-                modifier = Modifier.fillMaxWidth()
+            // Search Bar Area wrapped in Box to handle Popup overlay positioning
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { coordinates ->
+                        searchBarWidth = coordinates.size.width
+                        searchBarHeight = coordinates.size.height
+                    }
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                // Search Bar Card
+                GlassmorphicCard(
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    TextField(
-                        value = viewModel.searchQuery,
-                        onValueChange = { viewModel.updateSearchQuery(it) },
-                        singleLine = true,
-                        placeholder = { Text("Digita una località...", color = Color(0xFF94A3B8), fontSize = 14.sp) },
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Cerca", tint = Color(0xFF94A3B8)) },
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color(0x330D1423),
-                            unfocusedContainerColor = Color(0x330D1423),
-                            disabledContainerColor = Color(0x330D1423),
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent
-                        ),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = {
-                            focusManager.clearFocus()
-                            viewModel.searchLocation()
-                        }),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(16.dp))
-                            .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(16.dp))
-                    )
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    IconButton(
-                        onClick = {
-                            focusManager.clearFocus()
-                            onGeolocateClick()
-                        },
-                        colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = Color(0xFF1E293B),
-                            contentColor = Color(0xFF34D399)
-                        ),
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.LocationOn, contentDescription = "Usa posizione")
+                        TextField(
+                            value = viewModel.searchQuery,
+                            onValueChange = { viewModel.updateSearchQuery(it) },
+                            singleLine = true,
+                            placeholder = { Text("Digita una località...", color = Color(0xFF94A3B8), fontSize = 14.sp) },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Cerca", tint = Color(0xFF94A3B8)) },
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color(0x330D1423),
+                                unfocusedContainerColor = Color(0x330D1423),
+                                disabledContainerColor = Color(0x330D1423),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent
+                            ),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(onSearch = {
+                                focusManager.clearFocus()
+                                viewModel.searchLocation()
+                                isSearchFocused = false
+                            }),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(16.dp))
+                                .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(16.dp))
+                                .onFocusChanged { focusState ->
+                                    isSearchFocused = focusState.isFocused
+                                }
+                        )
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        IconButton(
+                            onClick = {
+                                focusManager.clearFocus()
+                                onGeolocateClick()
+                                isSearchFocused = false
+                            },
+                            colors = IconButtonDefaults.iconButtonColors(
+                                containerColor = Color(0xFF1E293B),
+                                contentColor = Color(0xFF34D399)
+                            ),
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(16.dp))
+                        ) {
+                            Icon(Icons.Default.LocationOn, contentDescription = "Usa posizione")
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        IconButton(
+                            onClick = { 
+                                isSearchFocused = false
+                                viewModel.setShowSettingsDialog(true) 
+                            },
+                            colors = IconButtonDefaults.iconButtonColors(
+                                containerColor = Color(0xFF1E293B),
+                                contentColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(16.dp))
+                        ) {
+                            Icon(Icons.Default.Settings, contentDescription = "Impostazioni")
+                        }
+                    }
+                }
+
+                // Dropdown Suggestions Popup overlay
+                if (isSearchFocused && viewModel.recentLocations.isNotEmpty()) {
+                    val density = LocalDensity.current
+                    val widthDp = with(density) { searchBarWidth.toDp() }
+                    val offsetPx = searchBarHeight + with(density) { 4.dp.roundToPx() }
+
+                    Popup(
+                        alignment = Alignment.TopStart,
+                        offset = IntOffset(x = 0, y = offsetPx),
+                        onDismissRequest = { isSearchFocused = false },
+                        properties = PopupProperties(
+                            focusable = false,
+                            dismissOnClickOutside = true,
+                            dismissOnBackPress = true
+                        )
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(widthDp)
+                                .shadow(12.dp, RoundedCornerShape(16.dp))
+                                .background(Color(0xF20F172A), RoundedCornerShape(16.dp))
+                                .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(16.dp))
+                                .padding(8.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "Ricerche Recenti",
+                                    color = Color(0xFF64748B),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                                viewModel.recentLocations.take(5).forEach { loc ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                focusManager.clearFocus()
+                                                viewModel.selectSavedLocation(loc)
+                                                isSearchFocused = false
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Search,
+                                            contentDescription = null,
+                                            tint = Color(0xFF64748B),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = loc.shortName,
+                                                color = Color.White,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                            if (loc.displayName.isNotEmpty() && loc.displayName != loc.shortName) {
+                                                Text(
+                                                    text = loc.displayName,
+                                                    color = Color(0xFF94A3B8),
+                                                    fontSize = 10.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Favorites collapsible section
+            if (viewModel.favoriteLocations.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0x0DFFFFFF))
+                        .border(1.dp, Color(0x0DFFFFFF), RoundedCornerShape(16.dp))
+                        .padding(12.dp)
+                ) {
+                    // Header Row (Clickable)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isFavoritesExpanded = !isFavoritesExpanded },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = null,
+                                tint = Color(0xFFFBBF24),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "I tuoi Preferiti (${viewModel.favoriteLocations.size})",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        // Rotatable Arrow Icon
+                        val rotationAngle by animateFloatAsState(
+                            targetValue = if (isFavoritesExpanded) 180f else 0f,
+                            label = "arrowRotation"
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = if (isFavoritesExpanded) "Riduci" else "Espandi",
+                            tint = Color(0xFF94A3B8),
+                            modifier = Modifier
+                                .size(20.dp)
+                                .graphicsLayer(rotationZ = rotationAngle)
+                        )
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    IconButton(
-                        onClick = { viewModel.setShowSettingsDialog(true) },
-                        colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = Color(0xFF1E293B),
-                            contentColor = Color(0xFF94A3B8)
-                        ),
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(16.dp))
+                    // Collapsible Content
+                    AnimatedVisibility(
+                        visible = isFavoritesExpanded,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
                     ) {
-                        Icon(Icons.Default.Settings, contentDescription = "Impostazioni")
+                        Column {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                viewModel.favoriteLocations.forEach { loc ->
+                                    LocationChip(
+                                        loc = loc,
+                                        onClick = {
+                                            focusManager.clearFocus()
+                                            viewModel.selectSavedLocation(loc)
+                                        },
+                                        onRemoveClick = {
+                                            viewModel.removeFavoriteLocation(loc)
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -223,7 +426,7 @@ fun MushroomApp(
                     longitude = latLng.second,
                     mapStyle = viewModel.mapStyle,
                     onMapClick = { lat, lon ->
-                        viewModel.selectLocation(lat, lon, "Punto selezionato")
+                        viewModel.selectLocationFromMap(lat, lon)
                     }
                 )
             }
@@ -245,8 +448,31 @@ fun MushroomApp(
                         textAlign = TextAlign.Start
                     )
 
-                    if (viewModel.isFromCache) {
-                        Spacer(modifier = Modifier.width(8.dp))
+                    // Stella preferito (solo se non GPS)
+                    if (!viewModel.currentLocationIsGps) {
+                        val starScale by animateFloatAsState(
+                            targetValue = if (viewModel.currentLocationIsFavorite) 1.2f else 1.0f,
+                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                            label = "starScale"
+                        )
+                        IconButton(
+                            onClick = { viewModel.toggleCurrentFavorite() },
+                            modifier = Modifier.size(36.dp).scale(starScale)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = if (viewModel.currentLocationIsFavorite)
+                                    "Rimuovi dai preferiti" else "Aggiungi ai preferiti",
+                                tint = if (viewModel.currentLocationIsFavorite)
+                                    Color(0xFFFBBF24) else Color(0xFF475569),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
+                    // Badge cache età
+                    if (viewModel.isFromCache && viewModel.cacheAgeText != null) {
+                        Spacer(modifier = Modifier.width(4.dp))
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
@@ -262,10 +488,10 @@ fun MushroomApp(
                                     imageVector = Icons.Default.CheckCircle,
                                     contentDescription = "Dati da cache locale",
                                     tint = Color(0xFF34D399),
-                                    modifier = Modifier.size(12.dp)
+                                    modifier = Modifier.size(11.dp)
                                 )
                                 Text(
-                                    text = "Offline Safe",
+                                    text = viewModel.cacheAgeText ?: "",
                                     color = Color(0xFF34D399),
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold
@@ -826,6 +1052,45 @@ fun SettingsDialog(
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                             ) {
                                 Text("Svuota Cache", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider(color = Color(0x14FFFFFF))
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Cronologia Ricerche",
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 11.sp
+                                )
+                                Text(
+                                    text = if (viewModel.recentLocations.isEmpty()) "Vuota" else "${viewModel.recentLocations.size} località",
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Button(
+                                onClick = { viewModel.clearRecentLocations() },
+                                enabled = viewModel.recentLocations.isNotEmpty(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0x33EF4444),
+                                    contentColor = Color(0xFFF87171),
+                                    disabledContainerColor = Color(0x0DFFFFFF),
+                                    disabledContentColor = Color(0x40FFFFFF)
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Text("Cancella", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

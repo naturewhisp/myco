@@ -3,6 +3,7 @@ package github.naturewhisp.myco.ui.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -14,8 +15,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -404,6 +409,75 @@ fun GrowthPhaseBadge(
                     fontSize = 14.sp,
                     fontWeight = FontWeight.ExtraBold,
                     lineHeight = 18.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun LocationChip(
+    loc: github.naturewhisp.myco.model.SavedLocation,
+    onClick: () -> Unit,
+    onRemoveClick: (() -> Unit)? = null
+) {
+    val borderColor = when {
+        loc.isFavorite -> Color(0xFFFBBF24).copy(alpha = 0.6f)  // oro per preferiti
+        loc.isGpsLocation -> Color(0xFF60A5FA).copy(alpha = 0.5f) // blu per GPS
+        else -> Color(0xFF475569).copy(alpha = 0.5f)              // slate per recenti
+    }
+    val bgColor = when {
+        loc.isFavorite -> Color(0x1AFBBF24)
+        loc.isGpsLocation -> Color(0x1A60A5FA)
+        else -> Color(0x1A334155)
+    }
+    val textColor = when {
+        loc.isFavorite -> Color(0xFFFDE68A)
+        loc.isGpsLocation -> Color(0xFF93C5FD)
+        else -> Color(0xFFCBD5E1)
+    }
+    val prefix = when {
+        loc.isFavorite -> "★ "
+        loc.isGpsLocation -> "📍 "
+        else -> ""
+    }
+
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(bgColor)
+            .border(0.8.dp, borderColor, RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick)
+            .padding(
+                start = 12.dp,
+                end = if (onRemoveClick != null) 6.dp else 12.dp,
+                top = 6.dp,
+                bottom = 6.dp
+            ),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "$prefix${loc.shortName}",
+            color = textColor,
+            fontSize = 12.sp,
+            fontWeight = if (loc.isFavorite) FontWeight.SemiBold else FontWeight.Normal,
+            maxLines = 1
+        )
+        if (onRemoveClick != null) {
+            Spacer(modifier = Modifier.width(6.dp))
+            Box(
+                modifier = Modifier
+                    .size(16.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x26FFFFFF))
+                    .clickable { onRemoveClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Rimuovi",
+                    tint = textColor,
+                    modifier = Modifier.size(10.dp)
                 )
             }
         }

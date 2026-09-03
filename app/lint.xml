@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- Severity overrides for Code Analysis & Best Practices -->
+    
+    <!-- Pure Compose app without Android Fragments: Ignore legacy FragmentActivity version check -->
+    <issue id="InvalidFragmentVersionForActivityResult" severity="ignore" />
+
+    <!-- Treat dependency version advisory as informational -->
+    <issue id="GradleDependency" severity="informational" />
+    <issue id="NewerVersionAvailable" severity="informational" />
+    <issue id="OldTargetApi" severity="informational" />
+
+    <!-- Code Quality & Best Practices (elevate critical issues) -->
+    <issue id="DefaultLocale" severity="error" />
+    <issue id="HardcodedText" severity="warning" />
+    <issue id="UnusedResources" severity="error" />
+    <issue id="ObsoleteSdkInt" severity="error" />
+    <issue id="MonochromeLauncherIcon" severity="error" />
+    <issue id="UseKtx" severity="error" />
+    <issue id="Security" severity="error" />
+</lint>

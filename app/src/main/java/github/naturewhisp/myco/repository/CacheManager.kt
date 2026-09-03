@@ -2,6 +2,7 @@ package github.naturewhisp.myco.repository
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import github.naturewhisp.myco.model.SavedLocation
@@ -24,23 +25,23 @@ class CacheManager(context: Context) {
 
     var mapStyle: String
         get() = prefs.getString(KEY_MAP_STYLE, "topo") ?: "topo"
-        set(value) = prefs.edit().putString(KEY_MAP_STYLE, value).apply()
+        set(value) = prefs.edit { putString(KEY_MAP_STYLE, value) }
 
     var radius: Int
         get() = prefs.getInt(KEY_RADIUS, 1500)
-        set(value) = prefs.edit().putInt(KEY_RADIUS, value).apply()
+        set(value) = prefs.edit { putInt(KEY_RADIUS, value) }
 
     var threshold: Int
         get() = prefs.getInt(KEY_THRESHOLD, 65)
-        set(value) = prefs.edit().putInt(KEY_THRESHOLD, value).apply()
+        set(value) = prefs.edit { putInt(KEY_THRESHOLD, value) }
 
     var cacheEnabled: Boolean
         get() = prefs.getBoolean(KEY_CACHE_ENABLED, true)
-        set(value) = prefs.edit().putBoolean(KEY_CACHE_ENABLED, value).apply()
+        set(value) = prefs.edit { putBoolean(KEY_CACHE_ENABLED, value) }
 
     var useLocalAi: Boolean
         get() = prefs.getBoolean(KEY_USE_LOCAL_AI, true)
-        set(value) = prefs.edit().putBoolean(KEY_USE_LOCAL_AI, value).apply()
+        set(value) = prefs.edit { putBoolean(KEY_USE_LOCAL_AI, value) }
 
     fun <T> getCachedData(key: String, classType: Class<T>, expiryMs: Long): T? {
         if (!cacheEnabled) return null
@@ -50,7 +51,7 @@ class CacheManager(context: Context) {
             if (System.currentTimeMillis() - wrapper.timestamp < expiryMs) {
                 gson.fromJson(wrapper.dataJson, classType)
             } else {
-                prefs.edit().remove(key).apply()
+                prefs.edit { remove(key) }
                 null
             }
         } catch (e: Exception) {
@@ -65,7 +66,7 @@ class CacheManager(context: Context) {
             val dataJson = gson.toJson(data)
             val wrapper = CacheWrapper(timestamp = System.currentTimeMillis(), dataJson = dataJson)
             val wrapperJson = gson.toJson(wrapper)
-            prefs.edit().putString(key, wrapperJson).apply()
+            prefs.edit { putString(key, wrapperJson) }
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -78,7 +79,7 @@ class CacheManager(context: Context) {
 
     fun saveGeocodeCache(query: String, dataJson: String) {
         if (!cacheEnabled) return
-        prefs.edit().putString("geo_query_${query.lowercase()}", dataJson).apply()
+        prefs.edit { putString("geo_query_${query.lowercase()}", dataJson) }
     }
 
     // ── Recent locations ──────────────────────────────────────────────────────
@@ -93,7 +94,7 @@ class CacheManager(context: Context) {
                 name != "Punto selezionato" && name != "Posizione GPS" &&
                 !name.startsWith("Punto selezionato") && !name.startsWith("Posizione GPS")
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             emptyList()
         }
     }
@@ -109,7 +110,7 @@ class CacheManager(context: Context) {
         }
         current.add(0, loc.copy(savedAt = System.currentTimeMillis()))
         val trimmed = current.take(MAX_RECENT)
-        prefs.edit().putString(KEY_RECENT_LOCATIONS, gson.toJson(trimmed)).apply()
+        prefs.edit { putString(KEY_RECENT_LOCATIONS, gson.toJson(trimmed)) }
     }
 
     // ── Favorites ─────────────────────────────────────────────────────────────
@@ -119,7 +120,7 @@ class CacheManager(context: Context) {
         return try {
             val type = object : TypeToken<List<SavedLocation>>() {}.type
             gson.fromJson(json, type) ?: emptyList()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             emptyList()
         }
     }
@@ -137,15 +138,19 @@ class CacheManager(context: Context) {
         val favs = getFavoriteLocations().toMutableList()
         val rLat = String.format(Locale.US, "%.3f", loc.lat)
         val rLon = String.format(Locale.US, "%.3f", loc.lon)
-        if (favs.none {
+        val idx = favs.indexOfFirst {
             String.format(Locale.US, "%.3f", it.lat) == rLat &&
             String.format(Locale.US, "%.3f", it.lon) == rLon
-        }) {
-            favs.add(0, loc.copy(isFavorite = true, savedAt = System.currentTimeMillis()))
-            prefs.edit().putString(KEY_FAVORITE_LOCATIONS, gson.toJson(favs)).apply()
         }
+        val favoriteLoc = loc.copy(isFavorite = true, savedAt = System.currentTimeMillis())
+        if (idx >= 0) {
+            favs[idx] = favoriteLoc
+        } else {
+            favs.add(0, favoriteLoc)
+        }
+        prefs.edit { putString(KEY_FAVORITE_LOCATIONS, gson.toJson(favs)) }
         // Aggiorna anche nella cronologia recenti
-        saveRecentLocation(loc.copy(isFavorite = true))
+        saveRecentLocation(favoriteLoc)
     }
 
     fun removeFavorite(lat: Double, lon: Double) {
@@ -156,7 +161,7 @@ class CacheManager(context: Context) {
             String.format(Locale.US, "%.3f", it.lat) == rLat &&
             String.format(Locale.US, "%.3f", it.lon) == rLon
         }
-        prefs.edit().putString(KEY_FAVORITE_LOCATIONS, gson.toJson(favs)).apply()
+        prefs.edit { putString(KEY_FAVORITE_LOCATIONS, gson.toJson(favs)) }
         // Aggiorna anche nella cronologia recenti
         val recents = getRecentLocations().toMutableList()
         val idx = recents.indexOfFirst {
@@ -165,7 +170,7 @@ class CacheManager(context: Context) {
         }
         if (idx >= 0) {
             recents[idx] = recents[idx].copy(isFavorite = false)
-            prefs.edit().putString(KEY_RECENT_LOCATIONS, gson.toJson(recents)).apply()
+            prefs.edit { putString(KEY_RECENT_LOCATIONS, gson.toJson(recents)) }
         }
     }
 
@@ -181,7 +186,7 @@ class CacheManager(context: Context) {
             val wrapper = gson.fromJson(json, CacheWrapper::class.java) ?: return null
             val age = System.currentTimeMillis() - wrapper.timestamp
             if (age < 60 * 60 * 1000L) age else null  // null se scaduto (>1h)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }
@@ -189,7 +194,7 @@ class CacheManager(context: Context) {
     // ── Clear ─────────────────────────────────────────────────────────────────
 
     fun clearRecentLocations() {
-        prefs.edit().remove(KEY_RECENT_LOCATIONS).apply()
+        prefs.edit { remove(KEY_RECENT_LOCATIONS) }
     }
 
     fun clearCache() {
@@ -201,15 +206,15 @@ class CacheManager(context: Context) {
         val recentsJson = prefs.getString(KEY_RECENT_LOCATIONS, null)
         val favsJson = prefs.getString(KEY_FAVORITE_LOCATIONS, null)
 
-        prefs.edit().clear().apply()
+        prefs.edit { clear() }
 
         mapStyle = mapStyleVal
         radius = radiusVal
         threshold = thresholdVal
         cacheEnabled = cacheEnabledVal
         useLocalAi = useLocalAiVal
-        recentsJson?.let { prefs.edit().putString(KEY_RECENT_LOCATIONS, it).apply() }
-        favsJson?.let { prefs.edit().putString(KEY_FAVORITE_LOCATIONS, it).apply() }
+        recentsJson?.let { json -> prefs.edit { putString(KEY_RECENT_LOCATIONS, json) } }
+        favsJson?.let { json -> prefs.edit { putString(KEY_FAVORITE_LOCATIONS, json) } }
     }
 
     fun getCacheSizeString(): String {
@@ -231,9 +236,9 @@ class CacheManager(context: Context) {
         return if (bytes < 1024) {
             "$bytes B ($cacheItemCount elementi)"
         } else if (bytes < 1024 * 1024) {
-            String.format("%.1f KB (%d elementi)", bytes / 1024.0, cacheItemCount)
+            String.format(Locale.getDefault(), "%.1f KB (%d elementi)", bytes / 1024.0, cacheItemCount)
         } else {
-            String.format("%.1f MB (%d elementi)", bytes / (1024.0 * 1024.0), cacheItemCount)
+            String.format(Locale.getDefault(), "%.1f MB (%d elementi)", bytes / (1024.0 * 1024.0), cacheItemCount)
         }
     }
 

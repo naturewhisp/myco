@@ -279,10 +279,9 @@ class MushroomViewModel(
         selectLocation(loc.lat, loc.lon, loc.displayName, isGps = loc.isGpsLocation)
     }
 
-    /** Aggiunge/rimuove il punto corrente dai preferiti (solo se non è GPS) */
+    /** Aggiunge/rimuove il punto corrente dai preferiti */
     fun toggleCurrentFavorite() {
         val latLng = selectedLatLng ?: return
-        if (currentLocationIsGps) return
         val loc = SavedLocation(
             lat = latLng.first,
             lon = latLng.second,
@@ -290,7 +289,7 @@ class MushroomViewModel(
             shortName = locationName.split(",").firstOrNull()?.trim() ?: locationName,
             savedAt = System.currentTimeMillis(),
             isFavorite = !currentLocationIsFavorite,
-            isGpsLocation = false
+            isGpsLocation = currentLocationIsGps
         )
         if (currentLocationIsFavorite) {
             cacheManager.removeFavorite(latLng.first, latLng.second)
@@ -358,7 +357,7 @@ class MushroomViewModel(
                 cacheAgeText = ageMs?.let { formatCacheAge(it) }
 
                 // Check favorite status
-                currentLocationIsFavorite = if (isGps) false else cacheManager.isFavorite(lat, lon)
+                currentLocationIsFavorite = cacheManager.isFavorite(lat, lon)
 
                 // Fetch weather and habitat details
                 val weatherDeferred = async { repository.fetchWeather(lat, lon) }

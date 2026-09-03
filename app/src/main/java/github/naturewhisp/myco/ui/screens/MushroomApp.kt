@@ -1,7 +1,6 @@
 package github.naturewhisp.myco.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -56,7 +55,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import github.naturewhisp.myco.model.SavedLocation
+import kotlin.time.Duration.Companion.milliseconds
 import github.naturewhisp.myco.ui.components.*
 import github.naturewhisp.myco.ui.viewmodel.MushroomViewModel
 import github.naturewhisp.myco.utils.MushroomAlgorithms
@@ -448,26 +447,29 @@ fun MushroomApp(
                         textAlign = TextAlign.Start
                     )
 
-                    // Stella preferito (solo se non GPS)
-                    if (!viewModel.currentLocationIsGps) {
-                        val starScale by animateFloatAsState(
-                            targetValue = if (viewModel.currentLocationIsFavorite) 1.2f else 1.0f,
-                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-                            label = "starScale"
+                    // Stella preferito
+                    val starScale by animateFloatAsState(
+                        targetValue = if (viewModel.currentLocationIsFavorite) 1.2f else 1.0f,
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                        label = "starScale"
+                    )
+                    IconButton(
+                        onClick = {
+                            viewModel.toggleCurrentFavorite()
+                            if (viewModel.currentLocationIsFavorite) {
+                                isFavoritesExpanded = true
+                            }
+                        },
+                        modifier = Modifier.size(36.dp).scale(starScale)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = if (viewModel.currentLocationIsFavorite)
+                                "Rimuovi dai preferiti" else "Aggiungi ai preferiti",
+                            tint = if (viewModel.currentLocationIsFavorite)
+                                Color(0xFFFBBF24) else Color(0xFF475569),
+                            modifier = Modifier.size(22.dp)
                         )
-                        IconButton(
-                            onClick = { viewModel.toggleCurrentFavorite() },
-                            modifier = Modifier.size(36.dp).scale(starScale)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Star,
-                                contentDescription = if (viewModel.currentLocationIsFavorite)
-                                    "Rimuovi dai preferiti" else "Aggiungi ai preferiti",
-                                tint = if (viewModel.currentLocationIsFavorite)
-                                    Color(0xFFFBBF24) else Color(0xFF475569),
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
                     }
 
                     // Badge cache età
@@ -1250,7 +1252,7 @@ fun TypewriterText(
         textToDisplay = ""
         for (i in 1..text.length) {
             textToDisplay = text.substring(0, i)
-            kotlinx.coroutines.delay(10)
+            kotlinx.coroutines.delay(10.milliseconds)
         }
     }
 

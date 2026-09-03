@@ -18,6 +18,8 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.MapEventsOverlay
 import org.osmdroid.views.overlay.Marker
 
+import github.naturewhisp.myco.model.HeatmapData
+
 @Composable
 fun MapViewContainer(
     latitude: Double?,
@@ -25,6 +27,11 @@ fun MapViewContainer(
     mapStyle: String,
     onMapClick: (Double, Double) -> Unit,
     modifier: Modifier = Modifier
+        .fillMaxWidth()
+        .height(300.dp)
+        .clip(RoundedCornerShape(20.dp)),
+    heatmapData: HeatmapData? = null,
+    showHeatmap: Boolean = true
 ) {
     val darkTileSource = remember {
         XYTileSource(
@@ -41,10 +48,7 @@ fun MapViewContainer(
     }
 
     AndroidView(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(300.dp)
-            .clip(RoundedCornerShape(20.dp)),
+        modifier = modifier,
         factory = { context ->
             MapView(context).apply {
                 setMultiTouchControls(true)
@@ -70,6 +74,10 @@ fun MapViewContainer(
                 
                 overlays.add(MapEventsOverlay(mapEventsReceiver))
 
+                // Layer nuvola di probabilità / calore (sotto il marker)
+                val heatmapOverlay = HeatmapOverlay(if (showHeatmap) heatmapData else null)
+                overlays.add(heatmapOverlay)
+
                 if (latitude != null && longitude != null) {
                     val geoPoint = GeoPoint(latitude, longitude)
                     val marker = Marker(this).apply {
@@ -90,6 +98,14 @@ fun MapViewContainer(
                 else -> TileSourceFactory.MAPNIK
             }
 
+            // Aggiorna l'overlay della nuvola termica
+            val currentHeatmapOverlay = mapView.overlays.filterIsInstance<HeatmapOverlay>().firstOrNull()
+            if (currentHeatmapOverlay != null) {
+                currentHeatmapOverlay.heatmapData = if (showHeatmap) heatmapData else null
+            } else if (showHeatmap && heatmapData != null) {
+                mapView.overlays.add(0, HeatmapOverlay(heatmapData))
+            }
+
             if (latitude != null && longitude != null) {
                 val geoPoint = GeoPoint(latitude, longitude)
                 
@@ -104,8 +120,8 @@ fun MapViewContainer(
                 mapView.overlays.add(marker)
                 
                 mapView.controller.setCenter(geoPoint)
-                mapView.invalidate()
             }
+            mapView.invalidate()
         }
     )
 }

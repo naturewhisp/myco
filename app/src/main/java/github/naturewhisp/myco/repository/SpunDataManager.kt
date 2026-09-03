@@ -24,17 +24,17 @@ class SpunDataManager(private val context: Context) {
     // Regioni registrate disponibili
     val availableRegions = listOf(
         SpunRegionDescriptor(
-            regionCode = "ITA",
-            displayName = "Italia",
+            regionCode = "ALP",
+            displayName = "Italia e Arco Alpino",
             assetFileName = "spun/spun_italy.bin",
             minLat = 35.0f,
-            maxLat = 47.5f,
-            minLon = 6.0f,
+            maxLat = 48.5f,
+            minLon = 5.0f,
             maxLon = 19.0f
         )
     )
 
-    private class LoadedRegion(
+    class LoadedRegion(
         val descriptor: SpunRegionDescriptor,
         val header: SpunRegionHeader,
         val ecmData: ByteArray,
@@ -43,6 +43,14 @@ class SpunDataManager(private val context: Context) {
 
     private var currentLoadedRegion: LoadedRegion? = null
     private val loadMutex = Mutex()
+
+    /**
+     * Restituisce i dati della regione attualmente caricata in memoria se contiene le coordinate.
+     */
+    fun getCurrentRegionData(lat: Double, lon: Double): LoadedRegion? {
+        val loaded = currentLoadedRegion ?: return null
+        return if (loaded.descriptor.contains(lat, lon)) loaded else null
+    }
 
     /**
      * Identifica la regione geografica contenente le coordinate specificate.

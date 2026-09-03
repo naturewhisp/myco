@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import github.naturewhisp.myco.model.HeatmapData
 import github.naturewhisp.myco.model.ProcessedDay
 import github.naturewhisp.myco.model.SavedLocation
 import github.naturewhisp.myco.model.SpunData
@@ -12,6 +13,7 @@ import github.naturewhisp.myco.network.LocalAiService
 import github.naturewhisp.myco.repository.CacheManager
 import github.naturewhisp.myco.repository.MushroomRepository
 import github.naturewhisp.myco.repository.SpunDataManager
+import github.naturewhisp.myco.utils.HeatmapGenerator
 import github.naturewhisp.myco.utils.MushroomAlgorithms
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -112,8 +114,16 @@ class MushroomViewModel(
         private set
     var spunDataAvailable by mutableStateOf(false)
         private set
+    var showHeatmap by mutableStateOf(true)
+        private set
+    var heatmapData by mutableStateOf<HeatmapData?>(null)
+        private set
     var forecastDays by mutableStateOf<List<ProcessedDay>>(emptyList())
         private set
+
+    fun toggleHeatmap() {
+        showHeatmap = !showHeatmap
+    }
 
     init {
         updateCacheSize()
@@ -359,6 +369,25 @@ class MushroomViewModel(
             showMap = true
             currentLocationIsGps = isGps
 
+            // Generazione istantanea della nuvola locale in background (<10ms)
+            // Sfrutta i dati SPUN residenti in memoria senza attendere 3-5 secondi di chiamate di rete
+            launch(Dispatchers.Default) {
+                val calendar = Calendar.getInstance()
+                val month = calendar.get(Calendar.MONTH)
+                val season = MushroomAlgorithms.calculateSeasonalityScore(month).score
+                val instant = HeatmapGenerator.generateHeatmap(
+                    centerLat = lat,
+                    centerLon = lon,
+                    spunDataManager = spunDataManager,
+                    baseWeatherScore = 40.0,
+                    seasonalityScore = season,
+                    altitudeScore = 0.8
+                )
+                if (instant != null) {
+                    heatmapData = instant
+                }
+            }
+
             try {
                 // Check if weather is cached
                 val roundedLat = String.format(Locale.US, "%.4f", lat)
@@ -504,6 +533,16 @@ class MushroomViewModel(
                 }
 
                 val futureTrend = MushroomAlgorithms.analyzeFutureTrend(processedDays)
+
+                // Generazione asincrona della nuvola termica di probabilità (Heatmap)
+                heatmapData = HeatmapGenerator.generateHeatmap(
+                    centerLat = lat,
+                    centerLon = lon,
+                    spunDataManager = spunDataManager,
+                    baseWeatherScore = rawWeatherScore.toDouble(),
+                    seasonalityScore = seasonalityScore.score,
+                    altitudeScore = altitudeScore.score
+                )
 
                 // Salva nella cronologia recenti (solo se nome significativo)
                 val isPlaceholder = displayName == "Punto selezionato" || 

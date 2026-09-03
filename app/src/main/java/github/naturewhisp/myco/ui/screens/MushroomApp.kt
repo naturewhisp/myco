@@ -37,6 +37,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
@@ -59,12 +60,19 @@ import kotlin.time.Duration.Companion.milliseconds
 import github.naturewhisp.myco.ui.components.*
 import github.naturewhisp.myco.ui.viewmodel.MushroomViewModel
 import github.naturewhisp.myco.utils.MushroomAlgorithms
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import github.naturewhisp.myco.utils.NavigationHelper
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,12 +80,13 @@ fun MushroomApp(
     viewModel: MushroomViewModel,
     onGeolocateClick: () -> Unit
 ) {
+    val context = LocalContext.current
     val scrollState = rememberScrollState()
     val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     var isSearchFocused by remember { mutableStateOf(false) }
-    var searchBarWidth by remember { mutableStateOf(0) }
-    var searchBarHeight by remember { mutableStateOf(0) }
     var isFavoritesExpanded by remember { mutableStateOf(false) }
+    var isMapFullscreen by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -135,14 +144,9 @@ fun MushroomApp(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Search Bar Area wrapped in Box to handle Popup overlay positioning
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onGloballyPositioned { coordinates ->
-                        searchBarWidth = coordinates.size.width
-                        searchBarHeight = coordinates.size.height
-                    }
+            // Search Bar & Suggestions Container
+            Column(
+                modifier = Modifier.fillMaxWidth()
             ) {
                 // Search Bar Card
                 GlassmorphicCard(
@@ -158,6 +162,18 @@ fun MushroomApp(
                             singleLine = true,
                             placeholder = { Text("Digita una località...", color = Color(0xFF94A3B8), fontSize = 14.sp) },
                             leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Cerca", tint = Color(0xFF94A3B8)) },
+                            trailingIcon = {
+                                if (viewModel.searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { viewModel.updateSearchQuery("") }) {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Cancella testo",
+                                            tint = Color(0xFF94A3B8),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            },
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = Color(0x330D1423),
                                 unfocusedContainerColor = Color(0x330D1423),
@@ -170,6 +186,7 @@ fun MushroomApp(
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                             keyboardActions = KeyboardActions(onSearch = {
                                 focusManager.clearFocus()
+                                keyboardController?.hide()
                                 viewModel.searchLocation()
                                 isSearchFocused = false
                             }),
@@ -179,6 +196,9 @@ fun MushroomApp(
                                 .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(16.dp))
                                 .onFocusChanged { focusState ->
                                     isSearchFocused = focusState.isFocused
+                                    if (focusState.isFocused) {
+                                        keyboardController?.show()
+                                    }
                                 }
                         )
 
@@ -187,6 +207,7 @@ fun MushroomApp(
                         IconButton(
                             onClick = {
                                 focusManager.clearFocus()
+                                keyboardController?.hide()
                                 onGeolocateClick()
                                 isSearchFocused = false
                             },
@@ -207,6 +228,8 @@ fun MushroomApp(
                         IconButton(
                             onClick = { 
                                 isSearchFocused = false
+                                focusManager.clearFocus()
+                                keyboardController?.hide()
                                 viewModel.setShowSettingsDialog(true) 
                             },
                             colors = IconButtonDefaults.iconButtonColors(
@@ -223,77 +246,86 @@ fun MushroomApp(
                     }
                 }
 
-                // Dropdown Suggestions Popup overlay
-                if (isSearchFocused && viewModel.recentLocations.isNotEmpty()) {
-                    val density = LocalDensity.current
-                    val widthDp = with(density) { searchBarWidth.toDp() }
-                    val offsetPx = searchBarHeight + with(density) { 4.dp.roundToPx() }
-
-                    Popup(
-                        alignment = Alignment.TopStart,
-                        offset = IntOffset(x = 0, y = offsetPx),
-                        onDismissRequest = { isSearchFocused = false },
-                        properties = PopupProperties(
-                            focusable = false,
-                            dismissOnClickOutside = true,
-                            dismissOnBackPress = true
-                        )
+                // Dropdown Suggestions (In-layout AnimatedVisibility: Zero window interference, soft keyboard always stays visible)
+                AnimatedVisibility(
+                    visible = isSearchFocused && viewModel.recentLocations.isNotEmpty(),
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .shadow(12.dp, RoundedCornerShape(16.dp))
+                            .background(Color(0xF20F172A), RoundedCornerShape(16.dp))
+                            .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(16.dp))
+                            .padding(8.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .width(widthDp)
-                                .shadow(12.dp, RoundedCornerShape(16.dp))
-                                .background(Color(0xF20F172A), RoundedCornerShape(16.dp))
-                                .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(16.dp))
-                                .padding(8.dp)
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
                                     text = "Ricerche Recenti",
                                     color = Color(0xFF64748B),
                                     fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    fontWeight = FontWeight.Bold
                                 )
-                                viewModel.recentLocations.take(5).forEach { loc ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .clickable {
-                                                focusManager.clearFocus()
-                                                viewModel.selectSavedLocation(loc)
-                                                isSearchFocused = false
-                                            }
-                                            .padding(horizontal = 8.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Search,
-                                            contentDescription = null,
-                                            tint = Color(0xFF64748B),
-                                            modifier = Modifier.size(16.dp)
+                                Text(
+                                    text = "Chiudi",
+                                    color = Color(0xFF34D399),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.clickable {
+                                        isSearchFocused = false
+                                        focusManager.clearFocus()
+                                        keyboardController?.hide()
+                                    }
+                                )
+                            }
+                            viewModel.recentLocations.take(5).forEach { loc ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            focusManager.clearFocus()
+                                            keyboardController?.hide()
+                                            viewModel.selectSavedLocation(loc)
+                                            isSearchFocused = false
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Search,
+                                        contentDescription = null,
+                                        tint = Color(0xFF64748B),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = loc.shortName,
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold
                                         )
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
+                                        if (loc.displayName.isNotEmpty() && loc.displayName != loc.shortName) {
                                             Text(
-                                                text = loc.shortName,
-                                                color = Color.White,
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.SemiBold
+                                                text = loc.displayName,
+                                                color = Color(0xFF94A3B8),
+                                                fontSize = 10.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
-                                            if (loc.displayName.isNotEmpty() && loc.displayName != loc.shortName) {
-                                                Text(
-                                                    text = loc.displayName,
-                                                    color = Color(0xFF94A3B8),
-                                                    fontSize = 10.sp,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            }
                                         }
                                     }
                                 }
@@ -411,23 +443,131 @@ fun MushroomApp(
             // Interactive Map Container
             if (viewModel.showMap && viewModel.selectedLatLng != null) {
                 Spacer(modifier = Modifier.height(20.dp))
-                Text(
-                    text = "Tocca sulla mappa per impostare le coordinate precise.",
-                    color = Color(0xFF34D399),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Tocca la mappa per scegliere il punto esatto.",
+                        color = Color(0xFF34D399),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
                 
+                Spacer(modifier = Modifier.height(6.dp))
+
                 val latLng = viewModel.selectedLatLng!!
-                MapViewContainer(
-                    latitude = latLng.first,
-                    longitude = latLng.second,
-                    mapStyle = viewModel.mapStyle,
-                    onMapClick = { lat, lon ->
-                        viewModel.selectLocationFromMap(lat, lon)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(300.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                ) {
+                    MapViewContainer(
+                        latitude = latLng.first,
+                        longitude = latLng.second,
+                        mapStyle = viewModel.mapStyle,
+                        onMapClick = { lat, lon ->
+                            viewModel.selectLocationFromMap(lat, lon)
+                        },
+                        heatmapData = viewModel.heatmapData,
+                        showHeatmap = viewModel.showHeatmap,
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // 1. Floating Cloud Layer Toggle in Top-Start (Top-Left) corner
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .zIndex(2f)
+                            .padding(10.dp)
+                            .shadow(8.dp, RoundedCornerShape(12.dp))
+                            .background(
+                                if (viewModel.showHeatmap) Color(0xEE065F46) else Color(0xD90F172A),
+                                RoundedCornerShape(12.dp)
+                            )
+                            .border(
+                                1.dp,
+                                if (viewModel.showHeatmap) Color(0xFF34D399) else Color(0x33FFFFFF),
+                                RoundedCornerShape(12.dp)
+                            )
+                            .clickable { viewModel.toggleHeatmap() }
+                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Text(text = "☁️", fontSize = 13.sp)
+                        Text(
+                            text = if (viewModel.showHeatmap) "Nuvola ON" else "Nuvola OFF",
+                            color = if (viewModel.showHeatmap) Color(0xFF34D399) else Color(0xFF94A3B8),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
-                )
+
+                    // 2. Floating Fullscreen expand button in Top-End (Top-Right) corner
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .zIndex(2f)
+                            .padding(10.dp)
+                            .size(38.dp)
+                            .shadow(8.dp, RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xD90F172A), RoundedCornerShape(12.dp))
+                            .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
+                            .clickable { isMapFullscreen = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "⛶",
+                            color = Color.White,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    // Floating Mini-Legend in compact map (when heatmap is enabled)
+                    if (viewModel.showHeatmap && viewModel.heatmapData != null) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .zIndex(2f)
+                                .padding(10.dp)
+                                .shadow(6.dp, RoundedCornerShape(8.dp))
+                                .background(Color(0xD90F172A), RoundedCornerShape(8.dp))
+                                .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(text = "Nuvola: ", color = Color(0xFF94A3B8), fontSize = 10.sp)
+                                Box(
+                                    modifier = Modifier
+                                        .width(44.dp)
+                                        .height(6.dp)
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(
+                                            Brush.horizontalGradient(
+                                                listOf(
+                                                    Color(0xFF00C8FF),
+                                                    Color(0xFF10B981),
+                                                    Color(0xFFFBBF24),
+                                                    Color(0xFFEF4444)
+                                                )
+                                            )
+                                        )
+                                )
+                                Text(text = "Probabilità", color = Color(0xFF34D399), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
             }
 
             // Analysis Results
@@ -446,6 +586,36 @@ fun MushroomApp(
                         modifier = Modifier.weight(1f),
                         textAlign = TextAlign.Start
                     )
+
+                    // Pulsante Naviga (Outdooractive, Komoot, Google Maps, ecc.)
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0x1F34D399))
+                            .border(1.dp, Color(0x4D34D399), RoundedCornerShape(10.dp))
+                            .clickable {
+                                val latLng = viewModel.selectedLatLng ?: return@clickable
+                                NavigationHelper.navigateTo(
+                                    context = context,
+                                    latitude = latLng.first,
+                                    longitude = latLng.second,
+                                    label = viewModel.locationName
+                                )
+                            }
+                            .padding(horizontal = 9.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(text = "🧭", fontSize = 13.sp)
+                        Text(
+                            text = "Naviga",
+                            color = Color(0xFF34D399),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
 
                     // Stella preferito
                     val starScale by animateFloatAsState(
@@ -803,6 +973,308 @@ fun MushroomApp(
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium
                     )
+                }
+            }
+        }
+
+        // Fullscreen Map View Overlay
+        if (isMapFullscreen && viewModel.selectedLatLng != null) {
+            BackHandler {
+                isMapFullscreen = false
+            }
+
+            val latLng = viewModel.selectedLatLng!!
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFF040810))
+            ) {
+                // 1. Fullscreen Map
+                MapViewContainer(
+                    latitude = latLng.first,
+                    longitude = latLng.second,
+                    mapStyle = viewModel.mapStyle,
+                    onMapClick = { lat, lon ->
+                        viewModel.selectLocationFromMap(lat, lon)
+                    },
+                    heatmapData = viewModel.heatmapData,
+                    showHeatmap = viewModel.showHeatmap,
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                // 2. Top Header Bar (Floating Glassmorphic)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .fillMaxWidth()
+                        .shadow(16.dp, RoundedCornerShape(20.dp))
+                        .background(Color(0xF20D1423), RoundedCornerShape(20.dp))
+                        .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(20.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        IconButton(
+                            onClick = { isMapFullscreen = false },
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0x26FFFFFF))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Chiudi tutto schermo",
+                                tint = Color.White
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = viewModel.locationName.ifEmpty { "Punto selezionato" },
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = String.format(Locale.US, "Lat: %.4f • Lon: %.4f", latLng.first, latLng.second),
+                                color = Color(0xFF34D399),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // Controls: Heatmap Toggle (Layer Complementare) & Map Style Selector
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            // Toggle Livello Nuvola Sovrapposto
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (viewModel.showHeatmap) Color(0x3310B981) else Color(0x14FFFFFF))
+                                    .border(
+                                        1.dp,
+                                        if (viewModel.showHeatmap) Color(0xFF34D399) else Color(0x26FFFFFF),
+                                        RoundedCornerShape(10.dp)
+                                    )
+                                    .clickable { viewModel.toggleHeatmap() }
+                                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Text(text = "☁️", fontSize = 12.sp)
+                                Text(
+                                    text = if (viewModel.showHeatmap) "Nuvola ON" else "Nuvola OFF",
+                                    color = if (viewModel.showHeatmap) Color(0xFF34D399) else Color(0xFF94A3B8),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            // Separatore visivo
+                            Box(
+                                modifier = Modifier
+                                    .width(1.dp)
+                                    .height(20.dp)
+                                    .background(Color(0x26FFFFFF))
+                            )
+
+                            // Selettore Stile Mappa di Base
+                            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                listOf(
+                                    Pair("topo", "🏔️"),
+                                    Pair("dark", "🕶️"),
+                                    Pair("standard", "🗺️")
+                                ).forEach { (styleKey, icon) ->
+                                    val isSelected = viewModel.mapStyle == styleKey
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .clip(RoundedCornerShape(9.dp))
+                                            .background(if (isSelected) Color(0xFF34D399) else Color(0x1AFFFFFF))
+                                            .clickable {
+                                                viewModel.saveSettings(
+                                                    style = styleKey,
+                                                    radius = viewModel.searchRadius,
+                                                    threshold = viewModel.highlightThreshold,
+                                                    cacheActive = viewModel.cacheEnabled,
+                                                    useLocalAiActive = viewModel.useLocalAi
+                                                )
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(text = icon, fontSize = 12.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 3. Floating Bottom Controls
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 16.dp)
+                        .fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Floating GPS button on the right
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        IconButton(
+                            onClick = { onGeolocateClick() },
+                            modifier = Modifier
+                                .size(48.dp)
+                                .shadow(10.dp, CircleShape)
+                                .background(Color(0xFF1E293B), CircleShape)
+                                .border(1.dp, Color(0x3334D399), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LocationOn,
+                                contentDescription = "Posizione GPS",
+                                tint = Color(0xFF34D399),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
+                    // Floating Heatmap Legend in Fullscreen mode
+                    if (viewModel.showHeatmap && viewModel.heatmapData != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .shadow(12.dp, RoundedCornerShape(14.dp))
+                                .background(Color(0xF20F172A), RoundedCornerShape(14.dp))
+                                .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(14.dp))
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Bassa (25%)",
+                                    color = Color(0xFF00C8FF),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(6.dp)
+                                        .padding(horizontal = 10.dp)
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(
+                                            Brush.horizontalGradient(
+                                                listOf(
+                                                    Color(0xFF00C8FF),
+                                                    Color(0xFF10B981),
+                                                    Color(0xFFFBBF24),
+                                                    Color(0xFFF97316),
+                                                    Color(0xFFEF4444)
+                                                )
+                                            )
+                                        )
+                                )
+                                Text(
+                                    text = "Hotspot (>80%)",
+                                    color = Color(0xFFEF4444),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    // Bottom Confirmation Bar
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .shadow(16.dp, RoundedCornerShape(20.dp))
+                            .background(Color(0xF20F172A), RoundedCornerShape(20.dp))
+                            .border(1.dp, Color(0x3334D399), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Tocca la mappa per spostare il punto",
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 11.sp
+                                )
+                                Text(
+                                    text = "Aggiornamento previsione in tempo reale",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            OutlinedButton(
+                                onClick = {
+                                    NavigationHelper.navigateTo(
+                                        context = context,
+                                        latitude = latLng.first,
+                                        longitude = latLng.second,
+                                        label = viewModel.locationName
+                                    )
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, Color(0xFF34D399)),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF34D399)),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = "🧭 Naviga",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            Button(
+                                onClick = { isMapFullscreen = false },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF34D399),
+                                    contentColor = Color(0xFF0F172A)
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = "Conferma",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

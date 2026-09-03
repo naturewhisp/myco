@@ -4,13 +4,17 @@ import com.google.gson.Gson
 import github.naturewhisp.myco.model.GeocodeResult
 import github.naturewhisp.myco.model.OverpassResponse
 import github.naturewhisp.myco.model.WeatherResponse
+import github.naturewhisp.myco.model.SpunData
 import github.naturewhisp.myco.network.GeocodingService
 import github.naturewhisp.myco.network.NetworkClient
 import github.naturewhisp.myco.network.OverpassService
 import github.naturewhisp.myco.network.WeatherService
 import java.util.Locale
 
-class MushroomRepository(private val cacheManager: CacheManager) {
+class MushroomRepository(
+    private val cacheManager: CacheManager,
+    val spunDataManager: SpunDataManager
+) {
     private val geocodingService = NetworkClient.createService(
         GeocodingService::class.java,
         "https://nominatim.openstreetmap.org/"
@@ -130,5 +134,9 @@ class MushroomRepository(private val cacheManager: CacheManager) {
             }
         }
         return null
+    }
+
+    suspend fun fetchSpunData(latitude: Double, longitude: Double, radiusMeters: Int): SpunData? {
+        return spunDataManager.getSpunData(latitude, longitude, radiusMeters)
     }
 }

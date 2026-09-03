@@ -7,9 +7,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import github.naturewhisp.myco.model.ProcessedDay
 import github.naturewhisp.myco.model.SavedLocation
+import github.naturewhisp.myco.model.SpunData
 import github.naturewhisp.myco.network.LocalAiService
 import github.naturewhisp.myco.repository.CacheManager
 import github.naturewhisp.myco.repository.MushroomRepository
+import github.naturewhisp.myco.repository.SpunDataManager
 import github.naturewhisp.myco.utils.MushroomAlgorithms
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -23,7 +25,8 @@ import kotlin.math.min
 class MushroomViewModel(
     private val repository: MushroomRepository,
     val cacheManager: CacheManager,
-    val localAiService: LocalAiService
+    val localAiService: LocalAiService,
+    val spunDataManager: SpunDataManager
 ) : ViewModel() {
 
     // Settings State
@@ -100,6 +103,14 @@ class MushroomViewModel(
     var slopeText by mutableStateOf("")
         private set
     var summaryText by mutableStateOf("")
+        private set
+    var spunEcmText by mutableStateOf("")
+        private set
+    var spunHyphalText by mutableStateOf("")
+        private set
+    var spunRegionName by mutableStateOf<String?>(null)
+        private set
+    var spunDataAvailable by mutableStateOf(false)
         private set
     var forecastDays by mutableStateOf<List<ProcessedDay>>(emptyList())
         private set
@@ -217,6 +228,9 @@ class MushroomViewModel(
             showMap = false
 
             try {
+                // Avvia il precaricamento della regione SPUN appropriata in base al GPS
+                launch { spunDataManager.ensureRegionLoadedFor(lat, lon) }
+
                 // Reverse geocoding per ottenere un nome significativo
                 val geocoded = repository.reverseGeocode(lat, lon)
                 val resolvedName = geocoded?.displayName ?: "Posizione GPS (${
@@ -359,14 +373,16 @@ class MushroomViewModel(
                 // Check favorite status
                 currentLocationIsFavorite = cacheManager.isFavorite(lat, lon)
 
-                // Fetch weather and habitat details
+                // Fetch weather, habitat, and SPUN micorrize details in parallel
                 val weatherDeferred = async { repository.fetchWeather(lat, lon) }
                 val habitatDeferred = async { repository.fetchHabitat(lat, lon) }
                 val habitatBonusDeferred = async { repository.fetchSpecificHabitatBonus(lat, lon) }
+                val spunDeferred = async { repository.fetchSpunData(lat, lon, searchRadius) }
 
                 val weather = weatherDeferred.await()
                 val habitat = habitatDeferred.await()
                 val habitatBonus = habitatBonusDeferred.await()
+                val spunData = spunDeferred.await()
 
                 // Calculate Habitat Score
                 val forestCount = habitat?.elements?.size ?: 0
@@ -397,6 +413,21 @@ class MushroomViewModel(
                 if (specificForestCount > 0) {
                     finalHabitatScore = min(1.0, habitatScore * 1.15)
                     habitatBonusTextVal = "✅ Bonus: Rilevati alberi ottimali! Punteggio habitat potenziato."
+                }
+
+                // Modulazione scientifica SPUN: certifica se il sottosuolo ospita la comunità ectomicorrizica adatta
+                if (spunData != null) {
+                    if (spunData.ecmRichness >= 50.0f) {
+                        finalHabitatScore = min(1.0, finalHabitatScore * 1.15)
+                        habitatBonusTextVal = if (specificForestCount > 0) {
+                            "✅ Bonus: Alberi e simbiosi EcM SPUN ottimali (${spunData.ecmRichness.toInt()} specie)!"
+                        } else {
+                            "✅ Bonus SPUN: Rete ectomicorrizica eccellente (${spunData.ecmRichness.toInt()} specie)!"
+                        }
+                    } else if (spunData.ecmRichness < 15.0f && forestCount > 0) {
+                        // Penalizza boschi con microflora micorrizica scarsa
+                        finalHabitatScore = max(0.2, finalHabitatScore * 0.8)
+                    }
                 }
 
                 // Process weather
@@ -435,8 +466,12 @@ class MushroomViewModel(
 
                 val slopeTextVal = MushroomAlgorithms.getSlopeRecommendation(seasonalityScore.score, avgTempLast5Days, currentMonth)
 
-                // Today's weather score
-                val rawWeatherScore = MushroomAlgorithms.calculateWeatherScore(todayIndex, processedDays)
+                // Today's weather score ponderato con la densità ifale SPUN (volano per la pioggia e lo shock termico)
+                val rawWeatherScore = MushroomAlgorithms.calculateWeatherScore(
+                    todayIndex,
+                    processedDays,
+                    spunHyphalDensity = spunData?.hyphalDensity
+                )
                 val weightedWeatherScore = 100.0 * Math.pow(rawWeatherScore / 100.0, 1.2)
                 
                 // Probability calculation
@@ -455,6 +490,18 @@ class MushroomViewModel(
                 moonPhaseText = "🌙 Luna: ${moonPhase.text} (${if (moonPhase.favorable) "Favorevole" else "Ininfluente"})"
                 moonPhaseEmoji = moonPhase.emoji
                 slopeText = slopeTextVal
+
+                if (spunData != null) {
+                    spunEcmText = spunData.ecmText
+                    spunHyphalText = spunData.hyphalText
+                    spunRegionName = spunData.regionName
+                    spunDataAvailable = true
+                } else {
+                    spunEcmText = ""
+                    spunHyphalText = ""
+                    spunRegionName = null
+                    spunDataAvailable = false
+                }
 
                 val futureTrend = MushroomAlgorithms.analyzeFutureTrend(processedDays)
 
@@ -487,10 +534,17 @@ class MushroomViewModel(
                     isAiLoading = true
                     aiJob = viewModelScope.launch {
                         try {
+                            val spunPromptInfo = if (spunData != null) {
+                                "- Rete micorrizica sotterranea (dati scientifici SPUN): Densità ifale ${String.format(Locale.ITALIAN, "%.1f", spunData.hyphalDensity)} m/cm³ (${spunData.hyphalText.substringAfter("(").substringBefore(")")}), Ricchezza specie ectomicorriziche ${spunData.ecmRichness.toInt()} specie (${spunData.ecmText.substringAfter("(").substringBefore(")")})"
+                            } else {
+                                "- Rete micorrizica: Nessun dato regionale SPUN registrato per questa coordinata"
+                            }
+
                             val prompt = """
                                 Sei un esperto micologo. Genera un'analisi in parole semplici in lingua italiana basandoti su questi dati:
                                 - Località: $displayName
                                 - Habitat: $habitatBaseText (Punteggio: $finalHabitatScore/1.0)
+                                $spunPromptInfo
                                 - Altitudine: ${altitudeScore.text} (Punteggio: ${altitudeScore.score}/1.0)
                                 - Stagione: ${seasonalityScore.text} (Punteggio: ${seasonalityScore.score}/1.0)
                                 - Pioggia ultimi 10 giorni: $rainTextVal
@@ -519,7 +573,9 @@ class MushroomViewModel(
                                     seasonalityScore = seasonalityScore.score,
                                     seasonalityText = seasonalityScore.text,
                                     totalRain = totalRainLast10Days,
-                                    futureTrend = futureTrend
+                                    futureTrend = futureTrend,
+                                    spunEcmText = spunData?.ecmText,
+                                    spunHyphalText = spunData?.hyphalText
                                 )
                             }
                         } catch (e: Exception) {
@@ -533,7 +589,9 @@ class MushroomViewModel(
                                 seasonalityScore = seasonalityScore.score,
                                 seasonalityText = seasonalityScore.text,
                                 totalRain = totalRainLast10Days,
-                                futureTrend = futureTrend
+                                futureTrend = futureTrend,
+                                spunEcmText = spunData?.ecmText,
+                                spunHyphalText = spunData?.hyphalText
                             )
                         } finally {
                             isAiLoading = false
@@ -550,7 +608,9 @@ class MushroomViewModel(
                         seasonalityScore = seasonalityScore.score,
                         seasonalityText = seasonalityScore.text,
                         totalRain = totalRainLast10Days,
-                        futureTrend = futureTrend
+                        futureTrend = futureTrend,
+                        spunEcmText = spunData?.ecmText,
+                        spunHyphalText = spunData?.hyphalText
                     )
                 }
 

@@ -17,6 +17,7 @@ import com.google.android.gms.location.LocationServices
 import github.naturewhisp.myco.network.LocalAiService
 import github.naturewhisp.myco.repository.CacheManager
 import github.naturewhisp.myco.repository.MushroomRepository
+import github.naturewhisp.myco.repository.SpunDataManager
 import github.naturewhisp.myco.ui.screens.MushroomApp
 import github.naturewhisp.myco.ui.theme.MycoTheme
 import github.naturewhisp.myco.ui.viewmodel.MushroomViewModel
@@ -48,13 +49,14 @@ class MainActivity : ComponentActivity() {
         Configuration.getInstance().userAgentValue = packageName
 
         val cacheManager = CacheManager(applicationContext)
-        val repository = MushroomRepository(cacheManager)
+        val spunDataManager = SpunDataManager(applicationContext)
+        val repository = MushroomRepository(cacheManager, spunDataManager)
         val localAiService = LocalAiService(applicationContext)
 
         viewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return MushroomViewModel(repository, cacheManager, localAiService) as T
+                return MushroomViewModel(repository, cacheManager, localAiService, spunDataManager) as T
             }
         })[MushroomViewModel::class.java]
 

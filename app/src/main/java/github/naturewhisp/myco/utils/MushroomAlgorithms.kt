@@ -209,7 +209,11 @@ object MushroomAlgorithms {
         return MoonPhaseResult(phaseText, emoji, favorable)
     }
 
-    fun calculateWeatherScore(dayIndex: Int, allData: List<ProcessedDay>): Int {
+    fun calculateWeatherScore(
+        dayIndex: Int,
+        allData: List<ProcessedDay>,
+        spunHyphalDensity: Float? = null
+    ): Int {
         if (dayIndex < 0 || dayIndex >= allData.size) return 0
         var score = 0
 
@@ -222,7 +226,15 @@ object MushroomAlgorithms {
             emptyList()
         }
         val totalRainLast10Days = rainWindow.sumOf { it.totalPrecip.toDouble() }
-        score += getRainStatus(totalRainLast10Days).score
+        var rainScore = getRainStatus(totalRainLast10Days).score
+
+        // SPUN Hyphal Bonus: se la rete sotterranea è molto fitta (>5.0 m/cm3), risponde prima anche a piogge moderate
+        if (spunHyphalDensity != null && spunHyphalDensity >= 5.0f && totalRainLast10Days >= 15.0) {
+            rainScore = min(40, rainScore + 8)
+        } else if (spunHyphalDensity != null && spunHyphalDensity < 2.5f) {
+            rainScore = max(0, rainScore - 5)
+        }
+        score += rainScore
 
         // Temp Score: last 5 days (equivalent to JS: slice(max(0, index-5), index))
         val tempStart = max(0, dayIndex - 5)
@@ -253,11 +265,12 @@ object MushroomAlgorithms {
         }
         score += getHumidityScore(avgHumidityRecent)
 
-        // Temp Shock Bonus: drop of >6C in last 4 days + rain > 15mm
+        // Temp Shock Bonus: drop of >6C in last 4 days + rain > 15mm (abbassato a >4.5C se ife dense)
+        val shockThreshold = if (spunHyphalDensity != null && spunHyphalDensity >= 5.0f) 4.5f else 6.0f
         if (dayIndex > 4 && totalRainLast10Days > 15.0) {
             val tempBefore = allData[dayIndex - 4].avgTemp
             val tempAfter = allData[dayIndex - 1].avgTemp
-            if (tempBefore - tempAfter > 6.0f) {
+            if (tempBefore - tempAfter > shockThreshold) {
                 score += 10
             }
         }
@@ -350,7 +363,9 @@ object MushroomAlgorithms {
         seasonalityScore: Double,
         seasonalityText: String,
         totalRain: Double,
-        futureTrend: String
+        futureTrend: String,
+        spunEcmText: String? = null,
+        spunHyphalText: String? = null
     ): String {
         var summary = ""
         val scores = listOf(
@@ -388,6 +403,11 @@ object MushroomAlgorithms {
             }
         } else {
             summary += "Tutti i fattori sono allineati in modo ottimale per una buona crescita. "
+        }
+
+        // Biological SPUN insight
+        if (!spunHyphalText.isNullOrEmpty() && !spunEcmText.isNullOrEmpty()) {
+            summary += "A livello sotterraneo ($spunEcmText, $spunHyphalText), la rete micorrizica offre un supporto biologico scientificamente documentato. "
         }
 
         summary += futureTrend

@@ -595,8 +595,25 @@ fun MushroomApp(
                                     modifier = Modifier.weight(1f)
                                 )
                             }
+
+                            // Row 4: SPUN Micorrize (Simbiosi EcM & Rete Ifale)
+                            if (viewModel.spunDataAvailable) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    MetricCard(
+                                        metricText = viewModel.spunEcmText,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    MetricCard(
+                                        metricText = viewModel.spunHyphalText,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
                             
-                            // Row 4: Versante (Full width)
+                            // Row 5: Versante (Full width)
                             if (viewModel.slopeText.isNotEmpty()) {
                                 MetricCard(
                                     metricText = viewModel.slopeText,
@@ -1019,6 +1036,44 @@ fun SettingsDialog(
                                     checkedTrackColor = Color(0xFF065F46)
                                 )
                             )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider(color = Color(0x14FFFFFF))
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // SPUN Regional Network Indicator
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Rete Micorrizica SPUN",
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = if (viewModel.spunRegionName != null) {
+                                        "Regione attiva: ${viewModel.spunRegionName} (1.5 MB)"
+                                    } else {
+                                        "Auto-rilevamento regionale (Italia pronta)"
+                                    },
+                                    color = Color(0xFF34D399),
+                                    fontSize = 10.sp
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0x1434D399)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(text = "🍄", fontSize = 14.sp)
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(12.dp))

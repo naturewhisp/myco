@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="it" data-theme="system">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Myco · Piano di implementazione Herbarium</title>
+<style>
+:root{
+  --parchment:#F4EDE0; --parchment2:#E8DECB; --ink:#3B2F26; --ink-soft:#6E5B49;
+  --lichen:#6F8355; --forest:#3F5136; --sage:#BCC7A6; --ochre:#C89B3C;
+  --terracotta:#B96F42; --rust:#9B4A38; --indigo:#4E6273; --ash:#A7BCC7;
+  --surface-0:#F4EDE0; --surface-1:#E8DECB; --text-1:#3B2F26; --text-2:#6E5B49;
+  --accent:#3F5136; --accent-soft:#6F8355; --rule:rgba(59,47,38,.18); --rule-2:rgba(59,47,38,.10);
+  --scale-0:#EFE7D6; --scale-1:#BCC7A6; --scale-2:#C89B3C; --scale-3:#B96F42; --scale-4:#9B4A38;
+  --code-bg:#EDE4D2; --pin:#3F5136; --hairline:#B3A188;
+  --serif:Georgia,"Iowan Old Style","Times New Roman",serif;
+  --sans:-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+html[data-theme="dark"]{
+  --surface-0:#221E18; --surface-1:#2E2820; --text-1:#EDE3D2; --text-2:#B6A891;
+  --accent:#93A874; --accent-soft:#6F8355; --rule:rgba(237,227,210,.16); --rule-2:rgba(237,227,210,.10);
+  --scale-0:#3A3128; --scale-1:#6B7A55; --scale-2:#DCB65C; --scale-3:#C67C4B; --scale-4:#B85A45;
+  --code-bg:#2A241C; --pin:#93A874; --hairline:#5C5245;
+}
+@media (prefers-color-scheme: dark){
+  html[data-theme="system"]{
+    --surface-0:#221E18; --surface-1:#2E2820; --text-1:#EDE3D2; --text-2:#B6A891;
+    --accent:#93A874; --accent-soft:#6F8355; --rule:rgba(237,227,210,.16); --rule-2:rgba(237,227,210,.10);
+    --scale-0:#3A3128; --scale-1:#6B7A55; --scale-2:#DCB65C; --scale-3:#C67C4B; --scale-4:#B85A45;
+    --code-bg:#2A241C; --pin:#93A874; --hairline:#5C5245;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--surface-0);color:var(--text-1);font-family:var(--sans);font-size:16px;line-height:1.55;-webkit-text-size-adjust:100%}
+.wrap{max-width:960px;margin:0 auto;padding:0 24px 96px}
+header.top{border-bottom:1px solid var(--rule);padding:40px 0 24px;margin-bottom:32px}
+h1{font-family:var(--serif);font-size:38px;line-height:1.1;margin:0 0 8px;font-weight:600}
+.sub{color:var(--text-2);max-width:62ch;margin:0}
+h2{font-family:var(--serif);font-size:27px;line-height:1.2;margin:56px 0 4px;font-weight:600;scroll-margin-top:16px}
+h3{font-family:var(--serif);font-size:20px;margin:32px 0 6px;font-weight:600}
+h4{font-size:15px;margin:22px 0 4px;font-weight:600;letter-spacing:.01em}
+p{max-width:74ch}
+a{color:var(--accent);text-underline-offset:3px}
+code{font-family:var(--mono);font-size:.87em;background:var(--code-bg);padding:1px 5px;border-radius:3px}
+pre{background:var(--code-bg);border:1px solid var(--rule);border-radius:6px;padding:14px 16px;overflow-x:auto;font-size:13px;line-height:1.5}
+pre code{background:none;padding:0;font-size:13px}
+table{border-collapse:collapse;width:100%;margin:14px 0;font-size:14.5px}
+th,td{text-align:left;padding:9px 12px 9px 0;border-bottom:1px solid var(--rule-2);vertical-align:top}
+th{font-weight:600;border-bottom:1px solid var(--rule);white-space:nowrap}
+td code{white-space:nowrap}
+ul,ol{max-width:74ch;padding-left:22px}
+li{margin:5px 0}
+.lead{font-size:17px;color:var(--text-2);max-width:70ch}
+.note{border-left:2px solid var(--accent);padding:2px 0 2px 16px;margin:18px 0;color:var(--text-2);max-width:70ch}
+.warn{border-left:2px solid var(--terracotta);padding:2px 0 2px 16px;margin:18px 0;max-width:70ch}
+.toc{border:1px solid var(--rule);border-radius:6px;padding:18px 22px;margin:28px 0 0;columns:2;column-gap:36px}
+.toc a{display:block;padding:3px 0;text-decoration:none;color:var(--text-1);font-size:14.5px;break-inside:avoid}
+.toc a:hover{color:var(--accent);text-decoration:underline}
+.themebar{display:flex;gap:8px;align-items:center;margin-top:20px;font-size:13px;color:var(--text-2);flex-wrap:wrap}
+.themebar button{font:inherit;font-size:13px;padding:6px 14px;border:1px solid var(--rule);background:none;color:var(--text-1);border-radius:4px;cursor:pointer}
+.themebar button[aria-pressed="true"]{background:var(--accent);color:var(--surface-0);border-color:var(--accent)}
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin:16px 0}
+.sw{border:1px solid var(--rule);border-radius:5px;overflow:hidden}
+.sw i{display:block;height:44px}
+.sw span{display:block;padding:6px 8px;font-size:12px;font-family:var(--mono);color:var(--text-2)}
+.sw b{display:block;padding:6px 8px 0;font-size:12.5px;font-weight:500}
+.phone{max-width:360px;margin:18px 0;border:1px solid var(--rule);border-radius:10px;background:var(--surface-0);padding:20px 18px 22px;font-size:15px}
+.phones{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start}
+.phone .ph-h{font-family:var(--serif);font-size:29px;line-height:1.12}
+.phone .ph-sub{font-size:13.5px;color:var(--text-2);margin-top:5px}
+.meta{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-2)}
+.row{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--rule-2)}
+.row .val{margin-left:auto;color:var(--accent)}
+.bar{display:flex;gap:3px;margin-top:12px}
+.bar i{flex:1;height:8px;background:var(--scale-0)}
+.bar i:first-child{border-radius:4px 0 0 4px}.bar i:last-child{border-radius:0 4px 4px 0}
+.orn{display:flex;align-items:center;gap:10px;margin:24px 0 18px}
+.orn i{flex:1;height:1px;background:var(--rule)}
+.orn b{font-size:13px;color:var(--text-2);font-weight:400}
+.btn{display:inline-block;padding:11px 20px;border:1px solid var(--rule);border-radius:6px;font-size:15px}
+.btn.pri{background:var(--accent);color:var(--surface-0);border-color:var(--accent)}
+.btns{display:flex;gap:10px;margin-top:18px}
+.btns>*{flex:1;text-align:center}
+.big{font-family:var(--serif);font-size:50px;line-height:1;color:var(--accent)}
+.ramp{display:flex;gap:2px;margin:10px 0 4px;max-width:340px}
+.ramp i{flex:1;height:14px;border:.5px solid var(--hairline)}
+.legend{display:flex;justify-content:space-between;max-width:340px;font-size:12px;color:var(--text-2)}
+.phase{border-top:1px solid var(--rule);padding-top:14px;margin-top:26px}
+.phase h3{margin-top:0}
+.check{list-style:none;padding-left:0}
+.check li{padding-left:26px;position:relative}
+.check li::before{content:"";position:absolute;left:0;top:6px;width:11px;height:11px;border:1px solid var(--text-2);border-radius:2px}
+.files{font-family:var(--mono);font-size:12.5px;color:var(--text-2);margin:6px 0 0}
+footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--rule);color:var(--text-2);font-size:14px}
+@media (max-width:640px){
+  .toc{columns:1}h1{font-size:30px}h2{font-size:23px}.wrap{padding:0 18px 64px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+<h1>Myco · Piano di implementazione Herbarium</h1>
+<p class="sub">Documento operativo per il redesign di <code>naturewhisp/myco</code>. Contiene l'audit della codebase, il sistema di design, il refactor necessario ad applicarlo, il codice Kotlin di riferimento, i mockup delle schermate e un piano di migrazione a fasi.</p>
+<div class="themebar">
+  <span>Tema di questo documento:</span>
+  <button type="button" data-set="system" aria-pressed="true">Sistema</button>
+  <button type="button" data-set="light" aria-pressed="false">Chiaro</button>
+  <button type="button" data-set="dark" aria-pressed="false">Scuro</button>
+  <span>I mockup più sotto seguono questa scelta, come farà l'app.</span>
+</div>
+<nav class="toc">
+  <a href="#uso">0 · Come usare questo documento</a>
+  <a href="#audit">1 · Audit della codebase attuale</a>
+  <a href="#obiettivi">2 · Obiettivi, non obiettivi, vincoli</a>
+  <a href="#concept">3 · Concept e sistema di design</a>
+  <a href="#token">4 · Token: colore, tipografia, forme, spazi</a>
+  <a href="#tema">5 · Tema chiaro, scuro e di sistema</a>
+  <a href="#dominio">6 · Refactor del dominio</a>
+  <a href="#componenti">7 · Libreria componenti</a>
+  <a href="#schermate">8 · Schermate e mockup</a>
+  <a href="#heatmap">9 · Heatmap e cartografia</a>
+  <a href="#stringhe">10 · Stringhe, lingue, formattazione</a>
+  <a href="#a11y">11 · Accessibilità</a>
+  <a href="#piano">12 · Piano di migrazione a fasi</a>
+  <a href="#accettazione">13 · Criteri di accettazione</a>
+</nav>
+</header>
+
+<h2 id="uso">0 · Come usare questo documento</h2>
+<p class="lead">Il documento è pensato per essere eseguito da un agente di codifica, una fase alla volta, con revisione umana tra una fase e l'altra.</p>
+
+<h4>Regole per chi implementa</h4>
+<ul>
+  <li>Una fase per volta, nell'ordine della sezione 12. Le fasi 1 e 2 sono prerequisiti di tutto il resto.</li>
+  <li>Un commit per fase, con il codice compilabile e <code>./gradlew lint</code> senza errori a ogni commit. Il progetto ha <code>abortOnError true</code>.</li>
+  <li>Nessuna nuova dipendenza oltre a quelle elencate nella sezione 4. Nessun aggiornamento di versione non richiesto.</li>
+  <li>La logica scientifica non si tocca, salvo la fase 5 dove è esplicitamente prevista.</li>
+  <li>I commenti nel codice sono in italiano e impersonali: <code>// Calcolo del punteggio</code>, non <code>// Calcolo io il punteggio</code>.</li>
+  <li>I colori non si scrivono mai come letterali dentro i composable. Si leggono da <code>MaterialTheme.colorScheme</code> o da <code>MycoTheme.colors</code>.</li>
+  <li>Ogni composable pubblico accetta <code>modifier: Modifier = Modifier</code> come primo parametro opzionale e non applica padding esterni al proprio contenitore radice.</li>
+</ul>
+
+<h4>Cosa non è questo documento</h4>
+<p>Non è una specifica del modello previsionale. Le formule esistenti restano valide salvo dove indicato, e la loro correttezza scientifica non è oggetto di questa revisione.</p>
+
+<h2 id="audit">1 · Audit della codebase attuale</h2>
+<p class="lead">Rilevato sul branch <code>master</code>, 58 commit, 4986 righe Kotlin in 22 file.</p>
+
+<h3>1.1 Stack</h3>
+<table>
+<tr><th>Voce</th><th>Valore</th><th>Nota</th></tr>
+<tr><td>Linguaggio</td><td>Kotlin, JVM 17</td><td></td></tr>
+<tr><td>UI</td><td>Jetpack Compose, Material 3, BOM 2024.04.01</td><td>Material 3 presente ma di fatto inutilizzato</td></tr>
+<tr><td>SDK</td><td>compileSdk 36, minSdk 31, targetSdk 36</td><td>Android 12 e superiori, nessun vincolo legacy</td></tr>
+<tr><td>Rete</td><td>Retrofit 2.11, Gson, OkHttp logging</td><td></td></tr>
+<tr><td>Mappa</td><td>osmdroid 6.1.18</td><td>Tiles OSM standard</td></tr>
+<tr><td>Posizione</td><td>play-services-location 21.2.0</td><td></td></tr>
+<tr><td>AI on device</td><td><code>com.google.ai.edge.aicore:aicore:0.0.1-exp02</code></td><td>Gemini Nano, versione sperimentale</td></tr>
+<tr><td>Dati micologici</td><td><code>assets/spun/spun_italy.bin</code></td><td>Griglia locale EcM e biomassa ifale</td></tr>
+<tr><td>Build</td><td>Gradle Groovy, versioni inline</td><td>Nessun version catalog</td></tr>
+</table>
+
+<p><code>package.json</code> dichiara come entry point <code>app/src/main/assets/js/logic.js</code>, file che non esiste più nel repository. I sei test in <code>app/src/test/javascript/</code> verificano logica che oggi vive in Kotlin. Sono residui del prototipo web da cui l'app è stata portata.</p>
+
+<h3>1.2 Sistema di stile</h3>
+<table>
+<tr><th>Rilevazione</th><th>Valore</th><th>Conseguenza</th></tr>
+<tr><td>Letterali <code>Color(0x…)</code> nel sorgente</td><td>201</td><td>Nessun punto unico di controllo del colore</td></tr>
+<tr><td>File che leggono <code>MaterialTheme</code></td><td>1, ed è <code>Theme.kt</code></td><td>Il tema è dichiarato ma non ha effetto</td></tr>
+<tr><td><code>LightColorScheme</code></td><td><code>= DarkColorScheme</code></td><td>Tema chiaro disabilitato per costruzione</td></tr>
+<tr><td><code>Typography</code></td><td>Non definita</td><td>Font size in <code>.sp</code> sparsi nei composable</td></tr>
+<tr><td><code>Shapes</code></td><td>Non definite</td><td><code>RoundedCornerShape</code> inline con valori diversi</td></tr>
+<tr><td><code>res/values-night</code></td><td>Assente</td><td></td></tr>
+<tr><td>Tema XML</td><td><code>android:Theme.Material.NoActionBar</code></td><td>Tema di piattaforma legacy, status bar traslucida</td></tr>
+</table>
+
+<p>I tre colori più frequenti sono <code>#34D399</code> (38 occorrenze), <code>#94A3B8</code> (24) e <code>#FBBF24</code> (8): Emerald 400, Slate 400 e Amber 400 della palette Tailwind. Le superfici usano alpha (<code>0x990D1423</code>, <code>0xCC0D1423</code>) per riprodurre il glassmorphism del prototipo web.</p>
+
+<div class="warn"><strong>Punto critico numero uno.</strong> Il tema chiaro non è una funzionalità mancante: è impedita. Anche riscrivendo <code>Theme.kt</code> non cambierebbe nulla, perché nessun composable legge dal tema. La sostituzione dei 201 letterali è il prerequisito di ogni intervento estetico.</p></div>
+
+<h3>1.3 Debiti architetturali</h3>
+<table>
+<tr><th>Posizione</th><th>Problema</th></tr>
+<tr><td><code>ui/screens/MushroomApp.kt</code>, 1794 righe</td><td>Schermata unica monolitica, con calcoli di dominio eseguiti dentro il ciclo di rendering</td></tr>
+<tr><td><code>MushroomComponents.kt</code> · <code>parseMetric()</code></td><td>La UI riceve stringhe già formattate come <code>"🏔️ Altitudine: 1037m (Ideale)."</code> e le smonta cercando due punti, spazi e parentesi. Origine degli a capo sbagliati e della "C" orfana negli screenshot</td></tr>
+<tr><td><code>MushroomComponents.kt</code> · <code>getDetailColor()</code></td><td>Il colore dipende da <code>lower.contains("ideale")</code> sulle parole italiane. Cambiare una stringa cambia il colore, tradurre l'app la rompe</td></tr>
+<tr><td><code>MushroomComponents.kt</code> · <code>getWeatherEmoji()</code></td><td>Emoji come icone, con <code>"☁️"</code> come fallback per <code>weatherCode</code> nullo. Spiega le cinque nuvole identiche nella tendenza</td></tr>
+<tr><td><code>res/values/strings.xml</code></td><td>Contiene solo <code>app_name</code>. Tutte le stringhe UI sono hardcoded in italiano nel Kotlin</td></tr>
+<tr><td><code>ui/theme/Theme.kt</code></td><td>Superfici semitrasparenti come <code>ColorScheme</code>, eredità del CSS</td></tr>
+</table>
+
+<h3>1.4 Le due scale di probabilità</h3>
+<p>Il valore principale mostrato nella schermata risultato combina meteo, stagionalità, altitudine, biodiversità EcM e rete ifale. La percentuale delle card giornaliere usa invece solo il meteo del giorno, ed è calcolata dentro la UI:</p>
+
+<pre><code>// ui/screens/MushroomApp.kt, righe ~817-821 (codice attuale)
+val weatherScore = MushroomAlgorithms.getRainStatus(day.totalPrecip.toDouble()).score +   // 0/10/25/35/40
+                   MushroomAlgorithms.getTempStatus(day.avgTemp.toDouble()).score +       // 0/15/30
+                   MushroomAlgorithms.getHumidityScore(day.avgHumidity.toDouble())        // 0/10/15
+
+val rawProb = (100.0 * Math.pow(weatherScore / 100.0, 1.2)).toInt()
+val finalProb = maxOf(5, minOf(95, (rawProb * 0.8).toInt()))</code></pre>
+
+<p>Ricostruzione dei valori osservati negli screenshot, che conferma la formula:</p>
+<table>
+<tr><th>Giorno</th><th>Temp.</th><th>Pioggia</th><th>weatherScore</th><th>Mostrato</th></tr>
+<tr><td>Gio 3 - Dom 6</td><td>18,7 - 21,2 °C, in banda ideale</td><td>0 mm</td><td>30 (solo temperatura)</td><td>18%</td></tr>
+<tr><td>Lun 7</td><td>22,5 °C, fuori banda 14-22</td><td>0 mm</td><td>15 (temperatura favorevole)</td><td>8%</td></tr>
+</table>
+
+<div class="warn"><strong>Punto critico numero due.</strong> Mezzo grado di differenza dimezza il numero mostrato, perché le soglie sono a gradino. E i due numeri, il 65% e il 18%, non sono confrontabili pur avendo la stessa unità, lo stesso colore e la stessa posizione visiva. È il difetto di prodotto più serio emerso dall'analisi.</div>
+
+<h3>1.5 Rete e privacy</h3>
+<table>
+<tr><th>Servizio</th><th>Endpoint</th><th>Uso</th></tr>
+<tr><td>Nominatim</td><td><code>search</code>, <code>reverse</code></td><td>Geocoding diretto e inverso, <code>accept-language=it</code> fisso</td></tr>
+<tr><td>Open-Meteo</td><td><code>v1/forecast</code></td><td>14 giorni passati, 11 futuri, orari di temperatura, umidità e precipitazione</td></tr>
+<tr><td>Overpass</td><td><code>api/interpreter</code></td><td>Copertura boschiva attorno al punto</td></tr>
+<tr><td>Gemini Nano</td><td>AICore, on device</td><td>Testo dell'analisi, nessun dato esce dal telefono</td></tr>
+</table>
+<p>Nessuna chiave API è presente nel sorgente, perché nessuno dei servizi la richiede. Da verificare in fase 8 che le chiamate a Nominatim inviino uno <code>User-Agent</code> identificativo, come richiesto dalle sue condizioni d'uso.</p>
+
+<h2 id="obiettivi">2 · Obiettivi, non obiettivi, vincoli</h2>
+
+<h4>Obiettivi</h4>
+<ol>
+<li>Un unico sistema di design applicato a tutta l'app, con tema chiaro, scuro e automatico di sistema.</li>
+<li>Eliminare gli artefatti visivi documentati negli screenshot: a capo forzati, unità orfane, griglie disallineate, testo tagliato.</li>
+<li>Rendere leggibile la mappa, oggi coperta dall'overlay.</li>
+<li>Rendere confrontabili i numeri mostrati, o dichiarare esplicitamente che misurano cose diverse.</li>
+<li>Portare la UI a leggere dati tipizzati invece di stringhe formattate.</li>
+<li>Coprire gli stati oggi assenti: vuoto, errore, offline, permesso negato, punto fuori habitat.</li>
+</ol>
+
+<h4>Non obiettivi</h4>
+<ul>
+<li>Riscrivere il modello previsionale o cambiare le fonti dati.</li>
+<li>Introdurre navigazione multi schermata con Navigation Compose, se l'attuale flusso a scroll unico regge.</li>
+<li>Aggiungere account, sincronizzazione o backend proprietario.</li>
+<li>Supportare Android sotto la 12, già escluso da <code>minSdk 31</code>.</li>
+</ul>
+
+<h4>Vincoli</h4>
+<ul>
+<li>Compose BOM 2024.04.01: alcune API più recenti non sono disponibili. Non aggiornare il BOM in questo lavoro.</li>
+<li>osmdroid disegna la propria vista Android dentro <code>AndroidView</code>: i controlli sovrapposti restano composable, la mappa no.</li>
+<li>L'asset <code>spun_italy.bin</code> copre l'Italia. Fuori dalla sua griglia la heatmap è nulla, come si vede negli screenshot di Chamonix.</li>
+<li><code>aicore</code> è in versione sperimentale e non è disponibile su tutti i dispositivi: il percorso senza AI deve restare pienamente funzionante.</li>
+</ul>
+
+<h2 id="concept">3 · Concept e sistema di design</h2>
+<p class="lead">Herbarium: l'app come pagina di un erbario manoscritto. Carta, inchiostro seppia, tavole botaniche, note a margine.</p>
+
+<table>
+<tr><th>Principio</th><th>Traduzione operativa</th></tr>
+<tr><td>La carta è il supporto</td><td>Fondo chiaro pergamena come default, migliore sotto sole diretto e coerente col concept. Il tema scuro esiste come alternativa completa, non come base unica</td></tr>
+<tr><td>L'inchiostro è il dato</td><td>Un solo colore di testo forte. La gerarchia si costruisce con dimensione e peso, non con altri colori</td></tr>
+<tr><td>Il colore è tassonomia</td><td>Verde uguale favorevole, ocra uguale attenzione, ruggine uguale sfavorevole, indaco uguale grandezza meteo. Nessun colore decorativo</td></tr>
+<tr><td>Niente scatole</td><td>Le card scompaiono. Restano filetti orizzontali, allineamento e ritmo verticale. Un bordo si usa solo quando delimita un'area interattiva</td></tr>
+</table>
+
+<div class="note">La scelta di eliminare le card non è solo estetica. Nove riquadri di altezza diversa costringono a leggere per zone; una lista a filetti con valori allineati a destra si scorre in verticale e regge il font scaling di sistema senza rompersi.</div>
+
+<script>
+document.querySelectorAll('.themebar button').forEach(function(b){
+  b.addEventListener('click', function(){
+    document.documentElement.setAttribute('data-theme', b.dataset.set);
+    document.querySelectorAll('.themebar button').forEach(function(o){
+      o.setAttribute('aria-pressed', String(o === b));
+    });
+  });
+});
+</script>
+
+<h2 id="token">4 · Token: colore, tipografia, forme, spazi</h2>
+
+<h3>4.1 Pigmenti</h3>
+<div class="swatches">
+<div class="sw"><i style="background:#F4EDE0"></i><b>Pergamena</b><span>#F4EDE0</span></div>
+<div class="sw"><i style="background:#E8DECB"></i><b>Pergamena 2</b><span>#E8DECB</span></div>
+<div class="sw"><i style="background:#3B2F26"></i><b>Inchiostro</b><span>#3B2F26</span></div>
+<div class="sw"><i style="background:#6E5B49"></i><b>Seppia</b><span>#6E5B49</span></div>
+<div class="sw"><i style="background:#6F8355"></i><b>Lichene</b><span>#6F8355</span></div>
+<div class="sw"><i style="background:#3F5136"></i><b>Bosco</b><span>#3F5136</span></div>
+<div class="sw"><i style="background:#BCC7A6"></i><b>Salvia</b><span>#BCC7A6</span></div>
+<div class="sw"><i style="background:#C89B3C"></i><b>Ocra</b><span>#C89B3C</span></div>
+<div class="sw"><i style="background:#B96F42"></i><b>Terracotta</b><span>#B96F42</span></div>
+<div class="sw"><i style="background:#9B4A38"></i><b>Ruggine</b><span>#9B4A38</span></div>
+<div class="sw"><i style="background:#4E6273"></i><b>Indaco</b><span>#4E6273</span></div>
+<div class="sw"><i style="background:#A7BCC7"></i><b>Cenere</b><span>#A7BCC7</span></div>
+</div>
+
+<p>Varianti notturne, con luminanza alzata per restare leggibili su fondo scuro: lichene <code>#93A874</code>, ocra <code>#DCB65C</code>, terracotta <code>#C67C4B</code>, ruggine <code>#B85A45</code>, salvia <code>#6B7A55</code>.</p>
+
+<h4>File nuovo: <code>ui/theme/Color.kt</code></h4>
+<pre><code>package github.naturewhisp.myco.ui.theme
+
+import androidx.compose.ui.graphics.Color
+
+// Pigmenti Herbarium, tema chiaro
+val Parchment   = Color(0xFFF4EDE0)
+val Parchment2  = Color(0xFFE8DECB)
+val Parchment3  = Color(0xFFEFE7D6)
+val Ink         = Color(0xFF3B2F26)
+val InkSoft     = Color(0xFF6E5B49)
+val Lichen      = Color(0xFF6F8355)
+val Forest      = Color(0xFF3F5136)
+val Sage        = Color(0xFFBCC7A6)
+val Ochre       = Color(0xFFC89B3C)
+val Terracotta  = Color(0xFFB96F42)
+val Rust        = Color(0xFF9B4A38)
+val Indigo      = Color(0xFF4E6273)
+val Ash         = Color(0xFFA7BCC7)
+val RuleLight   = Color(0xFFB3A188)
+val RuleLight2  = Color(0xFFD8CDB8)
+
+// Pigmenti Herbarium, tema scuro
+val NightBase       = Color(0xFF221E18)
+val NightSurface    = Color(0xFF2E2820)
+val NightInk        = Color(0xFFEDE3D2)
+val NightInkSoft    = Color(0xFFB6A891)
+val NightLichen     = Color(0xFF93A874)
+val NightSage       = Color(0xFF6B7A55)
+val NightOchre      = Color(0xFFDCB65C)
+val NightTerracotta = Color(0xFFC67C4B)
+val NightRust       = Color(0xFFB85A45)
+val NightIndigo     = Color(0xFF8AA3B5)
+val NightEmpty      = Color(0xFF3A3128)
+val NightRule       = Color(0xFF5C5245)
+val NightRule2      = Color(0xFF3E372E)</code></pre>
+
+<h3>4.2 Mappatura su Material 3</h3>
+<p>Material 3 copre i ruoli strutturali. I ruoli semantici del dominio micologico, cioè la scala di probabilità e i livelli dei fattori, non hanno un posto nello schema standard e vivono in un set esteso passato con un <code>CompositionLocal</code>.</p>
+
+<table>
+<tr><th>Ruolo M3</th><th>Chiaro</th><th>Scuro</th><th>Uso</th></tr>
+<tr><td><code>primary</code></td><td>Bosco</td><td>Lichene notte</td><td>Azioni primarie, valori favorevoli</td></tr>
+<tr><td><code>onPrimary</code></td><td>Pergamena</td><td>Base notte</td><td>Testo sul bottone pieno</td></tr>
+<tr><td><code>secondary</code></td><td>Lichene</td><td>Salvia notte</td><td>Accenti quieti, icone attive</td></tr>
+<tr><td><code>background</code> · <code>surface</code></td><td>Pergamena</td><td>Base notte</td><td>Fondo pagina, opaco</td></tr>
+<tr><td><code>surfaceVariant</code></td><td>Pergamena 2</td><td>Superficie notte</td><td>Campi, skeleton, aree passive</td></tr>
+<tr><td><code>onSurface</code></td><td>Inchiostro</td><td>Inchiostro notte</td><td>Testo primario</td></tr>
+<tr><td><code>onSurfaceVariant</code></td><td>Seppia</td><td>Seppia notte</td><td>Testo secondario, etichette</td></tr>
+<tr><td><code>outline</code></td><td><code>#B3A188</code></td><td><code>#5C5245</code></td><td>Bordi interattivi</td></tr>
+<tr><td><code>outlineVariant</code></td><td><code>#D8CDB8</code></td><td><code>#3E372E</code></td><td>Filetti di separazione</td></tr>
+<tr><td><code>error</code></td><td>Ruggine</td><td>Ruggine notte</td><td>Errori bloccanti</td></tr>
+</table>
+
+<div class="note">Nessun colore semitrasparente negli <code>ColorScheme</code>. L'alpha si somma allo sfondo sottostante e cambia resa a seconda di cosa c'è sotto: è la ragione per cui le card attuali appaiono di tonalità diverse sopra la mappa e sopra il fondo pieno.</div>
+
+<h4>File nuovo: <code>ui/theme/MycoColors.kt</code></h4>
+<pre><code>package github.naturewhisp.myco.ui.theme
+
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
+
+/**
+ * Colori semantici del dominio, non coperti da Material 3.
+ * La scala 0..4 è condivisa da heatmap, barre di probabilità e valori numerici:
+ * lo stesso colore significa la stessa cosa in ogni punto dell'app.
+ */
+@Immutable
+data class MycoColors(
+    val scale0: Color,      // assenza di dato o probabilità sotto soglia
+    val scale1: Color,      // 20..39
+    val scale2: Color,      // 40..59
+    val scale3: Color,      // 60..74
+    val scale4: Color,      // 75..100
+    val favorable: Color,   // livello ideale di un fattore
+    val neutral: Color,     // livello intermedio
+    val adverse: Color,     // livello sfavorevole
+    val meteo: Color,       // grandezze meteo: pioggia, temperatura
+    val onMap: Color,       // pin e tracce sopra la cartografia
+    val heatmapAlpha: Int   // opacità dell'overlay, 0..255
+)
+
+val LightMycoColors = MycoColors(
+    scale0 = Parchment3, scale1 = Sage, scale2 = Ochre, scale3 = Terracotta, scale4 = Rust,
+    favorable = Forest, neutral = Ochre, adverse = Rust,
+    meteo = Indigo, onMap = Forest, heatmapAlpha = 128
+)
+
+val DarkMycoColors = MycoColors(
+    scale0 = NightEmpty, scale1 = NightSage, scale2 = NightOchre,
+    scale3 = NightTerracotta, scale4 = NightRust,
+    favorable = NightLichen, neutral = NightOchre, adverse = NightRust,
+    meteo = NightIndigo, onMap = NightLichen, heatmapAlpha = 150
+)
+
+val LocalMycoColors = staticCompositionLocalOf { LightMycoColors }
+
+/** Restituisce il gradino della scala corrispondente a una probabilità 0..100. */
+fun MycoColors.forProbability(probability: Int): Color = when {
+    probability &lt; 20 -&gt; scale0
+    probability &lt; 40 -&gt; scale1
+    probability &lt; 60 -&gt; scale2
+    probability &lt; 75 -&gt; scale3
+    else -&gt; scale4
+}</code></pre>
+
+<h3>4.3 Tipografia</h3>
+<p>Due famiglie, entrambe distribuite da Google Fonts e scaricabili a runtime, quindi senza peso nell'APK: Roboto Serif per titoli e numeri di testa, Roboto per la UI. Il serif porta il carattere manoscritto, il sans tiene la leggibilità dei dati.</p>
+
+<table>
+<tr><th>Stile M3</th><th>Famiglia</th><th>Dimensione</th><th>Interlinea</th><th>Uso</th></tr>
+<tr><td><code>displaySmall</code></td><td>Roboto Serif</td><td>34 sp</td><td>38 sp</td><td>Numero grande della probabilità</td></tr>
+<tr><td><code>headlineMedium</code></td><td>Roboto Serif</td><td>28 sp</td><td>32 sp</td><td>Nome della località</td></tr>
+<tr><td><code>headlineSmall</code></td><td>Roboto Serif</td><td>21 sp</td><td>25 sp</td><td>Titoli di sezione</td></tr>
+<tr><td><code>titleMedium</code></td><td>Roboto Serif</td><td>18 sp</td><td>23 sp</td><td>Valori numerici nelle righe</td></tr>
+<tr><td><code>bodyLarge</code></td><td>Roboto Serif</td><td>16 sp</td><td>25 sp</td><td>Nota di campo, unico blocco di prosa</td></tr>
+<tr><td><code>bodyMedium</code></td><td>Roboto</td><td>15 sp</td><td>21 sp</td><td>Corpo della UI</td></tr>
+<tr><td><code>bodySmall</code></td><td>Roboto</td><td>13 sp</td><td>18 sp</td><td>Contesto sotto i titoli</td></tr>
+<tr><td><code>labelMedium</code></td><td>Roboto</td><td>12 sp</td><td>16 sp</td><td>Etichette di sezione, spaziatura 0,08 em</td></tr>
+</table>
+
+<h4>File nuovo: <code>ui/theme/Type.kt</code></h4>
+<pre><code>package github.naturewhisp.myco.ui.theme
+
+import androidx.compose.material3.Typography
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.googlefonts.GoogleFont
+import androidx.compose.ui.unit.sp
+import github.naturewhisp.myco.R
+
+private val provider = GoogleFont.Provider(
+    providerAuthority = "com.google.android.gms.fonts",
+    providerPackage = "com.google.android.gms",
+    certificates = R.array.com_google_android_gms_fonts_certs
+)
+
+// Il fallback di sistema copre i dispositivi senza Play Services
+val MycoSerif = FontFamily(
+    Font(GoogleFont("Roboto Serif"), provider, FontWeight.Normal),
+    Font(GoogleFont("Roboto Serif"), provider, FontWeight.Medium),
+    Font(GoogleFont("Roboto Serif"), provider, FontWeight.SemiBold)
+)
+val MycoSans = FontFamily.Default
+
+val MycoTypography = Typography(
+    displaySmall   = TextStyle(MycoSerif, fontSize = 34.sp, lineHeight = 38.sp, fontWeight = FontWeight.Medium),
+    headlineMedium = TextStyle(MycoSerif, fontSize = 28.sp, lineHeight = 32.sp, fontWeight = FontWeight.Medium),
+    headlineSmall  = TextStyle(MycoSerif, fontSize = 21.sp, lineHeight = 25.sp, fontWeight = FontWeight.Medium),
+    titleMedium    = TextStyle(MycoSerif, fontSize = 18.sp, lineHeight = 23.sp, fontWeight = FontWeight.Normal),
+    bodyLarge      = TextStyle(MycoSerif, fontSize = 16.sp, lineHeight = 25.sp),
+    bodyMedium     = TextStyle(MycoSans,  fontSize = 15.sp, lineHeight = 21.sp),
+    bodySmall      = TextStyle(MycoSans,  fontSize = 13.sp, lineHeight = 18.sp),
+    labelMedium    = TextStyle(MycoSans,  fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.08.em)
+)</code></pre>
+
+<div class="warn"><strong>Regola tipografica non negoziabile.</strong> Nessun <code>Text</code> può avere altezza fissa, e nessun contenitore di testo può avere <code>height</code> in <code>dp</code>. Con il font scaling di sistema al 130%, che è una impostazione comune, ogni altezza fissa produce testo tagliato. Usare <code>heightIn(min = …)</code> quando serve un'altezza minima.</div>
+
+<h3>4.4 Forme e spazi</h3>
+<pre><code>package github.naturewhisp.myco.ui.theme
+
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Shapes
+import androidx.compose.ui.unit.dp
+
+val MycoShapes = Shapes(
+    extraSmall = RoundedCornerShape(3.dp),   // segmenti della barra
+    small      = RoundedCornerShape(6.dp),   // bottoni, campi, anteprima mappa
+    medium     = RoundedCornerShape(8.dp),   // pannelli
+    large      = RoundedCornerShape(16.dp)   // bottom sheet
+)
+
+// Scala degli spazi. Ogni margine nel codice usa uno di questi valori.
+object Spacing {
+    val xs = 4.dp
+    val sm = 8.dp
+    val md = 12.dp
+    val lg = 18.dp
+    val xl = 26.dp
+    val xxl = 40.dp
+    val screenH = 18.dp   // margine orizzontale di schermata
+    val touch = 48.dp     // target minimo
+}</code></pre>
+
+<h4>Dipendenze da aggiungere in <code>app/build.gradle</code></h4>
+<pre><code>implementation 'androidx.compose.ui:ui-text-google-fonts'          // font scaricabili
+implementation 'androidx.compose.material:material-icons-extended' // icone lineari
+implementation 'androidx.datastore:datastore-preferences:1.1.1'    // preferenza tema
+implementation 'androidx.activity:activity-compose:1.8.2'          // già presente, serve enableEdgeToEdge</code></pre>
+<p>Serve inoltre <code>res/values/font_certs.xml</code> con l'array dei certificati Google Fonts, generato da Android Studio con la procedura Downloadable Fonts.</p>
+
+<h2 id="tema">5 · Tema chiaro, scuro e di sistema</h2>
+<p class="lead">Tre stati: segui il sistema, forza chiaro, forza scuro. La preferenza è persistita e applicata prima del primo frame.</p>
+
+<h4>File nuovo: <code>ui/theme/ThemePreference.kt</code></h4>
+<pre><code>package github.naturewhisp.myco.ui.theme
+
+import android.content.Context
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.map
+
+enum class ThemeMode { SYSTEM, LIGHT, DARK }
+
+private val Context.themeStore by preferencesDataStore(name = "myco_prefs")
+private val KEY_THEME = stringPreferencesKey("theme_mode")
+
+class ThemePreference(private val context: Context) {
+
+    val mode = context.themeStore.data.map { prefs -&gt;
+        runCatching { ThemeMode.valueOf(prefs[KEY_THEME] ?: "SYSTEM") }.getOrDefault(ThemeMode.SYSTEM)
+    }
+
+    suspend fun set(mode: ThemeMode) {
+        context.themeStore.edit { it[KEY_THEME] = mode.name }
+    }
+}</code></pre>
+
+<h4>File riscritto: <code>ui/theme/Theme.kt</code></h4>
+<pre><code>package github.naturewhisp.myco.ui.theme
+
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.ui.graphics.Color
+
+private val HerbariumLight = lightColorScheme(
+    primary = Forest,              onPrimary = Parchment,
+    primaryContainer = Sage,       onPrimaryContainer = Ink,
+    secondary = Lichen,            onSecondary = Parchment,
+    background = Parchment,        onBackground = Ink,
+    surface = Parchment,           onSurface = Ink,
+    surfaceVariant = Parchment2,   onSurfaceVariant = InkSoft,
+    outline = RuleLight,           outlineVariant = RuleLight2,
+    error = Rust,                  onError = Parchment,
+    scrim = Color(0x803B2F26)
+)
+
+private val HerbariumDark = darkColorScheme(
+    primary = NightLichen,         onPrimary = NightBase,
+    primaryContainer = NightSage,  onPrimaryContainer = NightInk,
+    secondary = NightSage,         onSecondary = NightBase,
+    background = NightBase,        onBackground = NightInk,
+    surface = NightBase,           onSurface = NightInk,
+    surfaceVariant = NightSurface, onSurfaceVariant = NightInkSoft,
+    outline = NightRule,           outlineVariant = NightRule2,
+    error = NightRust,             onError = NightBase,
+    scrim = Color(0x99000000)
+)
+
+@Composable
+fun MycoTheme(
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
+    content: @Composable () -&gt; Unit
+) {
+    // Il colore dinamico di Android 12 è escluso di proposito: l'identità
+    // cromatica è parte del prodotto e non deve cambiare con lo sfondo del telefono.
+    val dark = when (themeMode) {
+        ThemeMode.SYSTEM -&gt; isSystemInDarkTheme()
+        ThemeMode.LIGHT -&gt; false
+        ThemeMode.DARK -&gt; true
+    }
+
+    CompositionLocalProvider(
+        LocalMycoColors provides if (dark) DarkMycoColors else LightMycoColors
+    ) {
+        MaterialTheme(
+            colorScheme = if (dark) HerbariumDark else HerbariumLight,
+            typography = MycoTypography,
+            shapes = MycoShapes,
+            content = content
+        )
+    }
+}
+
+/** Accesso breve ai colori semantici: MycoTheme.colors.scale3 */
+object MycoTheme {
+    val colors: MycoColors
+        @Composable @ReadOnlyComposable get() = LocalMycoColors.current
+}</code></pre>
+
+<h4>File riscritto: <code>MainActivity.kt</code>, parte rilevante</h4>
+<pre><code>class MainActivity : ComponentActivity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        // enableEdgeToEdge sostituisce windowTranslucentStatus del tema XML.
+        // Le icone di sistema si adattano automaticamente al tema in uso.
+        enableEdgeToEdge()
+        super.onCreate(savedInstanceState)
+
+        val prefs = ThemePreference(applicationContext)
+
+        setContent {
+            val mode by prefs.mode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
+            MycoTheme(themeMode = mode) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    MushroomApp()
+                }
+            }
+        }
+    }
+}</code></pre>
+
+<h4>File riscritto: <code>res/values/themes.xml</code> e nuovo <code>res/values-night/themes.xml</code></h4>
+<pre><code>&lt;!-- res/values/themes.xml --&gt;
+&lt;resources&gt;
+    &lt;style name="Theme.Myco" parent="android:Theme.Material.Light.NoActionBar"&gt;
+        &lt;!-- Colore di fondo della finestra: evita il lampo bianco all'avvio --&gt;
+        &lt;item name="android:windowBackground"&gt;@color/window_background&lt;/item&gt;
+        &lt;item name="android:statusBarColor"&gt;@android:color/transparent&lt;/item&gt;
+        &lt;item name="android:navigationBarColor"&gt;@android:color/transparent&lt;/item&gt;
+    &lt;/style&gt;
+&lt;/resources&gt;
+
+&lt;!-- res/values/colors.xml --&gt;
+&lt;resources&gt;
+    &lt;color name="window_background"&gt;#F4EDE0&lt;/color&gt;
+&lt;/resources&gt;
+
+&lt;!-- res/values-night/colors.xml --&gt;
+&lt;resources&gt;
+    &lt;color name="window_background"&gt;#221E18&lt;/color&gt;
+&lt;/resources&gt;</code></pre>
+
+<p>Nel manifest, <code>android:theme</code> passa da <code>@style/Theme.Funghi</code> a <code>@style/Theme.Myco</code>. L'attributo <code>android:configChanges="uiMode"</code> già presente sull'activity va rimosso: impedisce la ricreazione al cambio di tema di sistema, che invece serve perché <code>values-night</code> venga riapplicato.</p>
+
+<div class="note">Quando la preferenza è forzata a chiaro mentre il sistema è scuro, <code>values-night</code> resterebbe disallineato per lo sfondo della finestra. È un lampo di pochi millisecondi al solo avvio a freddo. Se dà fastidio, si risolve leggendo la preferenza in modo sincrono in <code>onCreate</code> e chiamando <code>AppCompatDelegate.setDefaultNightMode</code>, al costo di aggiungere AppCompat: non vale la dipendenza.</div>
+
+<h2 id="dominio">6 · Refactor del dominio</h2>
+<p class="lead">La UI oggi legge stringhe italiane già formattate e ne deduce icone e colori. Va invertito: il dominio produce dati tipizzati, la UI decide come mostrarli.</p>
+
+<h3>6.1 Fattori ambientali</h3>
+<p>Sostituisce <code>parseMetric()</code>, <code>getDetailColor()</code> e le nove stringhe <code>viewModel.*Text</code>.</p>
+
+<pre><code>package github.naturewhisp.myco.model
+
+/** Fattori ambientali mostrati nella schermata risultato. */
+enum class FactorId {
+    HABITAT, ALTITUDE, RAIN, TEMPERATURE, SEASON, MOON, SYMBIOSIS, HYPHAL_NETWORK, ASPECT
+}
+
+/** Livello qualitativo di un fattore. Determina il colore, mai il testo. */
+enum class FactorLevel { FAVORABLE, NEUTRAL, ADVERSE, NOT_APPLICABLE }
+
+/**
+ * Un fattore pronto per il rendering.
+ * value e detail sono già localizzati; level è indipendente dalla lingua.
+ */
+data class Factor(
+    val id: FactorId,
+    val value: String,
+    val level: FactorLevel,
+    val detail: String? = null
+)</code></pre>
+
+<p>Esempio di costruzione lato dominio, che sostituisce <code>ScoreResult(score, "🏔️ Altitudine: 1037m (Ideale).")</code>:</p>
+
+<pre><code>fun altitudeFactor(elevation: Float, res: StringProvider): Factor {
+    val level = when {
+        elevation &lt; 200f -&gt; FactorLevel.NEUTRAL
+        elevation &lt;= 1400f -&gt; FactorLevel.FAVORABLE
+        elevation &lt;= 1800f -&gt; FactorLevel.NEUTRAL
+        else -&gt; FactorLevel.ADVERSE
+    }
+    return Factor(
+        id = FactorId.ALTITUDE,
+        value = res.metres(elevation),                 // "1037 m", formattato per locale
+        level = level,
+        detail = res.altitudeDetail(level)             // "ideale", "collinare", ...
+    )
+}</code></pre>
+
+<p>La UI mappa <code>FactorId</code> su icona ed etichetta, e <code>FactorLevel</code> su colore. Nessuna ricerca di sottostringhe, nessuna emoji nel modello.</p>
+
+<table>
+<tr><th><code>FactorId</code></th><th>Icona</th><th>Etichetta</th></tr>
+<tr><td>HABITAT</td><td><code>Icons.Outlined.Forest</code></td><td>Habitat boschivo</td></tr>
+<tr><td>ALTITUDE</td><td><code>Icons.Outlined.Terrain</code></td><td>Altitudine</td></tr>
+<tr><td>RAIN</td><td><code>Icons.Outlined.WaterDrop</code></td><td>Pioggia, 14 giorni</td></tr>
+<tr><td>TEMPERATURE</td><td><code>Icons.Outlined.Thermostat</code></td><td>Temperatura media</td></tr>
+<tr><td>SEASON</td><td><code>Icons.Outlined.CalendarMonth</code></td><td>Stagione</td></tr>
+<tr><td>MOON</td><td><code>Icons.Outlined.DarkMode</code></td><td>Luna</td></tr>
+<tr><td>SYMBIOSIS</td><td><code>Icons.Outlined.Hub</code></td><td>Simbiosi ectomicorrizica</td></tr>
+<tr><td>HYPHAL_NETWORK</td><td><code>Icons.Outlined.Grain</code></td><td>Rete ifale</td></tr>
+<tr><td>ASPECT</td><td><code>Icons.Outlined.Explore</code></td><td>Versante</td></tr>
+</table>
+
+<h3>6.2 Previsione giornaliera</h3>
+<p>Il calcolo esce dalla UI e va in <code>MushroomAlgorithms</code>. Cambiano anche le soglie a gradino, che oggi producono salti del 10% per mezzo grado.</p>
+
+<pre><code>data class DailyOutlook(
+    val date: LocalDate,
+    val condition: WeatherCondition,   // enum, non emoji
+    val avgTempC: Float,
+    val precipMm: Float,
+    val growthProbability: Int         // 0..100, stessa scala del valore principale
+)
+
+enum class WeatherCondition { CLEAR, CLOUDY, RAIN, STORM, UNKNOWN }
+
+fun weatherCondition(code: Int?): WeatherCondition = when (code) {
+    null -&gt; WeatherCondition.UNKNOWN
+    0 -&gt; WeatherCondition.CLEAR
+    in 1..3 -&gt; WeatherCondition.CLOUDY
+    in 51..67, in 80..82 -&gt; WeatherCondition.RAIN
+    in 95..99 -&gt; WeatherCondition.STORM
+    else -&gt; WeatherCondition.CLOUDY
+}</code></pre>
+
+<h4>Punteggi continui al posto delle soglie</h4>
+<pre><code>/**
+ * Punteggio temperatura 0..30 con rampa lineare invece di gradini.
+ * Plateau pieno tra 14 e 22 gradi, azzeramento sotto 6 e sopra 30.
+ */
+fun tempScoreSmooth(avgTemp: Double): Double {
+    val factor = when {
+        avgTemp &lt;= 6.0 || avgTemp &gt;= 30.0 -&gt; 0.0
+        avgTemp &lt; 14.0 -&gt; (avgTemp - 6.0) / 8.0
+        avgTemp &lt;= 22.0 -&gt; 1.0
+        else -&gt; (30.0 - avgTemp) / 8.0
+    }
+    return factor * 30.0
+}
+
+/** Punteggio pioggia 0..40, saturazione morbida oltre i 40 mm cumulati. */
+fun rainScoreSmooth(totalRain: Double): Double =
+    Math.pow((totalRain / 40.0).coerceIn(0.0, 1.0), 0.7) * 40.0
+
+/** Punteggio umidità 0..15, lineare tra 60% e 90%. */
+fun humidityScoreSmooth(avgHumidity: Double): Double =
+    ((avgHumidity - 60.0) / 30.0).coerceIn(0.0, 1.0) * 15.0</code></pre>
+
+<h4>Unificazione della scala</h4>
+<p>Il valore giornaliero deve essere confrontabile con il valore principale. Si ottiene moltiplicando il potenziale del sito, che è costante nel breve periodo, per il modulatore meteo del giorno. È la stessa struttura già usata da <code>HeatmapGenerator</code>, quindi le tre superfici numeriche dell'app diventano coerenti fra loro.</p>
+
+<pre><code>/**
+ * Probabilità di crescita del giorno, sulla stessa scala del valore principale.
+ * sitePotential 0..100 deriva da EcM, biomassa ifale, altitudine e stagione.
+ */
+fun dailyGrowthProbability(sitePotential: Double, day: ProcessedDay): Int {
+    val weatherScore = rainScoreSmooth(day.totalPrecip.toDouble()) +
+                       tempScoreSmooth(day.avgTemp.toDouble()) +
+                       humidityScoreSmooth(day.avgHumidity.toDouble())   // 0..85
+    val weatherFactor = (weatherScore / 85.0).coerceIn(0.0, 1.0)
+    // Stesso volano di HeatmapGenerator: il meteo modula, non determina
+    val multiplier = 0.70 + weatherFactor * 0.50
+    return (sitePotential * multiplier).toInt().coerceIn(0, 100)
+}</code></pre>
+
+<div class="warn"><strong>Decisione da confermare prima della fase 5.</strong> Se l'unificazione non viene adottata, la schermata tendenza deve etichettare la barra come "condizioni meteo del giorno" e usare il colore <code>meteo</code> invece della scala di probabilità. Quello che non può restare è la situazione attuale: due grandezze diverse, stesso simbolo, stessa scala cromatica, nessuna spiegazione.</div>
+
+<h3>6.3 Stati della schermata</h3>
+<pre><code>sealed interface ForecastUiState {
+    data object Idle : ForecastUiState                       // nessuna località scelta
+    data object Loading : ForecastUiState
+    data class Ready(
+        val location: PlaceName,
+        val probability: Int,
+        val phase: GrowthPhase,
+        val factors: List&lt;Factor&gt;,
+        val outlook: List&lt;DailyOutlook&gt;,
+        val updatedAt: Instant,
+        val fromCache: Boolean                               // true quando si è offline
+    ) : ForecastUiState
+    data class Empty(val reason: EmptyReason) : ForecastUiState
+    data class Failed(val reason: FailureReason) : ForecastUiState
+}
+
+enum class EmptyReason { NO_SAVED_PLACES, NO_SEARCH_RESULT, OUTSIDE_HABITAT, OUTSIDE_COVERAGE }
+enum class FailureReason { NETWORK, LOCATION_PERMISSION, GEOCODING, UNKNOWN }
+
+/** Nome di luogo scomposto: il display_name grezzo di Nominatim non arriva mai alla UI. */
+data class PlaceName(
+    val primary: String,      // "Chamonix-Mont-Blanc"
+    val secondary: String,    // "Haute-Savoie, Francia"
+    val lat: Double,
+    val lon: Double
+)</code></pre>
+
+<p>La scomposizione si costruisce dai campi <code>address</code> di Nominatim, richiedendo <code>addressdetails=1</code>, con il <code>display_name</code> come solo fallback e comunque troncato al primo segmento:</p>
+
+<pre><code>fun GeocodeResult.toPlaceName(): PlaceName {
+    val a = address
+    val primary = a?.village ?: a?.town ?: a?.city ?: a?.municipality
+        ?: displayName.substringBefore(',').trim()
+    val secondary = listOfNotNull(a?.county ?: a?.state, a?.country)
+        .joinToString(", ")
+    return PlaceName(primary, secondary, lat.toDouble(), lon.toDouble())
+}</code></pre>
+
+<h2 id="componenti">7 · Libreria componenti</h2>
+<p class="lead">Otto composable coprono tutta l'app. Vivono in <code>ui/components/</code>, un file per famiglia, e sostituiscono <code>GlassmorphicCard</code>, <code>MetricCard</code>, <code>ForecastGridItem</code>, <code>RadialProgress</code>, <code>BonusBanner</code>, <code>LocationChip</code>.</p>
+
+<table>
+<tr><th>Componente</th><th>Sostituisce</th><th>Ruolo</th></tr>
+<tr><td><code>MycoDivider</code></td><td>bordi delle card</td><td>Filetto semplice o con ornamento centrale fra macro sezioni</td></tr>
+<tr><td><code>ProbabilityBar</code></td><td><code>RadialProgress</code></td><td>Cinque segmenti, gradino colorato secondo la scala</td></tr>
+<tr><td><code>ProbabilityHeadline</code></td><td>gauge circolare</td><td>Numero grande, unità, etichetta a destra</td></tr>
+<tr><td><code>FactorRow</code></td><td><code>MetricCard</code></td><td>Riga icona, etichetta, valore</td></tr>
+<tr><td><code>DayRow</code></td><td><code>ForecastGridItem</code></td><td>Riga giornaliera con barra e valori meteo</td></tr>
+<tr><td><code>TrendCurve</code></td><td>niente</td><td>Curva a cinque punti con marcatore del picco</td></tr>
+<tr><td><code>FieldNote</code></td><td>card AI con badge Nano</td><td>Nota generata, con stati contenuto, caricamento, errore</td></tr>
+<tr><td><code>EmptyState</code></td><td>niente</td><td>Stato vuoto o di errore, struttura unica</td></tr>
+</table>
+
+<h4><code>MycoDivider</code></h4>
+<pre><code>@Composable
+fun MycoDivider(
+    modifier: Modifier = Modifier,
+    ornament: ImageVector? = null
+) {
+    val rule = MaterialTheme.colorScheme.outlineVariant
+    if (ornament == null) {
+        HorizontalDivider(modifier = modifier, thickness = 1.dp, color = rule)
+        return
+    }
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        HorizontalDivider(Modifier.weight(1f), thickness = 1.dp, color = rule)
+        Icon(
+            imageVector = ornament,
+            contentDescription = null,          // puramente decorativo
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = Spacing.md).size(16.dp)
+        )
+        HorizontalDivider(Modifier.weight(1f), thickness = 1.dp, color = rule)
+    }
+}</code></pre>
+
+<h4><code>ProbabilityBar</code></h4>
+<pre><code>/**
+ * Barra a cinque segmenti. I segmenti pieni usano il colore del gradino
+ * raggiunto, quelli vuoti la tinta neutra: mai trasparenza.
+ */
+@Composable
+fun ProbabilityBar(
+    probability: Int,
+    modifier: Modifier = Modifier,
+    segments: Int = 5
+) {
+    val colors = MycoTheme.colors
+    val filled = (probability * segments / 100).coerceIn(0, segments)
+    val active = colors.forProbability(probability)
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = "Probabilità $probability per cento" },
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        repeat(segments) { index -&gt;
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(8.dp)
+                    .clip(MaterialTheme.shapes.extraSmall)
+                    .background(if (index &lt; filled) active else colors.scale0)
+            )
+        }
+    }
+}</code></pre>
+
+<h4><code>FactorRow</code></h4>
+<pre><code>@Composable
+fun FactorRow(factor: Factor, modifier: Modifier = Modifier) {
+    val colors = MycoTheme.colors
+    val tint = when (factor.level) {
+        FactorLevel.FAVORABLE -&gt; colors.favorable
+        FactorLevel.NEUTRAL -&gt; colors.neutral
+        FactorLevel.ADVERSE -&gt; colors.adverse
+        FactorLevel.NOT_APPLICABLE -&gt; MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = Spacing.touch)      // altezza minima, non fissa
+            .padding(vertical = Spacing.md),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = factor.id.icon(),
+            contentDescription = null,           // l'etichetta accanto è già testuale
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.width(Spacing.md))
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(factor.id.label()), style = MaterialTheme.typography.bodyMedium)
+            factor.detail?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Spacer(Modifier.width(Spacing.sm))
+        Text(factor.value, style = MaterialTheme.typography.bodyMedium, color = tint)
+    }
+}</code></pre>
+
+<h4><code>TrendCurve</code></h4>
+<pre><code>/**
+ * Curva della probabilità sui giorni disponibili. Nessuna libreria di grafici:
+ * il tracciato è un Path su Canvas, l'area sottostante una tinta piena.
+ */
+@Composable
+fun TrendCurve(points: List&lt;Int&gt;, modifier: Modifier = Modifier) {
+    if (points.size &lt; 2) return
+    val colors = MycoTheme.colors
+    val line = MaterialTheme.colorScheme.primary
+    val peakIndex = points.indexOf(points.max())
+
+    Canvas(modifier.fillMaxWidth().height(110.dp)) {
+        val stepX = size.width / (points.size - 1)
+        val maxV = 100f
+        fun y(v: Int) = size.height - (v / maxV) * size.height
+
+        val path = Path().apply {
+            moveTo(0f, y(points.first()))
+            points.forEachIndexed { i, v -&gt; if (i &gt; 0) lineTo(i * stepX, y(v)) }
+        }
+        val area = Path().apply {
+            addPath(path)
+            lineTo(size.width, size.height); lineTo(0f, size.height); close()
+        }
+        drawPath(area, colors.scale1, alpha = 0.45f)
+        drawPath(path, line, style = Stroke(width = 3f))
+        points.forEachIndexed { i, v -&gt;
+            val isPeak = i == peakIndex
+            drawCircle(
+                color = if (isPeak) colors.scale2 else line,
+                radius = if (isPeak) 9f else 5f,
+                center = Offset(i * stepX, y(v))
+            )
+        }
+    }
+}</code></pre>
+
+<h4><code>FieldNote</code></h4>
+<pre><code>sealed interface FieldNoteState {
+    data class Content(val text: String, val generatedAt: Instant) : FieldNoteState
+    data object Loading : FieldNoteState
+    data object Unavailable : FieldNoteState
+}
+
+@Composable
+fun FieldNote(
+    state: FieldNoteState,
+    onRetry: () -&gt; Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+
+    Column(modifier.fillMaxWidth()) {
+        MycoDivider(ornament = Icons.Outlined.Spa)
+        Spacer(Modifier.height(Spacing.md))
+        Text(stringResource(R.string.field_note_title), style = MaterialTheme.typography.headlineSmall)
+
+        when (state) {
+            is FieldNoteState.Content -&gt; {
+                Text(
+                    text = state.text,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = if (expanded) Int.MAX_VALUE else 5,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .padding(top = Spacing.md)
+                        .animateContentSize()          // rispetta prefers reduced motion di sistema
+                )
+                TextButton(
+                    onClick = { expanded = !expanded },
+                    modifier = Modifier.semantics { /* aria-expanded equivalente */ }
+                ) {
+                    Text(stringResource(if (expanded) R.string.read_less else R.string.read_more))
+                }
+                Text(
+                    stringResource(R.string.field_note_disclaimer),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            FieldNoteState.Loading -&gt; SkeletonLines(widths = listOf(1f, .94f, .88f, .52f))
+            FieldNoteState.Unavailable -&gt; {
+                Text(
+                    stringResource(R.string.field_note_unavailable),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = Spacing.sm)
+                )
+                OutlinedButton(onClick = onRetry, modifier = Modifier.padding(top = Spacing.md)) {
+                    Text(stringResource(R.string.retry))
+                }
+            }
+        }
+    }
+}</code></pre>
+
+<p>Lo skeleton pulsa in opacità fra 1 e 0,55. Nessuno shimmer con gradiente in movimento: costa di più e stona con lo stile piatto.</p>
+
+<h4><code>EmptyState</code></h4>
+<pre><code>@Composable
+fun EmptyState(
+    icon: ImageVector,
+    title: String,
+    body: String,
+    actionLabel: String?,
+    onAction: (() -&gt; Unit)?,
+    modifier: Modifier = Modifier,
+    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = Spacing.xl)
+            .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(30.dp))
+        Text(title, style = MaterialTheme.typography.headlineSmall,
+             modifier = Modifier.padding(top = Spacing.md))
+        Text(body, style = MaterialTheme.typography.bodyMedium,
+             color = MaterialTheme.colorScheme.onSurfaceVariant,
+             textAlign = TextAlign.Center,
+             modifier = Modifier.padding(top = Spacing.sm))
+        if (actionLabel != null &amp;&amp; onAction != null) {
+            OutlinedButton(onClick = onAction, modifier = Modifier.padding(top = Spacing.lg)) {
+                Text(actionLabel)
+            }
+        }
+    }
+}</code></pre>
+
+<h2 id="schermate">8 · Schermate e mockup</h2>
+<p class="lead">I mockup che seguono sono riferimenti visivi, non pixel da replicare. Cambiano tema insieme a questo documento, come farà l'app.</p>
+
+<h3>8.1 Risultato</h3>
+<div class="phone">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:22px">
+    <span class="meta">←</span><span class="meta">aggiornato 42 min fa</span><span class="meta">☆</span>
+  </div>
+  <div class="ph-h">Chamonix-Mont-Blanc</div>
+  <div class="ph-sub">Haute-Savoie, Francia · 1037 m · versante est</div>
+  <div style="display:flex;align-items:baseline;gap:10px;margin-top:26px">
+    <span class="big">65</span><span style="font-size:20px;color:var(--accent)">%</span>
+    <span style="font-size:13px;color:var(--text-2);margin-left:auto;text-align:right">probabilità<br>di crescita</span>
+  </div>
+  <div class="bar"><i style="background:var(--scale-1)"></i><i style="background:var(--scale-1)"></i><i style="background:var(--scale-2)"></i><i></i><i></i></div>
+  <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-2);margin-top:6px"><span>bassa</span><span>alta</span></div>
+  <div style="margin-top:18px;font-size:15px">In crescita, picco stimato tra 5 e 7 giorni</div>
+  <div class="orn"><i></i><b>✳</b><i></i></div>
+  <div class="meta" style="margin-bottom:8px">fattori rilevati</div>
+  <div class="row"><span>Habitat boschivo</span><span class="val">ideale</span></div>
+  <div class="row"><span>Pioggia, 14 giorni</span><span class="val">67 mm</span></div>
+  <div class="row"><span>Temperatura media</span><span class="val">17,3 °C</span></div>
+  <div class="row"><span>Rete micorrizica</span><span class="val" style="color:var(--scale-2)">attiva</span></div>
+  <div class="btns"><span class="btn">Mappa</span><span class="btn pri">Naviga</span></div>
+</div>
+
+<table>
+<tr><th>Prima</th><th>Ora</th></tr>
+<tr><td><code>display_name</code> di Nominatim su otto righe</td><td><code>PlaceName.primary</code> in serif su una riga, contesto in <code>bodySmall</code></td></tr>
+<tr><td>Gauge circolare gialla isolata dal resto</td><td><code>ProbabilityHeadline</code> più <code>ProbabilityBar</code>, stessa scala della mappa</td></tr>
+<tr><td>Nove card in griglia disallineata</td><td>Lista di <code>FactorRow</code> con filetti, valore allineato a destra</td></tr>
+<tr><td>Emoji colorate come icone</td><td>Icone lineari monocromatiche che ereditano il colore dal tema</td></tr>
+<tr><td>Mappa in testa che occupa metà schermo</td><td>Mappa come azione secondaria, il dato primario sopra la piega</td></tr>
+</table>
+
+<h3>8.2 Tendenza</h3>
+<div class="phone">
+  <div class="ph-h" style="font-size:22px">Prossimi cinque giorni</div>
+  <div class="ph-sub">Probabilità di crescita, aggiornata ogni 6 ore</div>
+  <svg viewBox="0 0 320 120" style="width:100%;margin-top:16px" aria-hidden="true">
+    <line x1="0" y1="24" x2="320" y2="24" stroke="var(--rule-2)"></line>
+    <line x1="0" y1="60" x2="320" y2="60" stroke="var(--rule-2)"></line>
+    <line x1="0" y1="96" x2="320" y2="96" stroke="var(--rule-2)"></line>
+    <path d="M20 60 L96 52 L172 38 L248 26 L300 22 L300 96 L20 96 Z" fill="var(--scale-1)" opacity=".45"></path>
+    <path d="M20 60 L96 52 L172 38 L248 26 L300 22" fill="none" stroke="var(--accent)" stroke-width="2"></path>
+    <circle cx="300" cy="22" r="5" fill="var(--scale-2)"></circle>
+  </svg>
+  <div class="row"><span style="width:52px">gio 3</span><span style="flex:1"><span style="display:block;height:6px;background:var(--scale-0);border-radius:3px"><span style="display:block;width:65%;height:6px;background:var(--scale-1);border-radius:3px"></span></span><span style="display:block;font-size:12px;color:var(--text-2);margin-top:5px">18,7 °C · 0 mm</span></span><span style="width:44px;text-align:right;font-family:var(--serif)">65%</span></div>
+  <div class="row"><span style="width:52px">ven 4</span><span style="flex:1"><span style="display:block;height:6px;background:var(--scale-0);border-radius:3px"><span style="display:block;width:68%;height:6px;background:var(--scale-1);border-radius:3px"></span></span><span style="display:block;font-size:12px;color:var(--text-2);margin-top:5px">21,9 °C · 4 mm</span></span><span style="width:44px;text-align:right;font-family:var(--serif)">68%</span></div>
+  <div class="row"><span style="width:52px">sab 5</span><span style="flex:1"><span style="display:block;height:6px;background:var(--scale-0);border-radius:3px"><span style="display:block;width:72%;height:6px;background:var(--scale-2);border-radius:3px"></span></span><span style="display:block;font-size:12px;color:var(--text-2);margin-top:5px">20,3 °C · 12 mm</span></span><span style="width:44px;text-align:right;font-family:var(--serif)">72%</span></div>
+  <div class="row"><span style="width:52px">lun 7</span><span style="flex:1"><span style="display:block;height:6px;background:var(--scale-0);border-radius:3px"><span style="display:block;width:78%;height:6px;background:var(--scale-2);border-radius:3px"></span></span><span style="display:block;font-size:12px;color:var(--text-2);margin-top:5px">22,5 °C · 0 mm</span></span><span style="width:44px;text-align:right;font-family:var(--serif);color:var(--scale-3)">78%</span></div>
+  <div style="display:flex;gap:8px;margin-top:14px;font-size:13px;color:var(--text-2)">La barra indica la probabilità di crescita del giorno. Temperatura e pioggia sono i valori attesi nelle 24 ore.</div>
+</div>
+
+<p>Note di implementazione: la riga meteo è un unico <code>Text</code> con spazio unificatore prima dell'unità, <code>"22,5\u00A0°C · 0\u00A0mm"</code>, così l'unità non va mai a capo da sola. Le etichette dei giorni si generano con <code>DateTimeFormatter.ofPattern("EEE d", Locale.getDefault())</code>, mai da array di stringhe italiane.</p>
+
+<h3>8.3 Home</h3>
+<div class="phone">
+  <div style="display:flex;align-items:center;justify-content:space-between">
+    <div><div class="ph-h" style="font-size:25px">Myco Porcini</div>
+    <div class="ph-sub">Previsione di crescita da microclima e vegetazione</div></div>
+    <span class="meta">⚙</span>
+  </div>
+  <div style="display:flex;gap:10px;margin-top:20px">
+    <div style="flex:1;border:1px solid var(--rule);border-radius:6px;padding:13px 12px;color:var(--text-2);font-size:15px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">Cerca una località</div>
+    <div style="width:48px;border:1px solid var(--rule);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--accent)">◎</div>
+  </div>
+  <div class="meta" style="margin:24px 0 4px">i tuoi luoghi</div>
+  <div class="row"><span style="font-family:var(--serif);font-size:19px;color:var(--accent);width:44px">78%</span><span style="flex:1"><span style="display:block">Rasoi</span><span style="display:block;font-size:13px;color:var(--text-2)">Lombardia · 940 m · 12 min fa</span></span><span class="meta">›</span></div>
+  <div class="row"><span style="font-family:var(--serif);font-size:19px;color:var(--scale-3);width:44px">65%</span><span style="flex:1"><span style="display:block">Chamonix-Mont-Blanc</span><span style="display:block;font-size:13px;color:var(--text-2)">Haute-Savoie · 1037 m · 42 min fa</span></span><span class="meta">›</span></div>
+  <div style="padding:12px 0;color:var(--accent);font-size:15px">+ Aggiungi un luogo</div>
+  <div class="orn"><i></i><b>✳</b><i></i></div>
+  <div style="height:120px;border:1px solid var(--hairline);border-radius:6px;background:var(--scale-0)"></div>
+  <div style="font-size:13px;color:var(--text-2);margin-top:8px;text-align:center">Tocca la mappa per scegliere il punto esatto</div>
+</div>
+
+<table>
+<tr><th>Problema attuale</th><th>Soluzione</th></tr>
+<tr><td>Testo della ricerca clippato, si legge "hamonix"</td><td>Campo con <code>Modifier.weight(1f)</code> e <code>singleLine = true</code>, altezza minima 48 dp, icona interna che non si sovrappone</td></tr>
+<tr><td>Badge, titolo e sottotitolo dicono la stessa cosa tre volte</td><td>Un wordmark serif e una riga di descrizione</td></tr>
+<tr><td>Preferiti come chip con "×" da 20 dp</td><td>Righe da 60 dp con valore, contesto e freschezza. Rimozione con pressione prolungata</td></tr>
+<tr><td>Preferito senza dato</td><td>Ogni luogo mostra la sua probabilità, dalla cache: la home diventa un cruscotto</td></tr>
+<tr><td>Toggle "Nuvola ON" sempre presente</td><td>Rimosso: l'overlay è acceso di default, il controllo vive nella mappa a schermo intero</td></tr>
+</table>
+
+<h3>8.4 Mappa a schermo intero</h3>
+<table>
+<tr><th>Problema attuale</th><th>Soluzione</th></tr>
+<tr><td>Titolo troncato a "Cham…" mentre le coordinate occupano quattro righe</td><td>Titolo su una riga con ellissi nella barra superiore, coordinate su una riga sola nel pannello</td></tr>
+<tr><td>Tre bottoni emoji dal significato ignoto</td><td>Stack verticale di tre controlli da 48 dp: overlay probabilità, stile mappa, posizione. Ognuno con <code>contentDescription</code></td></tr>
+<tr><td>Toggle testuale "Nuvola ON"</td><td>Stato visivo del controllo: attivo in tinta piena. La parola "Nuvola" sparisce, non descriveva nulla</td></tr>
+<tr><td>Legenda a gradiente continuo</td><td>Legenda a cinque gradini, identica a quella della schermata risultato</td></tr>
+<tr><td>"Aggiornamento previsione in tempo reale" con chip "42 min fa"</td><td>Copy rimosso. La freschezza si dichiara una volta sola</td></tr>
+<tr><td>"Conferma" generico</td><td>"Analizza qui": dice cosa succede al tocco</td></tr>
+</table>
+<ul>
+<li>Pannello inferiore come bottom sheet con due punti di ancoraggio, mai oltre un quarto dello schermo in stato compatto, con <code>WindowInsets.navigationBars</code> applicati.</li>
+<li>Pin fisso al centro schermo con la mappa che scorre sotto: più preciso del tocco diretto, perché il dito non copre il punto.</li>
+<li>Barra e pannello con fondo pieno, non traslucido: su cartografia colorata il blur riduce la leggibilità e costa in prestazioni.</li>
+<li>Il tocco aggiorna il pannello con debounce di 300 ms, per non generare una rigenerazione di heatmap per ogni micro spostamento.</li>
+</ul>
+
+<h3>8.5 Stati vuoti ed errori</h3>
+<div class="phone">
+  <div style="text-align:center;padding:6px 0 18px">
+    <div style="font-family:var(--serif);font-size:21px">Nessun luogo salvato</div>
+    <div style="font-size:15px;color:var(--text-2);margin-top:8px">Cerca una località o tocca la mappa per la prima previsione.</div>
+    <div class="btn pri" style="margin-top:16px">Usa la mia posizione</div>
+  </div>
+  <div style="height:1px;background:var(--rule)"></div>
+  <div style="text-align:center;padding:18px 0">
+    <div style="font-family:var(--serif);font-size:21px">Fuori habitat</div>
+    <div style="font-size:15px;color:var(--text-2);margin-top:8px">Il punto è in area urbana. Sposta il pin verso il bosco più vicino, a 1,2 km a nord.</div>
+    <div class="btn" style="margin-top:16px">Sposta il pin</div>
+  </div>
+  <div style="height:1px;background:var(--rule)"></div>
+  <div style="text-align:center;padding:18px 0 6px">
+    <div style="font-family:var(--serif);font-size:21px">Sei senza rete</div>
+    <div style="font-size:15px;color:var(--text-2);margin-top:8px">Mostriamo l'ultima previsione salvata, di ieri alle 18:40.</div>
+    <div class="btn" style="margin-top:16px">Riprova</div>
+  </div>
+</div>
+
+<table>
+<tr><th>Regola di copy</th><th>Applicazione</th></tr>
+<tr><td>Dire cosa è successo, poi cosa fare</td><td>"Il permesso è disattivato. Puoi comunque cercare o toccare la mappa."</td></tr>
+<tr><td>Nessuna prima persona, nessuna scusa</td><td>"Località non trovata", non "Non sono riuscito a trovarla"</td></tr>
+<tr><td>Una sola azione primaria per stato</td><td>Il resto resta raggiungibile ma non compete</td></tr>
+<tr><td>Nessuna stringa tecnica esposta</td><td>Mai codici HTTP o messaggi del geocoder</td></tr>
+<tr><td>Il fallimento parziale non svuota lo schermo</td><td>Offline si mostra la cache con la data, non una pagina vuota</td></tr>
+</table>
+
+<div class="warn"><strong>Lo stato "Fuori habitat" richiede lavoro sui dati.</strong> Serve un controllo di copertura del suolo, ottenibile dalla query Overpass già presente (<code>landuse=forest</code>, <code>natural=wood</code>) oppure dalla griglia EcM locale: dove <code>ecm == 0</code> il sito non ha potenziale. Senza questo controllo l'app continua a produrre previsioni sopra il 60% su un parcheggio, ed è il difetto che mina la credibilità di tutto il resto.</div>
+
+<h2 id="heatmap">9 · Heatmap e cartografia</h2>
+<p class="lead">La rampa attuale va da ciano a rosso con alpha crescente da 130 a 220. Copre la base cartografica e non è distinguibile in scala di grigi. La nuova rampa ha cinque gradini discreti e opacità costante.</p>
+
+<div class="ramp"><i style="background:var(--scale-0)"></i><i style="background:var(--scale-1)"></i><i style="background:var(--scale-2)"></i><i style="background:var(--scale-3)"></i><i style="background:var(--scale-4)"></i></div>
+<div class="legend"><span>0</span><span>25</span><span>50</span><span>75</span><span>100%</span></div>
+
+<table>
+<tr><th>Aspetto</th><th>Attuale</th><th>Nuovo</th></tr>
+<tr><td>Rampa</td><td>Ciano, smeraldo, giallo, arancio, rosso, continua</td><td>Cinque gradini pergamena, salvia, ocra, terracotta, ruggine</td></tr>
+<tr><td>Opacità</td><td>Da 130 a 220 su 255, cresce col valore</td><td>128 costante in tema chiaro, 150 in tema scuro</td></tr>
+<tr><td>Leggibilità daltonica</td><td>Confusione rosso e verde, ciano e grigio</td><td>Luminanza monotona, distinguibile anche in bianco e nero</td></tr>
+<tr><td>Lettura del valore</td><td>Impossibile stimare la fascia da un gradiente</td><td>"Sono in fascia 50-75" è dichiarabile a colpo d'occhio</td></tr>
+</table>
+
+<h4>Sostituzione in <code>utils/HeatmapGenerator.kt</code></h4>
+<pre><code>/**
+ * Rampa discreta a cinque gradini, allineata a MycoColors.scale0..scale4.
+ * L'alpha resta costante: la variazione di opacità con il valore rendeva
+ * illeggibile la base cartografica nelle zone ad alta probabilità.
+ */
+private fun getHeatmapColor(probability: Int, alpha: Int, dark: Boolean): Int {
+    if (probability &lt; 20) return 0   // Nessun micelio significativo: trasparente
+
+    val rgb = when {
+        probability &lt; 40 -&gt; if (dark) 0x6B7A55 else 0xBCC7A6
+        probability &lt; 60 -&gt; if (dark) 0xDCB65C else 0xC89B3C
+        probability &lt; 75 -&gt; if (dark) 0xC67C4B else 0xB96F42
+        else             -&gt; if (dark) 0xB85A45 else 0x9B4A38
+    }
+    return (alpha shl 24) or rgb
+}</code></pre>
+
+<p>La firma di <code>generateHeatmap</code> guadagna due parametri, <code>alpha</code> e <code>dark</code>, che il chiamante legge da <code>MycoTheme.colors.heatmapAlpha</code> e da <code>isSystemInDarkTheme()</code>. La bitmap va rigenerata al cambio di tema: è un'operazione da pochi millisecondi su griglia 96 per 96, quindi si può fare in un <code>LaunchedEffect</code> che osserva il tema.</p>
+
+<h4>Base cartografica</h4>
+<ul>
+<li>Il feathering radiale esistente sull'ultimo 25% del raggio va mantenuto: elimina il bordo netto del cerchio di copertura.</li>
+<li>In tema scuro, osmdroid può applicare un filtro di inversione ai tile con <code>setTilesScaledToDpi</code> e un <code>ColorMatrixColorFilter</code>. Se il risultato è sporco, meglio tile chiari anche di notte con l'overlay a opacità più alta, che è la soluzione già prevista dai token.</li>
+<li>Il marcatore del punto passa da emoji su goccia verde a un cerchio pieno con anello del colore di sfondo e asta verticale, leggibile su qualunque tinta della rampa.</li>
+</ul>
+
+<h2 id="stringhe">10 · Stringhe, lingue, formattazione</h2>
+<p class="lead">Oggi <code>strings.xml</code> contiene due righe e tutto il testo vive nel Kotlin, in italiano, con il colore che dipende dalle parole.</p>
+
+<ul>
+<li>Tutte le stringhe UI si spostano in <code>res/values/strings.xml</code>. La lingua di default resta l'italiano, <code>values-en</code> è opzionale ma la struttura deve permetterla.</li>
+<li>Le quantità usano <code>plurals</code>: "1 specie" contro "53 specie".</li>
+<li>Numeri e unità con <code>NumberFormat.getInstance(Locale.getDefault())</code>, che produce la virgola decimale in italiano senza stringhe costruite a mano.</li>
+<li>Date con <code>DateTimeFormatter</code> e locale di sistema. Nessun array di nomi di mese hardcoded come l'attuale <code>monthsNames</code> in <code>calculateSeasonalityScore</code>.</li>
+<li>Tempi relativi ("42 min fa") con <code>DateUtils.getRelativeTimeSpanString</code>, che è già localizzato dal sistema.</li>
+<li>Il parametro <code>accept-language=it</code> fisso nella chiamata Nominatim diventa <code>Locale.getDefault().language</code>.</li>
+</ul>
+
+<pre><code>&lt;!-- Estratto di res/values/strings.xml --&gt;
+&lt;string name="app_name"&gt;Myco&lt;/string&gt;
+&lt;string name="home_tagline"&gt;Previsione di crescita da microclima e vegetazione&lt;/string&gt;
+&lt;string name="growth_probability"&gt;probabilità di crescita&lt;/string&gt;
+&lt;string name="factors_title"&gt;Fattori rilevati&lt;/string&gt;
+&lt;string name="factor_altitude"&gt;Altitudine&lt;/string&gt;
+&lt;string name="factor_rain"&gt;Pioggia, 14 giorni&lt;/string&gt;
+&lt;string name="trend_title"&gt;Prossimi cinque giorni&lt;/string&gt;
+&lt;string name="trend_caption"&gt;La barra indica la probabilità di crescita del giorno. Temperatura e pioggia sono i valori attesi nelle 24 ore.&lt;/string&gt;
+&lt;string name="field_note_title"&gt;Nota di campo&lt;/string&gt;
+&lt;string name="field_note_disclaimer"&gt;Testo generato automaticamente dai dati della località. Non è una garanzia di ritrovamento né una valutazione di commestibilità.&lt;/string&gt;
+&lt;string name="empty_no_places_title"&gt;Nessun luogo salvato&lt;/string&gt;
+&lt;string name="analyze_here"&gt;Analizza qui&lt;/string&gt;
+&lt;plurals name="ecm_species"&gt;
+    &lt;item quantity="one"&gt;%d specie&lt;/item&gt;
+    &lt;item quantity="other"&gt;%d specie&lt;/item&gt;
+&lt;/plurals&gt;</code></pre>
+
+<div class="note">Il disclaimer non è un dettaglio legale marginale. L'app stima la presenza di funghi commestibili: il testo deve dire che non valuta la commestibilità di quello che si trova, e che la raccolta è soggetta a permessi e limiti locali, diversi tra regioni italiane e tra Italia e Francia.</div>
+
+<h2 id="a11y">11 · Accessibilità</h2>
+<table>
+<tr><th>Requisito</th><th>Verifica</th></tr>
+<tr><td>Contrasto testo primario</td><td>Inchiostro su pergamena circa 11:1, inchiostro notte su base notte circa 12:1. Entrambi ampiamente sopra AA</td></tr>
+<tr><td>Contrasto testo secondario</td><td>Seppia su pergamena circa 5,4:1. È il valore più basso del sistema e va mantenuto sopra 4,5:1 in ogni variante</td></tr>
+<tr><td>Colore mai unico portatore di significato</td><td>Ogni valore colorato ha accanto un testo: "ideale", "attiva", la percentuale numerica</td></tr>
+<tr><td>Target di tocco</td><td>Minimo 48 dp per lato su ogni elemento interattivo, incluse stella dei preferiti e rimozione di un luogo</td></tr>
+<tr><td>Font scaling</td><td>Nessuna altezza fissa sui contenitori di testo. Da provare al 130% e al 200% con "Dimensione carattere" di sistema</td></tr>
+<tr><td>TalkBack</td><td><code>contentDescription</code> su ogni icona che non ha testo accanto, <code>null</code> su quelle decorative. La barra di probabilità espone il valore come testo</td></tr>
+<tr><td>Cambi di stato</td><td>Stati vuoti ed errori con <code>liveRegion = LiveRegionMode.Polite</code>, altrimenti il cambio passa in silenzio</td></tr>
+<tr><td>Movimento</td><td><code>animateContentSize</code> e transizioni solo in risposta a un'azione. Nessuna animazione continua salvo la pulsazione dello skeleton</td></tr>
+</table>
+
+<h2 id="piano">12 · Piano di migrazione a fasi</h2>
+<p class="lead">Otto fasi. Le prime due sono strutturali e vanno completate prima di qualsiasi lavoro estetico visibile. Ogni fase termina con un commit che compila e supera <code>./gradlew lint</code>.</p>
+
+<div class="phase">
+<h3>Fase 0 · Baseline</h3>
+<ul class="check">
+<li>Screenshot di tutte le schermate attuali, tema di sistema chiaro e scuro, per confronto successivo.</li>
+<li><code>./gradlew lint</code> e <code>./gradlew test</code> eseguiti e archiviati come punto di partenza.</li>
+<li>Rimozione di <code>package.json</code> e di <code>app/src/test/javascript/</code>, residui del prototipo web, oppure conversione dei sei test in test Kotlin su <code>MushroomAlgorithms</code>. La seconda opzione è preferibile: quei test coprono logica ancora viva.</li>
+</ul>
+</div>
+
+<div class="phase">
+<h3>Fase 1 · Fondamenta del tema</h3>
+<p class="files">Color.kt · MycoColors.kt · Type.kt · Shape.kt · Theme.kt · ThemePreference.kt · MainActivity.kt · themes.xml · colors.xml · values-night/colors.xml · AndroidManifest.xml · build.gradle</p>
+<ul class="check">
+<li>Creazione dei file di token secondo la sezione 4.</li>
+<li>Riscrittura di <code>Theme.kt</code> con i due <code>ColorScheme</code> reali e il <code>CompositionLocal</code> esteso.</li>
+<li>Preferenza tema a tre stati in DataStore, letta in <code>MainActivity</code>.</li>
+<li><code>enableEdgeToEdge()</code>, nuovo tema XML, rimozione di <code>android:configChanges="uiMode"</code>.</li>
+<li>Schermata impostazioni minima con i tre stati, raggiungibile dall'icona già presente in home.</li>
+</ul>
+<p><strong>Verifica:</strong> l'app compila e appare identica a prima, perché nessun composable legge ancora dal tema. È il risultato atteso.</p>
+</div>
+
+<div class="phase">
+<h3>Fase 2 · Sostituzione dei colori hardcoded</h3>
+<p class="files">MushroomApp.kt · MushroomComponents.kt · MapViewContainer.kt · HeatmapOverlay.kt</p>
+<ul class="check">
+<li>Sostituzione dei 201 letterali <code>Color(0x…)</code> con <code>MaterialTheme.colorScheme</code> e <code>MycoTheme.colors</code>, un file alla volta.</li>
+<li>Eliminazione di ogni superficie semitrasparente: le card diventano fondo pieno prima di essere eliminate del tutto in fase 4.</li>
+<li><code>getProbabilityColor()</code> sostituita da <code>MycoColors.forProbability()</code>.</li>
+<li>Ricerca finale con <code>grep -rn "Color(0x" app/src/main/java</code>: deve restituire solo <code>Color.kt</code>.</li>
+</ul>
+<p><strong>Verifica:</strong> commutando il tema di sistema, l'intera app cambia aspetto senza artefatti di testo illeggibile.</p>
+</div>
+
+<div class="phase">
+<h3>Fase 3 · Dati tipizzati al posto delle stringhe</h3>
+<p class="files">model/Factor.kt · MushroomAlgorithms.kt · MushroomViewModel.kt · MushroomComponents.kt</p>
+<ul class="check">
+<li>Introduzione di <code>FactorId</code>, <code>FactorLevel</code>, <code>Factor</code>.</li>
+<li>Le funzioni di <code>MushroomAlgorithms</code> restituiscono <code>Factor</code> invece di stringhe con emoji.</li>
+<li>Eliminazione di <code>parseMetric()</code>, <code>getDetailColor()</code>, <code>getWeatherEmoji()</code> e delle nove proprietà <code>viewModel.*Text</code>.</li>
+<li>Mappatura <code>FactorId</code> verso icona e stringa nella UI.</li>
+</ul>
+<p><strong>Verifica:</strong> nessuna emoji resta nel sorgente Kotlin. Gli a capo anomali e le unità orfane spariscono.</p>
+</div>
+
+<div class="phase">
+<h3>Fase 4 · Componenti e scomposizione della schermata</h3>
+<p class="files">ui/components/*.kt · ui/screens/HomeScreen.kt · ForecastScreen.kt · MapScreen.kt</p>
+<ul class="check">
+<li>Creazione degli otto componenti della sezione 7.</li>
+<li><code>MushroomApp.kt</code>, 1794 righe, si scompone in tre file di schermata più i componenti. Nessun file sopra le 400 righe.</li>
+<li>Rimozione di <code>GlassmorphicCard</code>, <code>MetricCard</code>, <code>ForecastGridItem</code>, <code>RadialProgress</code>.</li>
+<li>Nessun calcolo dentro i composable: la UI riceve valori già pronti.</li>
+</ul>
+</div>
+
+<div class="phase">
+<h3>Fase 5 · Scala unica di probabilità</h3>
+<p class="files">MushroomAlgorithms.kt · MushroomRepository.kt · MushroomViewModel.kt</p>
+<ul class="check">
+<li>Punteggi continui al posto delle soglie a gradino, secondo la sezione 6.2.</li>
+<li><code>dailyGrowthProbability()</code> nel dominio, con il potenziale del sito come moltiplicando.</li>
+<li>Test unitari sui punteggi: continuità agli estremi delle bande, nessun salto superiore a 3 punti per mezzo grado.</li>
+<li>Se la decisione è di non unificare, la sola modifica ammessa è l'etichetta della barra e il colore <code>meteo</code>.</li>
+</ul>
+<p><strong>Verifica:</strong> il valore del primo giorno della tendenza coincide con il valore principale, entro un punto percentuale.</p>
+</div>
+
+<div class="phase">
+<h3>Fase 6 · Heatmap</h3>
+<p class="files">HeatmapGenerator.kt · HeatmapOverlay.kt · MapViewContainer.kt</p>
+<ul class="check">
+<li>Rampa a cinque gradini con alpha costante.</li>
+<li>Rigenerazione della bitmap al cambio di tema.</li>
+<li>Legenda a gradini nella mappa a schermo intero, coerente con la barra della schermata risultato.</li>
+<li>Nuovo marcatore del punto, senza emoji.</li>
+</ul>
+<p><strong>Verifica:</strong> con l'overlay attivo i toponimi della base cartografica restano leggibili. Screenshot convertito in scala di grigi: i cinque gradini restano distinguibili.</p>
+</div>
+
+<div class="phase">
+<h3>Fase 7 · Stringhe e formattazione</h3>
+<p class="files">res/values/strings.xml · tutti i file UI · ApiServices.kt</p>
+<ul class="check">
+<li>Estrazione di tutte le stringhe UI.</li>
+<li>Formattazione di numeri, date e tempi relativi con le API di sistema.</li>
+<li><code>accept-language</code> dinamico nella chiamata Nominatim, <code>addressdetails=1</code> aggiunto per la scomposizione del nome.</li>
+<li>Aggiunta di uno <code>User-Agent</code> identificativo nell'interceptor OkHttp, come richiesto dalle condizioni d'uso di Nominatim.</li>
+</ul>
+</div>
+
+<div class="phase">
+<h3>Fase 8 · Stati, accessibilità, rifiniture</h3>
+<p class="files">ui/components/EmptyState.kt · ui/screens/*.kt · CacheManager.kt</p>
+<ul class="check">
+<li><code>ForecastUiState</code> completo e schermate che lo gestiscono per intero.</li>
+<li>Rilevamento "fuori habitat" da Overpass o dalla griglia EcM.</li>
+<li>Persistenza dell'ultima previsione per località, con data mostrata quando si è offline.</li>
+<li>Passata di accessibilità secondo la sezione 11, con prova a font scaling 130% e 200%.</li>
+<li>Disclaimer su commestibilità e permessi di raccolta.</li>
+</ul>
+</div>
+
+<h2 id="accettazione">13 · Criteri di accettazione</h2>
+<p class="lead">Il lavoro si considera concluso quando tutte queste affermazioni sono vere.</p>
+<ul class="check">
+<li><code>grep -rn "Color(0x" app/src/main/java</code> restituisce risultati solo in <code>ui/theme/Color.kt</code>.</li>
+<li>Nessuna emoji nel sorgente Kotlin.</li>
+<li>I tre stati di tema funzionano, la scelta sopravvive alla chiusura dell'app, e il tema di sistema viene seguito quando la preferenza è "Sistema".</li>
+<li>Nessun testo tagliato o spezzato a metà parola in nessuna schermata, con font di sistema al 100% e al 130%.</li>
+<li>Nessun file Kotlin sopra le 400 righe.</li>
+<li>La UI non contiene calcoli di dominio.</li>
+<li>Nessuna stringa UI hardcoded fuori da <code>strings.xml</code>.</li>
+<li>Con l'overlay attivo i nomi dei luoghi sulla mappa restano leggibili.</li>
+<li>Tutti gli stati previsti da <code>ForecastUiState</code> hanno una resa visiva, verificata forzando i casi.</li>
+<li>Ogni elemento interattivo misura almeno 48 dp e ha una descrizione per TalkBack.</li>
+<li><code>./gradlew lint</code> e <code>./gradlew test</code> passano.</li>
+</ul>
+
+<h3>Questioni aperte da chiudere con il committente</h3>
+<ol>
+<li><strong>Unificazione della scala giornaliera.</strong> Adottare la formula della sezione 6.2 oppure rietichettare la barra come condizione meteo. Blocca la fase 5.</li>
+<li><strong>Copertura fuori Italia.</strong> <code>spun_italy.bin</code> non copre la Francia, quindi Chamonix produce heatmap nulla. Serve uno stato dedicato "fuori copertura" distinto da "fuori habitat".</li>
+<li><strong>Nome del prodotto.</strong> Il wordmark dice "Myco Porcini" ma il testo parla genericamente di funghi commestibili e il modello stima potenziale ectomicorrizico, non una singola specie. Da allineare.</li>
+<li><strong>Sorgente dell'altitudine.</strong> Non individuata con certezza nell'audit: va confermata prima di dichiararla nella UI accanto al nome del luogo.</li>
+</ol>
+
+<footer>
+Documento preparato a partire dall'analisi del repository <code>naturewhisp/myco</code>, branch <code>master</code>, e dagli screenshot della versione in uso. I mockup sono riferimenti visivi, non specifiche pixel per pixel.
+</footer>
+
+</div>
+</body>
+</html>

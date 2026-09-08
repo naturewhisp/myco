@@ -36,18 +36,10 @@ app/src/main/
 ├── AndroidManifest.xml
 ├── java/github/naturewhisp/myco/
 │   ├── MainActivity.kt                # Single-activity Compose entrypoint (ComponentActivity)
-│   ├── model/                         # Data classes & DTOs
-│   │   ├── GeocodingModel.kt          # Nominatim OSM geocoding responses
-│   │   ├── OverpassModel.kt           # Overpass OSM habitat & tree queries
-│   │   ├── SavedLocation.kt           # User bookmarks and recent locations
-│   │   └── WeatherModel.kt            # Open-Meteo current & forecast data
+│   ├── model/                         # Data classes, DTOs & HeatmapRaster
+│   ├── platform/                      # Ports & Adapters (AssetProvider, KeyValueStorage, PlatformAiEngine, etc.)
 │   ├── network/                       # Remote & local AI services
-│   │   ├── ApiServices.kt             # Open-Meteo & Overpass API interfaces
-│   │   ├── LocalAiService.kt          # Gemini Nano (AICore) client & prompt generator
-│   │   └── NetworkClient.kt           # Retrofit & OkHttp singleton configuration
-│   ├── repository/                    # Data aggregation & caching
-│   │   ├── CacheManager.kt            # SharedPreferences caching with KTX extensions
-│   │   └── MushroomRepository.kt      # Orchestrates weather + OSM calls
+│   ├── repository/                    # Data aggregation & caching (CacheManager, SpunDataManager)
 │   ├── ui/
 │   │   ├── components/                # Modular Compose components (MapView, ScoreCards, etc.)
 │   │   ├── screens/                   # MushroomApp composable & main screen workflows
@@ -55,8 +47,10 @@ app/src/main/
 │   │   └── viewmodel/
 │   │       └── MushroomViewModel.kt   # Central state, coroutines, settings & search logic
 │   └── utils/
-│       └── MushroomAlgorithms.kt      # Mathematical modeling of fungal fruiting probability
+│       └── MushroomAlgorithms.kt      # Mathematical modeling of fungal fruiting probability & HeatmapGenerator
 └── res/                               # Assets, mipmap adaptive icons, backup rules (no XML layouts)
+docs/
+└── MACOS_ARCHITECTURE.md              # Hexagonal architecture blueprint & macOS porting roadmap
 ```
 
 ---
@@ -64,7 +58,9 @@ app/src/main/
 ## 4. Coding Standards & Conventions
 
 ### 4.1 Kotlin & Android Best Practices
-- **Android KTX Extensions**: Always use KTX extension functions (e.g., `prefs.edit { putString(...) }` instead of legacy chaining `.edit().putString(...).apply()`).
+- **Android KTX Extensions**: Always use KTX extension functions (e.g., `prefs.edit { putString(...) }` instead of legacy chaining `.edit().putString(...).apply()`; `createBitmap(...)` from `androidx.core.graphics` instead of `Bitmap.createBitmap(...)`).
+- **Platform-Agnostic Core**: Business logic, mycological algorithms, data parsers (SPUN), and models must remain 100% pure Kotlin with zero `android.*` imports. Operating system capabilities must be accessed exclusively through `github.naturewhisp.myco.platform` interfaces to ensure seamless compatibility with macOS/Desktop.
+- **Raster & Pixel Buffering**: Algorithmic raster engines must produce raw 32-bit ARGB pixel arrays (`HeatmapRaster`) via bitwise operations rather than directly allocating or drawing onto platform graphics objects (`android.graphics.Bitmap`, `Color`).
 - **Time & Durations**: Use typed Kotlin `Duration` (e.g. `import kotlin.time.Duration.Companion.milliseconds` -> `delay(10.milliseconds)`) rather than raw `Long` millisecond overloads.
 - **Explicit Locales**: Never call `String.format(...)` without an explicit `Locale`. Use `Locale.getDefault()` for UI strings, or `Locale.US` for coordinate numbers, query keys, or serialization.
 - **Unused Exception Syntax**: Catch blocks with intentionally unused exceptions must use `catch (_: Exception)`.
@@ -118,4 +114,13 @@ Run these commands after making changes:
 
 # 3. Assemble complete debug APK
 .\gradlew.bat assembleDebug
+
+# 4. (Optional / On-Device) Install and verify on connected physical device or emulator
+adb -s <DEVICE_ID> install -r app\build\outputs\apk\debug\app-debug.apk
+adb -s <DEVICE_ID> shell am force-stop github.naturewhisp.myco
+adb -s <DEVICE_ID> logcat -c
+adb -s <DEVICE_ID> shell am start -n github.naturewhisp.myco/.MainActivity
+adb -s <DEVICE_ID> logcat -d -e "AndroidRuntime|FATAL|naturewhisp"
+adb -s <DEVICE_ID> shell screencap -p /sdcard/verify.png
+adb -s <DEVICE_ID> pull /sdcard/verify.png
 ```

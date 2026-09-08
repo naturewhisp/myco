@@ -16,7 +16,8 @@ import github.naturewhisp.myco.model.SavedLocation
 import github.naturewhisp.myco.model.SpunData
 import github.naturewhisp.myco.model.TerrainAspectData
 import github.naturewhisp.myco.model.TerrainAspectEvaluation
-import github.naturewhisp.myco.network.LocalAiService
+import github.naturewhisp.myco.platform.AiEngineStatus
+import github.naturewhisp.myco.platform.PlatformAiEngine
 import github.naturewhisp.myco.repository.CacheManager
 import github.naturewhisp.myco.repository.MushroomRepository
 import github.naturewhisp.myco.repository.SpunDataManager
@@ -38,7 +39,7 @@ import kotlin.math.roundToInt
 class MushroomViewModel(
     private val repository: MushroomRepository,
     val cacheManager: CacheManager,
-    val localAiService: LocalAiService,
+    val localAiService: PlatformAiEngine,
     val spunDataManager: SpunDataManager,
     val themePreference: ThemePreference? = null
 ) : ViewModel() {
@@ -288,11 +289,11 @@ class MushroomViewModel(
         viewModelScope.launch {
             localAiService.status.collect { status ->
                 aiStatusText = when (status) {
-                    LocalAiService.Status.NOT_SUPPORTED -> "Non supportato da questo dispositivo"
-                    LocalAiService.Status.INITIALIZING -> "Configurazione in corso..."
-                    LocalAiService.Status.DOWNLOADING -> "Download modello in corso..."
-                    LocalAiService.Status.DOWNLOAD_FAILED -> "Download modello fallito"
-                    LocalAiService.Status.READY -> "Supportato e pronto"
+                    AiEngineStatus.NOT_SUPPORTED -> "Non supportato da questo dispositivo"
+                    AiEngineStatus.INITIALIZING -> "Configurazione in corso..."
+                    AiEngineStatus.DOWNLOADING -> "Download modello in corso..."
+                    AiEngineStatus.DOWNLOAD_FAILED -> "Download modello fallito"
+                    AiEngineStatus.READY -> "Supportato e pronto"
                 }
             }
         }

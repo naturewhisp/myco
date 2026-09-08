@@ -1,32 +1,37 @@
 package github.naturewhisp.myco.utils
 
-import android.graphics.Color
-import androidx.core.graphics.createBitmap
 import github.naturewhisp.myco.model.HeatmapData
+import github.naturewhisp.myco.model.HeatmapRaster
+import github.naturewhisp.myco.model.toHeatmapData
 import github.naturewhisp.myco.repository.SpunDataManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.cos
 import kotlin.math.max
-import kotlin.math.min
 
 /**
- * Genera in background una texture raster georeferenziata (HeatmapData)
+ * Genera in background una texture raster georeferenziata (HeatmapRaster / HeatmapData)
  * calcolando la probabilità distribuita nello spazio attorno al punto di interesse.
+ *
+ * La logica di calcolo dei campioni raster e la composizione colore ARGB sono completamente
+ * pure e indipendenti dalla piattaforma, pronte per essere condivise con macOS.
  */
 object HeatmapGenerator {
 
     private const val GRID_SIZE = 96 // 96x96 campioni (~9216 celle, risoluzione ~700m, calcolo in <2ms)
     private const val RADIUS_KM = 35.0 // Raggio di copertura esteso (~70x70 km, copre ampi zoom senza tagli netti)
 
-    suspend fun generateHeatmap(
+    /**
+     * Genera la superficie raster pura [HeatmapRaster] (100% Kotlin agnostico da Android/macOS).
+     */
+    suspend fun generateHeatmapRaster(
         centerLat: Double,
         centerLon: Double,
         spunDataManager: SpunDataManager,
         baseWeatherScore: Double,
         seasonalityScore: Double,
         altitudeScore: Double
-    ): HeatmapData? = withContext(Dispatchers.Default) {
+    ): HeatmapRaster? = withContext(Dispatchers.Default) {
         val region = spunDataManager.getCurrentRegionData(centerLat, centerLon) ?: return@withContext null
         val header = region.header
 
@@ -99,7 +104,8 @@ object HeatmapGenerator {
                         // Elimina qualsiasi taglio netto o bordo squadrato sulla mappa
                         if (distFromCenter > 0.75 && baseColor != 0) {
                             val edgeFade = ((1.0 - distFromCenter) / 0.25).toFloat().coerceIn(0f, 1f)
-                            val alpha = (Color.alpha(baseColor) * edgeFade).toInt()
+                            val baseAlpha = (baseColor ushr 24) and 0xFF
+                            val alpha = (baseAlpha * edgeFade).toInt()
                             pixels[pixelIndex] = (baseColor and 0x00FFFFFF) or (alpha shl 24)
                         } else {
                             pixels[pixelIndex] = baseColor
@@ -115,16 +121,38 @@ object HeatmapGenerator {
 
         if (!hasValidData) return@withContext null
 
-        val bitmap = createBitmap(GRID_SIZE, GRID_SIZE)
-        bitmap.setPixels(pixels, 0, GRID_SIZE, 0, 0, GRID_SIZE, GRID_SIZE)
-
-        HeatmapData(
-            bitmap = bitmap,
+        HeatmapRaster(
+            argbPixels = pixels,
+            width = GRID_SIZE,
+            height = GRID_SIZE,
             north = north,
             south = south,
             west = west,
             east = east
         )
+    }
+
+    /**
+     * Genera in background una texture raster georeferenziata per Android [HeatmapData].
+     */
+    suspend fun generateHeatmap(
+        centerLat: Double,
+        centerLon: Double,
+        spunDataManager: SpunDataManager,
+        baseWeatherScore: Double,
+        seasonalityScore: Double,
+        altitudeScore: Double
+    ): HeatmapData? {
+        val raster = generateHeatmapRaster(
+            centerLat = centerLat,
+            centerLon = centerLon,
+            spunDataManager = spunDataManager,
+            baseWeatherScore = baseWeatherScore,
+            seasonalityScore = seasonalityScore,
+            altitudeScore = altitudeScore
+        ) ?: return null
+
+        return raster.toHeatmapData()
     }
 
     /**
@@ -136,11 +164,11 @@ object HeatmapGenerator {
 
         val baseAlpha = if (isDark) 150 else 128
 
-        // Pigmenti minerali della scala tassonomica Herbarium
-        val s1 = if (isDark) Color.rgb(0x6B, 0x7A, 0x55) else Color.rgb(0xBC, 0xC7, 0xA6) // Salvia
-        val s2 = if (isDark) Color.rgb(0xDC, 0xB6, 0x5C) else Color.rgb(0xC8, 0x9B, 0x3C) // Ocra
-        val s3 = if (isDark) Color.rgb(0xC6, 0x7C, 0x4B) else Color.rgb(0xB9, 0x6F, 0x42) // Terracotta
-        val s4 = if (isDark) Color.rgb(0xB8, 0x5A, 0x45) else Color.rgb(0x9B, 0x4A, 0x38) // Ruggine
+        // Pigmenti minerali della scala tassonomica Herbarium (0xRRGGBB)
+        val s1 = if (isDark) rgb(0x6B, 0x7A, 0x55) else rgb(0xBC, 0xC7, 0xA6) // Salvia
+        val s2 = if (isDark) rgb(0xDC, 0xB6, 0x5C) else rgb(0xC8, 0x9B, 0x3C) // Ocra
+        val s3 = if (isDark) rgb(0xC6, 0x7C, 0x4B) else rgb(0xB9, 0x6F, 0x42) // Terracotta
+        val s4 = if (isDark) rgb(0xB8, 0x5A, 0x45) else rgb(0x9B, 0x4A, 0x38) // Ruggine
 
         val (c1, c2, fraction) = when {
             probability < 40 -> Triple(s1, s2, (probability - 20f) / 20f)
@@ -152,11 +180,24 @@ object HeatmapGenerator {
         return interpolateColorWithAlpha(c1, c2, fraction, baseAlpha)
     }
 
+    private fun rgb(r: Int, g: Int, b: Int): Int {
+        return (0xFF shl 24) or ((r and 0xFF) shl 16) or ((g and 0xFF) shl 8) or (b and 0xFF)
+    }
+
     private fun interpolateColorWithAlpha(c1: Int, c2: Int, fraction: Float, alpha: Int): Int {
         val f = fraction.coerceIn(0f, 1f)
-        val r = (Color.red(c1) + f * (Color.red(c2) - Color.red(c1))).toInt()
-        val g = (Color.green(c1) + f * (Color.green(c2) - Color.green(c1))).toInt()
-        val b = (Color.blue(c1) + f * (Color.blue(c2) - Color.blue(c1))).toInt()
-        return Color.argb(alpha, r, g, b)
+        val r1 = (c1 ushr 16) and 0xFF
+        val g1 = (c1 ushr 8) and 0xFF
+        val b1 = c1 and 0xFF
+
+        val r2 = (c2 ushr 16) and 0xFF
+        val g2 = (c2 ushr 8) and 0xFF
+        val b2 = c2 and 0xFF
+
+        val r = (r1 + f * (r2 - r1)).toInt().coerceIn(0, 255)
+        val g = (g1 + f * (g2 - g1)).toInt().coerceIn(0, 255)
+        val b = (b1 + f * (b2 - b1)).toInt().coerceIn(0, 255)
+
+        return ((alpha and 0xFF) shl 24) or (r shl 16) or (g shl 8) or b
     }
 }

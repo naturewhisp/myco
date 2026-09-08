@@ -4,6 +4,8 @@ import android.content.Context
 import github.naturewhisp.myco.model.SpunData
 import github.naturewhisp.myco.model.SpunRegionDescriptor
 import github.naturewhisp.myco.model.SpunRegionHeader
+import github.naturewhisp.myco.platform.AndroidAssetProvider
+import github.naturewhisp.myco.platform.AssetProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -19,7 +21,9 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-class SpunDataManager(private val context: Context) {
+class SpunDataManager(private val assetProvider: AssetProvider) {
+
+    constructor(context: Context) : this(AndroidAssetProvider(context))
 
     // Regioni registrate disponibili
     val availableRegions = listOf(
@@ -74,7 +78,7 @@ class SpunDataManager(private val context: Context) {
             }
 
             try {
-                context.assets.open(targetDescriptor.assetFileName).use { inputStream ->
+                assetProvider.open(targetDescriptor.assetFileName).use { inputStream ->
                     // 1. Legge i 32 byte dell'header
                     val headerBytes = ByteArray(32)
                     var readTotal = 0

@@ -80,6 +80,23 @@ app/src/main/
 - Code analysis produces SARIF reports (`lint-results-debug.sarif`) compatible with GitHub Code Scanning and Visual Studio Code Analysis.
 - Elevated severities: `DefaultLocale`, `UnusedResources`, `ObsoleteSdkInt`, `MonochromeLauncherIcon`, `UseKtx`, and `Security` issues are treated as build-blocking errors.
 
+### 4.4 Jetpack Compose Tabular Layouts & Data Contracts
+- **Prevent Horizontal Starvation**: In horizontal `Row` layouts featuring a weighted left column and a right-aligned value/badge:
+  - The left `Column` must specify `Modifier.weight(1f, fill = true)`.
+  - The right `Text` must set `textAlign = TextAlign.End` and must receive strictly compact, atomic tokens (e.g., `"Sud"`, `"1422 m"`, `"20.0°C"`).
+  - Extended descriptions or narrative explanations must **never** be passed into compact value slots; they belong strictly in dedicated subtitle/detail fields.
+  - Rows must enforce consistent vertical rhythm (e.g., `Modifier.heightIn(min = 48.dp)` and uniform vertical padding).
+
+### 4.5 Design Tokens, Iconography & Resource Cleanliness
+- **Zero Hardcoded Colors**: `Color(0x...)` definitions must reside exclusively in `ui/theme/Color.kt`. Composable functions must access colors via `MaterialTheme.colorScheme` or custom theme attributes (`HerbariumTheme`).
+- **Zero Emojis in Kotlin**: Do not use Unicode emojis in `.kt` source files. Use Material Icons M3 (`Icons.Outlined.*`, `Icons.Filled.*`) or typographic glyphs (`✳`).
+- **Strict Resource Hygiene**: With `UnusedResources` elevated to a fatal lint error, never add speculative entries to `res/values/strings.xml`. Every declared resource must be actively referenced.
+
+### 4.6 Scientific & Ecological Modeling Standards
+- **Continuous Biological Curves**: Model environmental variables (temperature, soil moisture, precipitation, elevation) with continuous normalized response functions ($0.0 \dots 1.0$) rather than discrete step functions.
+- **Unified Probability Calibration**: Aggregate probability scores must adhere to the standardized formula:
+  $$P = 100 \times (W / 100)^{1.2} \times H \times A \times S$$
+
 ---
 
 ## 5. Verification Commands for Agents

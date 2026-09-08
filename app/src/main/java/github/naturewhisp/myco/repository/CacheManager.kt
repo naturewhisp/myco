@@ -113,6 +113,17 @@ class CacheManager(context: Context) {
         prefs.edit { putString(KEY_RECENT_LOCATIONS, gson.toJson(trimmed)) }
     }
 
+    fun removeRecentLocation(lat: Double, lon: Double) {
+        val rLat = String.format(Locale.US, "%.3f", lat)
+        val rLon = String.format(Locale.US, "%.3f", lon)
+        val recents = getRecentLocations().toMutableList()
+        recents.removeAll {
+            String.format(Locale.US, "%.3f", it.lat) == rLat &&
+            String.format(Locale.US, "%.3f", it.lon) == rLon
+        }
+        prefs.edit { putString(KEY_RECENT_LOCATIONS, gson.toJson(recents)) }
+    }
+
     // ── Favorites ─────────────────────────────────────────────────────────────
 
     fun getFavoriteLocations(): List<SavedLocation> {

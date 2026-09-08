@@ -1,9 +1,0 @@
-{
-  "name": "mushroom-forecast",
-  "version": "1.0.0",
-  "description": "Mushroom growth forecast logic",
-  "main": "app/src/main/assets/js/logic.js",
-  "scripts": {
-    "test": "node --test app/src/test/javascript/*.test.js"
-  }
-}

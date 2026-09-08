@@ -8,10 +8,13 @@ import android.location.Location
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import github.naturewhisp.myco.network.LocalAiService
@@ -20,6 +23,8 @@ import github.naturewhisp.myco.repository.MushroomRepository
 import github.naturewhisp.myco.repository.SpunDataManager
 import github.naturewhisp.myco.ui.screens.MushroomApp
 import github.naturewhisp.myco.ui.theme.MycoTheme
+import github.naturewhisp.myco.ui.theme.ThemeMode
+import github.naturewhisp.myco.ui.theme.ThemePreference
 import github.naturewhisp.myco.ui.viewmodel.MushroomViewModel
 import org.osmdroid.config.Configuration
 
@@ -39,6 +44,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
         // Initialize OsmDroid Configuration
@@ -52,18 +58,20 @@ class MainActivity : ComponentActivity() {
         val spunDataManager = SpunDataManager(applicationContext)
         val repository = MushroomRepository(cacheManager, spunDataManager)
         val localAiService = LocalAiService(applicationContext)
+        val themePreference = ThemePreference(applicationContext)
 
         viewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return MushroomViewModel(repository, cacheManager, localAiService, spunDataManager) as T
+                return MushroomViewModel(repository, cacheManager, localAiService, spunDataManager, themePreference) as T
             }
         })[MushroomViewModel::class.java]
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
         setContent {
-            MycoTheme {
+            val currentThemeMode by themePreference.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
+            MycoTheme(themeMode = currentThemeMode) {
                 MushroomApp(
                     viewModel = viewModel,
                     onGeolocateClick = { checkLocationPermissions() }

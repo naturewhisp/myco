@@ -17,15 +17,21 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.outlined.Thunderstorm
+import androidx.compose.material.icons.outlined.WaterDrop
+import androidx.compose.material.icons.outlined.WbSunny
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -33,21 +39,30 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import github.naturewhisp.myco.model.SavedLocation
+import github.naturewhisp.myco.model.WeatherCondition
+import github.naturewhisp.myco.model.weatherCondition
+import github.naturewhisp.myco.ui.theme.Forest
+import github.naturewhisp.myco.ui.theme.MycoTheme
+import github.naturewhisp.myco.ui.theme.NewsreaderFontFamily
+import github.naturewhisp.myco.ui.theme.Scale2
+import github.naturewhisp.myco.ui.theme.Scale3
+import github.naturewhisp.myco.ui.theme.Scale4
 import java.text.SimpleDateFormat
 import java.util.Locale
 
+// Card piana a zero ombre nello stile editoriale Herbarium
 @Composable
 fun GlassmorphicCard(
     modifier: Modifier = Modifier,
-    shape: RoundedCornerShape = RoundedCornerShape(24.dp),
+    shape: RoundedCornerShape = RoundedCornerShape(6.dp),
     content: @Composable ColumnScope.() -> Unit
 ) {
     Box(
         modifier = modifier
-            .shadow(16.dp, shape, clip = false)
-            .background(Color(0x990D1423), shape) // rgba(13, 20, 35, 0.6)
-            .border(1.dp, Color(0x14FFFFFF), shape) // rgba(255, 255, 255, 0.08)
-            .padding(20.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant, shape)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+            .padding(16.dp)
     ) {
         Column {
             content()
@@ -55,6 +70,7 @@ fun GlassmorphicCard(
     }
 }
 
+// Indicatore circolare con colori ancorati alla scala tassonomica
 @Composable
 fun RadialProgress(
     probability: Int,
@@ -62,14 +78,19 @@ fun RadialProgress(
     size: Dp = 144.dp,
     strokeWidth: Dp = 8.dp
 ) {
-    val progressColor = getProbabilityColor(probability, threshold)
-    val remainingColor = Color(0xFF1E293B) // dark slate circle background
+    val mycoColors = MycoTheme.colors
+    val progressColor = mycoColors.scaleForProbability(probability)
+    val remainingColor = MaterialTheme.colorScheme.outlineVariant
 
     Box(
         modifier = Modifier.size(size),
         contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.fillMaxSize().padding(10.dp)) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(10.dp)
+        ) {
             drawCircle(
                 color = remainingColor,
                 style = Stroke(width = strokeWidth.toPx(), cap = StrokeCap.Round)
@@ -88,21 +109,23 @@ fun RadialProgress(
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = "$probability%",
-                color = Color.White,
-                fontSize = 32.sp,
-                fontWeight = FontWeight.ExtraBold
+                color = MaterialTheme.colorScheme.onSurface,
+                fontFamily = NewsreaderFontFamily,
+                fontSize = 34.sp,
+                fontWeight = FontWeight.Normal
             )
             Text(
-                text = "CRESCITA",
+                text = "PROBABILITÀ",
                 color = progressColor,
                 fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
                 letterSpacing = 1.sp
             )
         }
     }
 }
 
+// Riquadro previsionale giornaliero
 @Composable
 fun ForecastGridItem(
     dateStr: String,
@@ -117,18 +140,18 @@ fun ForecastGridItem(
         val outputFormat = SimpleDateFormat("EEE d MMM", Locale.ITALIAN)
         val parsedDate = inputFormat.parse(dateStr)
         if (parsedDate != null) outputFormat.format(parsedDate) else dateStr
-    } catch (e: Exception) {
+    } catch (_: Exception) {
         dateStr
     }
 
     val formattedDate = date.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ITALIAN) else it.toString() }
-    val progressColor = getProbabilityColor(probability, threshold)
+    val progressColor = MycoTheme.colors.scaleForProbability(probability)
+    val shape = RoundedCornerShape(6.dp)
 
     Box(
         modifier = modifier
-            .shadow(8.dp, RoundedCornerShape(16.dp))
-            .background(Color(0x660F172A), RoundedCornerShape(16.dp))
-            .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant, shape)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
             .padding(12.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -137,20 +160,31 @@ fun ForecastGridItem(
         ) {
             Text(
                 text = formattedDate,
-                color = Color(0xFF94A3B8),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium
             )
 
-            Text(
-                text = getWeatherEmoji(weatherCode),
-                fontSize = 28.sp,
-                modifier = Modifier.padding(vertical = 6.dp)
+            val condition = weatherCondition(weatherCode)
+            val icon = when (condition) {
+                WeatherCondition.CLEAR -> Icons.Outlined.WbSunny
+                WeatherCondition.CLOUDY -> Icons.Outlined.Cloud
+                WeatherCondition.RAIN -> Icons.Outlined.WaterDrop
+                WeatherCondition.STORM -> Icons.Outlined.Thunderstorm
+                WeatherCondition.UNKNOWN -> Icons.Outlined.Cloud
+            }
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = progressColor,
+                modifier = Modifier
+                    .padding(vertical = 6.dp)
+                    .size(24.dp)
             )
 
             Text(
                 text = String.format(Locale.ITALIAN, "%.1f°C", avgTemp),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold
             )
@@ -158,28 +192,30 @@ fun ForecastGridItem(
             Text(
                 text = "$probability%",
                 color = progressColor,
+                fontFamily = NewsreaderFontFamily,
                 fontSize = 16.sp,
-                fontWeight = FontWeight.ExtraBold,
+                fontWeight = FontWeight.Medium,
                 modifier = Modifier.padding(top = 4.dp)
             )
         }
     }
 }
 
+// Riga informativa testuale con colorazione contestuale
 @Composable
 fun InfoRow(
     text: String,
     modifier: Modifier = Modifier
 ) {
     if (text.isEmpty()) return
-    val isSuccess = text.startsWith("✅")
-    val isInfo = text.startsWith("ℹ️")
-    val isAlert = text.startsWith("❌")
+    val lower = text.lowercase(Locale.getDefault())
+    val isSuccess = lower.contains("ideale") || lower.contains("favorevole") || lower.contains("bonus")
+    val isAlert = lower.contains("non ideale") || lower.contains("scarso") || lower.contains("critico")
+    val colors = MycoTheme.colors
     val textColor = when {
-        isSuccess -> Color(0xFF34D399) // Emerald 400
-        isInfo -> Color(0xFF94A3B8)    // Slate 400
-        isAlert -> Color(0xFFF87171)   // Red 400
-        else -> Color(0xFFE2E8F0)      // Slate 200
+        isSuccess -> colors.favorable
+        isAlert -> colors.adverse
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     Text(
         text = text,
@@ -190,26 +226,16 @@ fun InfoRow(
     )
 }
 
+// Restituisce il colore corrispondente della scala tassonomica a 5 livelli
 fun getProbabilityColor(probability: Int, threshold: Int): Color {
     val high = threshold
     val med = (threshold * 0.615).toInt()
     val low = (threshold * 0.23).toInt()
     return when {
-        probability > high -> Color(0xFF34D399) // Emerald
-        probability > med -> Color(0xFFFBBF24)  // Amber
-        probability > low -> Color(0xFFF97316)  // Orange
-        else -> Color(0xFFEF4444)              // Red
-    }
-}
-
-fun getWeatherEmoji(code: Int?): String {
-    if (code == null) return "☁️"
-    return when {
-        code == 0 -> "☀️"
-        code in 1..3 -> "☁️"
-        (code in 51..67) || (code in 80..82) -> "🌧️"
-        code in 95..99 -> "⛈️"
-        else -> "☁️"
+        probability > high -> Forest
+        probability > med -> Scale2
+        probability > low -> Scale3
+        else -> Scale4
     }
 }
 
@@ -228,8 +254,7 @@ fun parseMetric(text: String): MetricData? {
     }
     val beforeColon = text.substring(0, colonIndex).trim()
     val fullValue = text.substring(colonIndex + 1).trim()
-    
-    // Extract emoji and label
+
     val spaceIndex = beforeColon.indexOf(' ')
     val icon: String
     val label: String
@@ -240,8 +265,7 @@ fun parseMetric(text: String): MetricData? {
         icon = ""
         label = beforeColon
     }
-    
-    // Extract main value and detail in parentheses
+
     val parenIndex = fullValue.indexOf('(')
     val value: String
     val detail: String
@@ -252,68 +276,71 @@ fun parseMetric(text: String): MetricData? {
         value = fullValue.replace(".", "")
         detail = ""
     }
-    
+
     return MetricData(icon, label, value, detail)
 }
 
+@Composable
 fun getDetailColor(detail: String): Color {
     val lower = detail.lowercase(Locale.getDefault())
+    val colors = MycoTheme.colors
     return when {
-        lower.contains("favorevole") || lower.contains("ideale") || lower.contains("promettente") || lower.contains("ottimale") || lower.contains("buona") -> Color(0xFF34D399) // Emerald 400
-        lower.contains("non ideale") || lower.contains("scarso") || lower.contains("insufficiente") || lower.contains("non favorevole") -> Color(0xFFF87171) // Red 400
-        lower.contains("moderato") || lower.contains("bassa") || lower.contains("collinare") || lower.contains("misto") || lower.contains("sufficiente") -> Color(0xFFFBBF24) // Amber 400
-        else -> Color(0xFF94A3B8) // Slate 400
+        lower.contains("favorevole") || lower.contains("ideale") || lower.contains("promettente") || lower.contains("ottimale") || lower.contains("buona") -> colors.favorable
+        lower.contains("non ideale") || lower.contains("scarso") || lower.contains("insufficiente") || lower.contains("non favorevole") -> colors.adverse
+        lower.contains("moderato") || lower.contains("bassa") || lower.contains("collinare") || lower.contains("misto") || lower.contains("sufficiente") -> colors.scale2
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 }
 
+// Scheda metrica con design zero-shadow piatto
 @Composable
 fun MetricCard(
     metricText: String,
     modifier: Modifier = Modifier
 ) {
     val metric = parseMetric(metricText) ?: return
-    
+    val shape = RoundedCornerShape(6.dp)
+
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color(0x1F0F172A)) // rgba(15, 23, 42, 0.12)
-            .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(16.dp))
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
             .padding(12.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Icon Container
             if (metric.icon.isNotEmpty()) {
                 Box(
                     modifier = Modifier
                         .size(36.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0x1434D399)),
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(MaterialTheme.colorScheme.surface),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(text = metric.icon, fontSize = 18.sp)
                 }
                 Spacer(modifier = Modifier.size(10.dp))
             }
-            
+
             Column {
                 Text(
                     text = metric.label.uppercase(Locale.getDefault()),
-                    color = Color(0xFF94A3B8),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                     letterSpacing = 1.sp
                 )
-                
+
                 Text(
                     text = metric.value,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(top = 1.dp)
                 )
-                
+
                 if (metric.detail.isNotEmpty()) {
                     Text(
                         text = metric.detail,
@@ -328,45 +355,49 @@ fun MetricCard(
     }
 }
 
+// Banner per condizioni ambientali e bonus
 @Composable
 fun BonusBanner(
     bonusText: String,
     modifier: Modifier = Modifier
 ) {
     if (bonusText.isEmpty()) return
-    val isSuccess = bonusText.contains("✅") || bonusText.lowercase(Locale.getDefault()).contains("alberi ottimali")
-    val bannerBg = if (isSuccess) Color(0x1A10B981) else Color(0x1F94A3B8)
-    val bannerBorder = if (isSuccess) Color(0x3310B981) else Color(0x2694A3B8)
-    val bannerTextColor = if (isSuccess) Color(0xFF6EE7B7) else Color(0xFF94A3B8)
-    
-    val cleanText = bonusText.replace("✅", "").replace("ℹ️", "").trim()
-    
+    val lower = bonusText.lowercase(Locale.getDefault())
+    val isSuccess = lower.contains("ottimali") || lower.contains("eccellente") || lower.contains("potenziato")
+    val colors = MycoTheme.colors
+    val accentColor = if (isSuccess) colors.favorable else colors.scale2
+    val cleanText = bonusText.removePrefix("Bonus: ").removePrefix("Bonus SPUN: ").trim()
+    val shape = RoundedCornerShape(6.dp)
+
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(bannerBg)
-            .border(1.dp, bannerBorder, RoundedCornerShape(14.dp))
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(1.dp, accentColor, shape)
             .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = if (isSuccess) "🎉" else "ℹ️",
-                fontSize = 18.sp
+                text = if (isSuccess) "✳" else "i",
+                color = accentColor,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = cleanText,
-                color = bannerTextColor,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Normal,
                 lineHeight = 16.sp
             )
         }
     }
 }
 
+// Badge dello stato della crescita miceliare
 @Composable
 fun GrowthPhaseBadge(
     phaseText: String,
@@ -374,23 +405,25 @@ fun GrowthPhaseBadge(
 ) {
     val parsed = parseMetric(phaseText) ?: return
     val lowerValue = parsed.value.lowercase(Locale.getDefault())
+    val colors = MycoTheme.colors
     val tintColor = when {
-        lowerValue.contains("esaurimento") || lowerValue.contains("fermo") || lowerValue.contains("blocco") -> Color(0xFFF87171) // Red 400
-        lowerValue.contains("partenza") || lowerValue.contains("inizio") || lowerValue.contains("luna") -> Color(0xFFFBBF24) // Amber 400
-        else -> Color(0xFF34D399) // Emerald 400
+        lowerValue.contains("esaurimento") || lowerValue.contains("fermo") || lowerValue.contains("blocco") -> colors.adverse
+        lowerValue.contains("partenza") || lowerValue.contains("inizio") || lowerValue.contains("luna") -> colors.scale2
+        else -> colors.favorable
     }
-    
+    val shape = RoundedCornerShape(6.dp)
+
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(tintColor.copy(alpha = 0.08f))
-            .border(1.dp, tintColor.copy(alpha = 0.2f), RoundedCornerShape(16.dp))
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(1.dp, tintColor, shape)
             .padding(14.dp)
     ) {
         Column {
             Text(
                 text = "STATO DELLA CRESCITA",
-                color = Color(0xFF94A3B8),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.5.sp
@@ -407,7 +440,7 @@ fun GrowthPhaseBadge(
                     text = parsed.value,
                     color = tintColor,
                     fontSize = 14.sp,
-                    fontWeight = FontWeight.ExtraBold,
+                    fontWeight = FontWeight.Bold,
                     lineHeight = 18.sp
                 )
             }
@@ -415,50 +448,52 @@ fun GrowthPhaseBadge(
     }
 }
 
+// Chip compatto per località salvate o recenti
 @Composable
 fun LocationChip(
-    loc: github.naturewhisp.myco.model.SavedLocation,
+    loc: SavedLocation,
     onClick: () -> Unit,
     onRemoveClick: (() -> Unit)? = null
 ) {
-    val borderColor = when {
-        loc.isFavorite -> Color(0xFFFBBF24).copy(alpha = 0.6f)  // oro per preferiti
-        loc.isGpsLocation -> Color(0xFF60A5FA).copy(alpha = 0.5f) // blu per GPS
-        else -> Color(0xFF475569).copy(alpha = 0.5f)              // slate per recenti
+    val colors = MycoTheme.colors
+    val accentColor = when {
+        loc.isFavorite -> colors.scale2
+        loc.isGpsLocation -> colors.meteo
+        else -> colors.neutral
     }
-    val bgColor = when {
-        loc.isFavorite -> Color(0x1AFBBF24)
-        loc.isGpsLocation -> Color(0x1A60A5FA)
-        else -> Color(0x1A334155)
+    val icon = when {
+        loc.isFavorite -> Icons.Default.Star
+        loc.isGpsLocation -> Icons.Default.LocationOn
+        else -> null
     }
-    val textColor = when {
-        loc.isFavorite -> Color(0xFFFDE68A)
-        loc.isGpsLocation -> Color(0xFF93C5FD)
-        else -> Color(0xFFCBD5E1)
-    }
-    val prefix = when {
-        loc.isFavorite -> "★ "
-        loc.isGpsLocation -> "📍 "
-        else -> ""
-    }
+    val shape = RoundedCornerShape(4.dp)
 
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(bgColor)
-            .border(0.8.dp, borderColor, RoundedCornerShape(20.dp))
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
             .clickable(onClick = onClick)
             .padding(
-                start = 12.dp,
-                end = if (onRemoveClick != null) 6.dp else 12.dp,
+                start = 10.dp,
+                end = if (onRemoveClick != null) 6.dp else 10.dp,
                 top = 6.dp,
                 bottom = 6.dp
             ),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = accentColor,
+                modifier = Modifier.size(13.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+        }
         Text(
-            text = "$prefix${loc.shortName}",
-            color = textColor,
+            text = loc.shortName,
+            color = MaterialTheme.colorScheme.onSurface,
             fontSize = 12.sp,
             fontWeight = if (loc.isFavorite) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1
@@ -469,17 +504,18 @@ fun LocationChip(
                 modifier = Modifier
                     .size(16.dp)
                     .clip(CircleShape)
-                    .background(Color(0x26FFFFFF))
+                    .background(MaterialTheme.colorScheme.surface)
                     .clickable { onRemoveClick() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = "Rimuovi",
-                    tint = textColor,
+                    tint = accentColor,
                     modifier = Modifier.size(10.dp)
                 )
             }
         }
     }
 }
+

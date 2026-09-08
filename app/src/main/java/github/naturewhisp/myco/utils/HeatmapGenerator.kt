@@ -128,58 +128,35 @@ object HeatmapGenerator {
     }
 
     /**
-     * Mappa la probabilità (0..100) in una rampa di colore termica/radar vivida e contrastata,
-     * chiaramente distinguibile sopra mappe topografiche (verdi), scure o standard.
+     * Mappa la probabilità (0..100) sulla scala tassonomica a 5 livelli Herbarium
+     * (Salvia -> Ocra -> Terracotta -> Ruggine) con opacità costante per massima leggibilità toponomastica.
      */
-    private fun getHeatmapColor(probability: Int): Int {
+    fun getHeatmapColor(probability: Int, isDark: Boolean = false): Int {
         if (probability < 20) return 0 // Trasparente per assenza di micelio significativo
 
-        return when {
-            probability < 40 -> {
-                // 20..40: Azzurro / Ciano vivido (Alpha 130..155)
-                val fraction = (probability - 20f) / 20f
-                interpolateColor(
-                    startColor = Color.argb(130, 0, 190, 255),
-                    endColor = Color.argb(155, 0, 230, 200),
-                    fraction = fraction
-                )
-            }
-            probability < 60 -> {
-                // 40..60: Da Ciano/Verde smeraldo brillante a Giallo lime (Alpha 155..175)
-                val fraction = (probability - 40f) / 20f
-                interpolateColor(
-                    startColor = Color.argb(155, 16, 185, 129),
-                    endColor = Color.argb(175, 234, 179, 8),
-                    fraction = fraction
-                )
-            }
-            probability < 75 -> {
-                // 60..75: Da Giallo oro ad Arancio vivo (Alpha 175..195)
-                val fraction = (probability - 60f) / 15f
-                interpolateColor(
-                    startColor = Color.argb(175, 245, 158, 11),
-                    endColor = Color.argb(195, 249, 115, 22),
-                    fraction = fraction
-                )
-            }
-            else -> {
-                // 75..100: Da Arancio vivo a Rosso fuoco / Magenta Hotspot (Alpha 195..220)
-                val fraction = ((probability - 75f) / 25f).coerceIn(0f, 1f)
-                interpolateColor(
-                    startColor = Color.argb(195, 249, 115, 22),
-                    endColor = Color.argb(220, 239, 68, 68),
-                    fraction = fraction
-                )
-            }
+        val baseAlpha = if (isDark) 150 else 128
+
+        // Pigmenti minerali della scala tassonomica Herbarium
+        val s1 = if (isDark) Color.rgb(0x6B, 0x7A, 0x55) else Color.rgb(0xBC, 0xC7, 0xA6) // Salvia
+        val s2 = if (isDark) Color.rgb(0xDC, 0xB6, 0x5C) else Color.rgb(0xC8, 0x9B, 0x3C) // Ocra
+        val s3 = if (isDark) Color.rgb(0xC6, 0x7C, 0x4B) else Color.rgb(0xB9, 0x6F, 0x42) // Terracotta
+        val s4 = if (isDark) Color.rgb(0xB8, 0x5A, 0x45) else Color.rgb(0x9B, 0x4A, 0x38) // Ruggine
+
+        val (c1, c2, fraction) = when {
+            probability < 40 -> Triple(s1, s2, (probability - 20f) / 20f)
+            probability < 60 -> Triple(s2, s3, (probability - 40f) / 20f)
+            probability < 75 -> Triple(s3, s4, (probability - 60f) / 15f)
+            else -> Triple(s4, s4, 1.0f)
         }
+
+        return interpolateColorWithAlpha(c1, c2, fraction, baseAlpha)
     }
 
-    private fun interpolateColor(startColor: Int, endColor: Int, fraction: Float): Int {
+    private fun interpolateColorWithAlpha(c1: Int, c2: Int, fraction: Float, alpha: Int): Int {
         val f = fraction.coerceIn(0f, 1f)
-        val a = (Color.alpha(startColor) + f * (Color.alpha(endColor) - Color.alpha(startColor))).toInt()
-        val r = (Color.red(startColor) + f * (Color.red(endColor) - Color.red(startColor))).toInt()
-        val g = (Color.green(startColor) + f * (Color.green(endColor) - Color.green(startColor))).toInt()
-        val b = (Color.blue(startColor) + f * (Color.blue(endColor) - Color.blue(startColor))).toInt()
-        return Color.argb(a, r, g, b)
+        val r = (Color.red(c1) + f * (Color.red(c2) - Color.red(c1))).toInt()
+        val g = (Color.green(c1) + f * (Color.green(c2) - Color.green(c1))).toInt()
+        val b = (Color.blue(c1) + f * (Color.blue(c2) - Color.blue(c1))).toInt()
+        return Color.argb(alpha, r, g, b)
     }
 }

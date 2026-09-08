@@ -2,39 +2,108 @@ package github.naturewhisp.myco.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.CompositionLocalProvider
 
-val DarkColorScheme = darkColorScheme(
-    primary = Color(0xFF34D399),       // Emerald 400
-    onPrimary = Color(0xFF040810),
-    primaryContainer = Color(0xFF059669), // Emerald 600
-    onPrimaryContainer = Color.White,
-    secondary = Color(0xFF6EE7B7),
-    onSecondary = Color(0xFF040810),
-    background = Color(0xFF040810),
-    onBackground = Color.White,
-    surface = Color(0x990D1423),        // glass card bg (rgba(13, 20, 35, 0.6))
-    onSurface = Color.White,
-    surfaceVariant = Color(0xCC0D1423), // slightly more opaque glass card bg (rgba(13, 20, 35, 0.8))
-    onSurfaceVariant = Color(0xFF94A3B8), // Slate 400 text
-    outline = Color(0x14FFFFFF),         // border (rgba(255, 255, 255, 0.08))
-    error = Color(0xFFF87171),
-    onError = Color.White
+// Tavolozza Material 3 per il tema chiaro "Herbarium Naturalist"
+val HerbariumLightColorScheme = lightColorScheme(
+    primary = Forest,
+    onPrimary = Parchment,
+    primaryContainer = ParchmentVariant,
+    onPrimaryContainer = Forest,
+    secondary = Lichen,
+    onSecondary = Parchment,
+    secondaryContainer = ParchmentVariant,
+    onSecondaryContainer = Forest,
+    tertiary = Indigo,
+    onTertiary = Parchment,
+    background = Parchment,
+    onBackground = InkPrimary,
+    surface = Parchment,
+    onSurface = InkPrimary,
+    surfaceVariant = ParchmentVariant,
+    onSurfaceVariant = InkSecondary,
+    surfaceContainer = ParchmentVariant,
+    surfaceContainerHigh = ParchmentVariant,
+    surfaceContainerHighest = ParchmentVariant,
+    surfaceContainerLow = Parchment,
+    surfaceContainerLowest = ParchmentSurface,
+    outline = RuleHairline,
+    outlineVariant = RuleSubtle,
+    error = Scale4,
+    onError = Parchment
 )
 
-val LightColorScheme = DarkColorScheme // The app is dark-themed by design
+// Tavolozza Material 3 per il tema scuro "Herbarium Nocturne"
+val HerbariumDarkColorScheme = darkColorScheme(
+    primary = NightLichen,
+    onPrimary = NightBase,
+    primaryContainer = NightSurfaceRaised,
+    onPrimaryContainer = NightLichen,
+    secondary = NightScale2,
+    onSecondary = NightBase,
+    secondaryContainer = NightSurface,
+    onSecondaryContainer = NightScale2,
+    tertiary = NightIndigo,
+    onTertiary = NightBase,
+    background = NightBase,
+    onBackground = NightInk,
+    surface = NightSurface,
+    onSurface = NightInk,
+    surfaceVariant = NightSurfaceRaised,
+    onSurfaceVariant = NightInkSoft,
+    surfaceContainer = NightSurface,
+    surfaceContainerHigh = NightSurfaceRaised,
+    surfaceContainerHighest = NightSurfaceRaised,
+    surfaceContainerLow = NightBase,
+    surfaceContainerLowest = NightBase,
+    outline = NightRule,
+    outlineVariant = NightRuleSubtle,
+    error = NightScale4,
+    onError = NightBase
+)
 
+// Accesso rapido alle definizioni visive Herbarium
+object MycoTheme {
+    val colors: MycoColors
+        @Composable
+        get() = LocalMycoColors.current
+
+    val typography: Typography
+        @Composable
+        get() = MaterialTheme.typography
+
+    val shapes: Shapes
+        @Composable
+        get() = MaterialTheme.shapes
+}
+
+// Composable principale di tematizzazione Myco Herbarium
 @Composable
 fun MycoTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
+    darkTheme: Boolean = when (themeMode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    },
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+    val colorScheme = if (darkTheme) HerbariumDarkColorScheme else HerbariumLightColorScheme
+    val mycoColors = if (darkTheme) NocturneMycoColors else NaturalistMycoColors
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        content = content
-    )
+    CompositionLocalProvider(
+        LocalMycoColors provides mycoColors
+    ) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = HerbariumTypography,
+            shapes = HerbariumShapes,
+            content = content
+        )
+    }
 }

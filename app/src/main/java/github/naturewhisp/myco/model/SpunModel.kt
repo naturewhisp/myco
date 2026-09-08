@@ -11,7 +11,9 @@ data class SpunData(
     val ecmText: String,
     val hyphalText: String,
     val regionCode: String,
-    val regionName: String
+    val regionName: String,
+    val ecmQualityLabel: String = "Ideale",
+    val hyphalVitalityLabel: String = "Attiva"
 )
 
 /**

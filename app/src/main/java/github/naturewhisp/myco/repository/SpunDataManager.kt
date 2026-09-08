@@ -250,14 +250,14 @@ class SpunDataManager(private val context: Context) {
 
         val ecmText = String.format(
             Locale.ITALIAN,
-            "🧬 Simbiosi EcM: %d specie (%s)",
+            "Simbiosi EcM: %d specie (%s)",
             ecmVal.toInt(),
             ecmQualityLabel
         )
 
         val hyphalText = String.format(
             Locale.ITALIAN,
-            "🕸️ Rete Ifale: %.1f m/cm³ (%s)",
+            "Rete Ifale: %.1f m/cm³ (%s)",
             hyphalVal,
             hyphalVitalityLabel
         )
@@ -270,7 +270,9 @@ class SpunDataManager(private val context: Context) {
             ecmText = ecmText,
             hyphalText = hyphalText,
             regionCode = region.header.regionCode,
-            regionName = region.descriptor.displayName
+            regionName = region.descriptor.displayName,
+            ecmQualityLabel = ecmQualityLabel,
+            hyphalVitalityLabel = hyphalVitalityLabel
         )
     }
 

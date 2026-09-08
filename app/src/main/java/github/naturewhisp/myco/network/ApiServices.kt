@@ -11,7 +11,9 @@ interface GeocodingService {
     suspend fun searchLocation(
         @Query("q") query: String,
         @Query("format") format: String = "json",
-        @Query("limit") limit: Int = 1
+        @Query("limit") limit: Int = 1,
+        @Query("addressdetails") addressDetails: Int = 1,
+        @Query("accept-language") lang: String = "it"
     ): List<GeocodeResult>
 
     @GET("reverse")
@@ -20,6 +22,7 @@ interface GeocodingService {
         @Query("lon") lon: Double,
         @Query("format") format: String = "json",
         @Query("zoom") zoom: Int = 14,
+        @Query("addressdetails") addressDetails: Int = 1,
         @Query("accept-language") lang: String = "it"
     ): GeocodeResult
 }

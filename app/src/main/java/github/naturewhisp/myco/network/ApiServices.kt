@@ -1,5 +1,6 @@
 package github.naturewhisp.myco.network
 
+import github.naturewhisp.myco.model.ElevationResponse
 import github.naturewhisp.myco.model.GeocodeResult
 import github.naturewhisp.myco.model.OverpassResponse
 import github.naturewhisp.myco.model.WeatherResponse
@@ -38,6 +39,12 @@ interface WeatherService {
         @Query("daily") daily: String = "weathercode",
         @Query("timezone") timezone: String = "auto"
     ): WeatherResponse
+
+    @GET("v1/elevation")
+    suspend fun getElevation(
+        @Query("latitude") latitude: String,
+        @Query("longitude") longitude: String
+    ): ElevationResponse
 }
 
 interface OverpassService {

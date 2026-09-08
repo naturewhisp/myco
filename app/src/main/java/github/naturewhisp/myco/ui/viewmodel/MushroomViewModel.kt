@@ -14,6 +14,8 @@ import github.naturewhisp.myco.model.ProcessedDay
 import github.naturewhisp.myco.model.SPECIES_CATALOG
 import github.naturewhisp.myco.model.SavedLocation
 import github.naturewhisp.myco.model.SpunData
+import github.naturewhisp.myco.model.TerrainAspectData
+import github.naturewhisp.myco.model.TerrainAspectEvaluation
 import github.naturewhisp.myco.network.LocalAiService
 import github.naturewhisp.myco.repository.CacheManager
 import github.naturewhisp.myco.repository.MushroomRepository
@@ -31,6 +33,7 @@ import java.util.Calendar
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 class MushroomViewModel(
     private val repository: MushroomRepository,
@@ -162,6 +165,8 @@ class MushroomViewModel(
     private var lastGrowthPhaseVal: String = ""
     private var lastMoonPhase: MoonPhaseResult? = null
     private var lastSlopeTextVal: String = ""
+    private var lastTerrainData: TerrainAspectData? = null
+    private var lastTerrainEvaluation: TerrainAspectEvaluation? = null
     private var lastCurrentMonth: Int = 8
 
     fun toggleHeatmap() {
@@ -205,14 +210,6 @@ class MushroomViewModel(
         val altMult = if (calculationMode == "WEATHER_ONLY") 1.0 else altScore.score
         val seasonMult = if (calculationMode == "WEATHER_ONLY") 1.0 else seasonScore.score
 
-        val prob = MushroomAlgorithms.dailyGrowthProbability(
-            weatherScore = rawWeatherScore,
-            habitatScore = habScore,
-            altitudeScore = altMult,
-            seasonalityScore = seasonMult
-        )
-        todayProbability = prob
-
         val moon = lastMoonPhase ?: MushroomAlgorithms.getMoonPhase()
         val tempWindow = if (todayIndex >= 5) days.subList(todayIndex - 5, todayIndex) else emptyList()
         val avgTemp = if (tempWindow.isNotEmpty()) tempWindow.sumOf { it.avgTemp.toDouble() } / tempWindow.size else 0.0
@@ -220,6 +217,24 @@ class MushroomViewModel(
         val totalRain = rainWindow.sumOf { it.totalPrecip.toDouble() }
         val humWindow = days.subList(todayIndex - 3, min(days.size, todayIndex + 1))
         val avgHum = if (humWindow.isNotEmpty()) humWindow.sumOf { it.avgHumidity.toDouble() } / humWindow.size else 0.0
+
+        val terrainEval = MushroomAlgorithms.evaluateTerrainAspect(
+            terrain = lastTerrainData,
+            month = lastCurrentMonth,
+            avgTemp = avgTemp,
+            seasonalityScore = seasonScore.score,
+            species = species
+        )
+        lastTerrainEvaluation = terrainEval
+
+        val prob = MushroomAlgorithms.dailyGrowthProbability(
+            weatherScore = rawWeatherScore,
+            habitatScore = habScore,
+            altitudeScore = altMult,
+            seasonalityScore = seasonMult,
+            terrainModifier = if (calculationMode == "WEATHER_ONLY") 1.0 else terrainEval.modifier
+        )
+        todayProbability = prob
 
         factors = MushroomAlgorithms.calculateFactors(
             avgTemp = avgTemp,
@@ -234,7 +249,8 @@ class MushroomViewModel(
             slopeText = lastSlopeTextVal,
             species = species,
             spunEcmText = lastSpunData?.ecmText,
-            spunHyphalText = lastSpunData?.hyphalText
+            spunHyphalText = lastSpunData?.hyphalText,
+            terrainEvaluation = terrainEval
         )
 
         dailyOutlooks = MushroomAlgorithms.calculateDailyOutlooks(
@@ -558,16 +574,18 @@ class MushroomViewModel(
                 // Check favorite status
                 currentLocationIsFavorite = cacheManager.isFavorite(lat, lon)
 
-                // Fetch weather, habitat, and SPUN micorrize details in parallel
+                // Fetch weather, habitat, SPUN micorrize, and terrain aspect in parallel
                 val weatherDeferred = async { repository.fetchWeather(lat, lon) }
                 val habitatDeferred = async { repository.fetchHabitat(lat, lon) }
                 val habitatBonusDeferred = async { repository.fetchSpecificHabitatBonus(lat, lon) }
                 val spunDeferred = async { repository.fetchSpunData(lat, lon, searchRadius) }
+                val terrainDeferred = async { repository.fetchTerrainAspect(lat, lon) }
 
                 val weather = weatherDeferred.await()
                 val habitat = habitatDeferred.await()
                 val habitatBonus = habitatBonusDeferred.await()
                 val spunData = spunDeferred.await()
+                val terrainData = terrainDeferred.await()
 
                 // Calculate Habitat Score
                 val forestCount = habitat?.elements?.size ?: 0
@@ -678,7 +696,13 @@ class MushroomViewModel(
                 tempText = tempTextVal
                 moonPhaseText = "Luna: ${moonPhase.text} (${if (moonPhase.favorable) "Favorevole" else "Ininfluente"})"
                 moonPhaseEmoji = moonPhase.emoji
-                slopeText = slopeTextVal
+                slopeText = if (terrainData != null && !terrainData.isFlat) {
+                    "${terrainData.cardinalDirection} (${terrainData.slopeDegrees.roundToInt()}°)"
+                } else if (terrainData != null && terrainData.isFlat) {
+                    "Pianeggiante (${terrainData.slopeDegrees.roundToInt()}°)"
+                } else {
+                    slopeTextVal
+                }
 
                 if (spunData != null) {
                     spunEcmText = spunData.ecmText
@@ -692,6 +716,7 @@ class MushroomViewModel(
                     spunDataAvailable = false
                 }
 
+                lastTerrainData = terrainData
                 // Memorizza i dati per ricalibrazioni istantanee con specie bersaglio differenti
                 lastProcessedDays = processedDays
                 lastFinalHabitatScore = finalHabitatScore
@@ -755,6 +780,17 @@ class MushroomViewModel(
                                 "- Rete micorrizica: Nessun dato regionale SPUN registrato per questa coordinata"
                             }
 
+                            val terrainPromptInfo = if (lastTerrainData != null) {
+                                val t = lastTerrainData!!
+                                if (t.isFlat) {
+                                    "- Orografia e versante: Terreno pianeggiante o altopiano (pendenza ${String.format(Locale.ITALIAN, "%.0f°", t.slopeDegrees)})"
+                                } else {
+                                    "- Orografia e versante reale: Pendenza ${t.slopeDegrees.roundToInt()}°, Esposizione versante a ${t.cardinalDirection} (${lastTerrainEvaluation?.detail ?: ""})"
+                                }
+                            } else {
+                                "- Esposizione versante consigliata: $slopeTextVal"
+                            }
+
                             val prompt = """
                                 Sei un esperto micologo. Genera un'analisi in parole semplici in lingua italiana basandoti su questi dati:
                                 - Località: $displayName
@@ -765,7 +801,7 @@ class MushroomViewModel(
                                 - Pioggia ultimi 10 giorni: $rainTextVal
                                 - Temperatura media ultimi 5 giorni: $tempTextVal
                                 - Luna: ${moonPhase.text} (${if (moonPhase.favorable) "Favorevole" else "Ininfluente"})
-                                - Esposizione versante consigliata: $slopeTextVal
+                                $terrainPromptInfo
                                 - Tendenza futura: $futureTrend
 
                                 ISTRUZIONI CRITICHE DI FORMATTAZIONE:

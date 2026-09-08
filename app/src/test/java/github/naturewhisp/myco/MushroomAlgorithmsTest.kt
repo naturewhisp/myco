@@ -1,7 +1,11 @@
 package github.naturewhisp.myco
 
+import github.naturewhisp.myco.model.FactorId
+import github.naturewhisp.myco.model.FactorLevel
+import github.naturewhisp.myco.model.SPECIES_CATALOG
 import github.naturewhisp.myco.utils.MushroomAlgorithms
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Calendar
@@ -162,6 +166,128 @@ class MushroomAlgorithmsTest {
         )
 
         // Assert all formattedValues are compact (< 25 chars) to prevent layout squashing
+        for (f in factors) {
+            assertTrue("Factor ${f.id} formattedValue '${f.formattedValue}' is too long", f.formattedValue.length <= 25)
+        }
+    }
+
+    @Test
+    fun testCalculateTerrainAspect_flat() {
+        // [Center, North, South, East, West] all equal
+        val elevations = listOf(500f, 500f, 500f, 500f, 500f)
+        val result = MushroomAlgorithms.calculateTerrainAspect(elevations)
+        assertTrue(result.isFlat)
+        assertEquals("Pianeggiante", result.cardinalDirection)
+        assertEquals("Pian", result.cardinalAbbreviation)
+        assertEquals(0f, result.slopeDegrees, 0.01f)
+    }
+
+    @Test
+    fun testCalculateTerrainAspect_cardinalDirections() {
+        val delta = 75.0
+        // 1. Downhill North (North is lower: 950 vs South 1050)
+        val northSample = listOf(1000f, 950f, 1050f, 1000f, 1000f)
+        val northAspect = MushroomAlgorithms.calculateTerrainAspect(northSample, delta)
+        assertFalse(northAspect.isFlat)
+        assertEquals("Nord", northAspect.cardinalDirection)
+        assertEquals("N", northAspect.cardinalAbbreviation)
+        assertTrue(northAspect.aspectDegrees < 22.5f || northAspect.aspectDegrees >= 337.5f)
+        assertTrue(northAspect.slopeDegrees > 0f)
+
+        // 2. Downhill South (South is lower: 950 vs North 1050)
+        val southSample = listOf(1000f, 1050f, 950f, 1000f, 1000f)
+        val southAspect = MushroomAlgorithms.calculateTerrainAspect(southSample, delta)
+        assertFalse(southAspect.isFlat)
+        assertEquals("Sud", southAspect.cardinalDirection)
+        assertEquals("S", southAspect.cardinalAbbreviation)
+        assertEquals(180f, southAspect.aspectDegrees, 1.0f)
+
+        // 3. Downhill East (East is lower: 950 vs West 1050)
+        val eastSample = listOf(1000f, 1000f, 1000f, 950f, 1050f)
+        val eastAspect = MushroomAlgorithms.calculateTerrainAspect(eastSample, delta)
+        assertFalse(eastAspect.isFlat)
+        assertEquals("Est", eastAspect.cardinalDirection)
+        assertEquals("E", eastAspect.cardinalAbbreviation)
+        assertEquals(90f, eastAspect.aspectDegrees, 1.0f)
+
+        // 4. Downhill West (West is lower: 950 vs East 1050)
+        val westSample = listOf(1000f, 1000f, 1000f, 1050f, 950f)
+        val westAspect = MushroomAlgorithms.calculateTerrainAspect(westSample, delta)
+        assertFalse(westAspect.isFlat)
+        assertEquals("Ovest", westAspect.cardinalDirection)
+        assertEquals("O", westAspect.cardinalAbbreviation)
+        assertEquals(270f, westAspect.aspectDegrees, 1.0f)
+    }
+
+    @Test
+    fun testEvaluateTerrainAspect_seasonalLogic() {
+        val generalSpecies = SPECIES_CATALOG.first { it.id == "general" }
+        val delta = 75.0
+
+        val northTerrain = MushroomAlgorithms.calculateTerrainAspect(listOf(1000f, 950f, 1050f, 1000f, 1000f), delta)
+        val southTerrain = MushroomAlgorithms.calculateTerrainAspect(listOf(1000f, 1050f, 950f, 1000f, 1000f), delta)
+
+        // Estate calda (Luglio = mese 6, temp 24°C)
+        val summerNorth = MushroomAlgorithms.evaluateTerrainAspect(northTerrain, 6, 24.0, 0.7, generalSpecies)
+        val summerSouth = MushroomAlgorithms.evaluateTerrainAspect(southTerrain, 6, 24.0, 0.7, generalSpecies)
+
+        assertEquals(FactorLevel.FAVORABLE, summerNorth.level)
+        assertTrue(summerNorth.detail.contains("bacìo"))
+        assertEquals(FactorLevel.ADVERSE, summerSouth.level)
+        assertTrue(summerSouth.detail.contains("Solatìo"))
+
+        // Autunno freddo (Novembre = mese 10, temp 9°C)
+        val autumnNorth = MushroomAlgorithms.evaluateTerrainAspect(northTerrain, 10, 9.0, 0.8, generalSpecies)
+        val autumnSouth = MushroomAlgorithms.evaluateTerrainAspect(southTerrain, 10, 9.0, 0.8, generalSpecies)
+
+        assertEquals(FactorLevel.ADVERSE, autumnNorth.level)
+        assertEquals(FactorLevel.FAVORABLE, autumnSouth.level)
+        assertTrue(autumnSouth.detail.contains("Solatìo"))
+    }
+
+    @Test
+    fun testEvaluateTerrainAspect_thermophilicSpecies() {
+        val aereus = SPECIES_CATALOG.first { it.id == "boletus_aereus" }
+        val delta = 75.0
+        val southTerrain = MushroomAlgorithms.calculateTerrainAspect(listOf(500f, 550f, 450f, 500f, 500f), delta)
+        val northTerrain = MushroomAlgorithms.calculateTerrainAspect(listOf(500f, 450f, 550f, 500f, 500f), delta)
+
+        // Boletus aereus ama il calore: versante sud è sempre favorito
+        val southEval = MushroomAlgorithms.evaluateTerrainAspect(southTerrain, 8, 20.0, 1.0, aereus)
+        assertEquals(FactorLevel.FAVORABLE, southEval.level)
+
+        // Versante nord per aereus con temp mite (20°C) è avverso per carenza di insolazione
+        val northEval = MushroomAlgorithms.evaluateTerrainAspect(northTerrain, 8, 20.0, 1.0, aereus)
+        assertEquals(FactorLevel.ADVERSE, northEval.level)
+    }
+
+    @Test
+    fun testFactorsWithTerrainAspectEvaluationFormattedValuesAreCompact() {
+        val moon = MushroomAlgorithms.getMoonPhase()
+        val delta = 75.0
+        val northTerrain = MushroomAlgorithms.calculateTerrainAspect(listOf(1000f, 950f, 1050f, 1000f, 1000f), delta)
+        val eval = MushroomAlgorithms.evaluateTerrainAspect(northTerrain, 6, 23.0, 0.8)
+
+        val factors = MushroomAlgorithms.calculateFactors(
+            avgTemp = 23.0,
+            totalRain = 35.0,
+            avgHumidity = 75.0,
+            habitatScore = 0.95,
+            habitatText = "Ideale (area boschiva)",
+            elevation = 1000f,
+            month = 6,
+            growthPhaseText = "Idratazione miceliare",
+            moon = moon,
+            slopeText = "Nord (Versanti più freschi)",
+            spunEcmText = "60 specie (Ideale)",
+            spunHyphalText = "5.0 m/cm³ (Attiva)",
+            terrainEvaluation = eval
+        )
+
+        val slopeFactor = factors.first { it.id == FactorId.SLOPE }
+        assertEquals(FactorLevel.FAVORABLE, slopeFactor.level)
+        assertTrue("Formatted value '${slopeFactor.formattedValue}' must be compact", slopeFactor.formattedValue.length <= 15)
+
         for (f in factors) {
             assertTrue("Factor ${f.id} formattedValue '${f.formattedValue}' is too long", f.formattedValue.length <= 25)
         }

@@ -7,6 +7,8 @@ import github.naturewhisp.myco.model.FactorLevel
 import github.naturewhisp.myco.model.MushroomSpecies
 import github.naturewhisp.myco.model.ProcessedDay
 import github.naturewhisp.myco.model.SPECIES_CATALOG
+import github.naturewhisp.myco.model.TerrainAspectData
+import github.naturewhisp.myco.model.TerrainAspectEvaluation
 import github.naturewhisp.myco.model.WeatherResponse
 import java.util.Calendar
 import java.util.Date
@@ -346,6 +348,217 @@ object MushroomAlgorithms {
         }
     }
 
+    fun calculateTerrainAspect(elevations: List<Float>, deltaMeters: Double = 75.0): TerrainAspectData {
+        if (elevations.size < 5) {
+            val center = elevations.firstOrNull() ?: 0f
+            return TerrainAspectData(
+                centerElevation = center,
+                slopeDegrees = 0f,
+                slopePercent = 0f,
+                aspectDegrees = 0f,
+                cardinalDirection = "Pianeggiante",
+                cardinalAbbreviation = "Pian",
+                isFlat = true
+            )
+        }
+        val zCenter = elevations[0]
+        val zNorth = elevations[1]
+        val zSouth = elevations[2]
+        val zEast = elevations[3]
+        val zWest = elevations[4]
+
+        // Derivate parziali dell'elevazione (differenze finite centrate)
+        val dzdx = (zEast - zWest).toDouble() / (2.0 * deltaMeters)
+        val dzdy = (zNorth - zSouth).toDouble() / (2.0 * deltaMeters)
+
+        val slopeRatio = Math.sqrt(dzdx * dzdx + dzdy * dzdy)
+        val slopeDegrees = Math.toDegrees(Math.atan(slopeRatio)).toFloat()
+        val slopePercent = (slopeRatio * 100.0).toFloat()
+
+        val isFlat = slopeDegrees < 3.0f
+
+        // Vettore di massima discesa: verso cui il versante scende
+        val vx = -dzdx
+        val vy = -dzdy
+
+        var aspectDeg = Math.toDegrees(kotlin.math.atan2(vx, vy)).toFloat()
+        if (aspectDeg < 0f) aspectDeg += 360f
+
+        val (dir, abbr) = if (isFlat) {
+            "Pianeggiante" to "Pian"
+        } else {
+            when {
+                aspectDeg >= 337.5f || aspectDeg < 22.5f -> "Nord" to "N"
+                aspectDeg < 67.5f -> "Nord-Est" to "NE"
+                aspectDeg < 112.5f -> "Est" to "E"
+                aspectDeg < 157.5f -> "Sud-Est" to "SE"
+                aspectDeg < 202.5f -> "Sud" to "S"
+                aspectDeg < 247.5f -> "Sud-Ovest" to "SO"
+                aspectDeg < 292.5f -> "Ovest" to "O"
+                else -> "Nord-Ovest" to "NO"
+            }
+        }
+
+        return TerrainAspectData(
+            centerElevation = zCenter,
+            slopeDegrees = slopeDegrees,
+            slopePercent = slopePercent,
+            aspectDegrees = aspectDeg,
+            cardinalDirection = dir,
+            cardinalAbbreviation = abbr,
+            isFlat = isFlat
+        )
+    }
+
+    fun evaluateTerrainAspect(
+        terrain: TerrainAspectData?,
+        month: Int,
+        avgTemp: Double,
+        seasonalityScore: Double,
+        species: MushroomSpecies = SPECIES_CATALOG[0]
+    ): TerrainAspectEvaluation {
+        if (terrain == null) {
+            val rec = getSlopeRecommendation(seasonalityScore, avgTemp, month)
+            val slopeVal = rec.substringBefore(" (").replace("Versante: ", "").trim()
+            val slopeDetail = rec.substringAfter("(", "").replace(")", "").trim().ifEmpty { "Orientamento orografico" }
+            return TerrainAspectEvaluation(
+                terrain = null,
+                level = FactorLevel.INFORMATIVE,
+                formattedValue = slopeVal,
+                detail = slopeDetail,
+                modifier = 1.0
+            )
+        }
+
+        if (terrain.isFlat) {
+            val formatted = String.format(Locale.US, "%.0f° (Pian)", terrain.slopeDegrees)
+            return TerrainAspectEvaluation(
+                terrain = terrain,
+                level = FactorLevel.NEUTRAL,
+                formattedValue = formatted,
+                detail = "Altopiano o pianura • Drenaggio regolare",
+                modifier = 1.0
+            )
+        }
+
+        val formatted = String.format(Locale.US, "%d° %s", terrain.slopeDegrees.roundToInt(), terrain.cardinalAbbreviation)
+        val isSteep = terrain.slopeDegrees > 38f
+
+        val aspect = terrain.aspectDegrees
+        val isNorth = aspect >= 315f || aspect <= 45f // N, NO, NE
+        val isSouth = aspect in 135f..225f            // S, SE, SO
+        val isEast = aspect in 45f..135f              // E, NE, SE
+
+        var level: FactorLevel
+        var detail: String
+        var modifier: Double
+
+        val isThermophilic = species.idealTempMin >= 17f
+
+        if (isThermophilic) {
+            when {
+                isSouth || (isEast && aspect > 90f) -> {
+                    level = FactorLevel.FAVORABLE
+                    detail = "Solatìo caldo • Ottimale per specie termofila"
+                    modifier = 1.05
+                }
+                isNorth -> {
+                    if (avgTemp >= 24.0) {
+                        level = FactorLevel.NEUTRAL
+                        detail = "Esposizione Nord • Mitiga calore estivo"
+                        modifier = 1.0
+                    } else {
+                        level = FactorLevel.ADVERSE
+                        detail = "Versante freddo a bacìo • Insolazione scarsa"
+                        modifier = 0.90
+                    }
+                }
+                else -> {
+                    level = FactorLevel.NEUTRAL
+                    detail = "Esposizione intermedia • Soleggiamento moderato"
+                    modifier = 1.0
+                }
+            }
+        } else {
+            val isHotSeason = month in 5..7 || avgTemp > 21.0
+            val isColdSeason = month in listOf(3, 10, 11) || (month == 4 && avgTemp < 13.0) || avgTemp < 13.0
+
+            when {
+                isHotSeason -> {
+                    when {
+                        isNorth -> {
+                            level = FactorLevel.FAVORABLE
+                            detail = "Versante fresco a bacìo • Ottima umidità estiva"
+                            modifier = 1.05
+                        }
+                        isSouth -> {
+                            level = FactorLevel.ADVERSE
+                            detail = "Solatìo arido • Elevata evapotraspirazione"
+                            modifier = 0.90
+                        }
+                        else -> {
+                            level = FactorLevel.NEUTRAL
+                            detail = "Esposizione intermedia • Soleggiamento parziale"
+                            modifier = 1.0
+                        }
+                    }
+                }
+                isColdSeason -> {
+                    when {
+                        isSouth -> {
+                            level = FactorLevel.FAVORABLE
+                            detail = "Solatìo soleggiato • Accumulo termico autunnale"
+                            modifier = 1.05
+                        }
+                        isNorth -> {
+                            level = FactorLevel.ADVERSE
+                            detail = "Bacìo freddo • Rischio blocco termico miceliare"
+                            modifier = 0.90
+                        }
+                        else -> {
+                            level = FactorLevel.NEUTRAL
+                            detail = "Esposizione intermedia • Soleggiamento moderato"
+                            modifier = 1.0
+                        }
+                    }
+                }
+                else -> {
+                    when {
+                        isEast -> {
+                            level = FactorLevel.FAVORABLE
+                            detail = "Esposizione Est • Soleggiamento mattutino mite"
+                            modifier = 1.03
+                        }
+                        isSouth -> {
+                            level = FactorLevel.FAVORABLE
+                            detail = "Esposizione Sud • Buon soleggiamento"
+                            modifier = 1.02
+                        }
+                        else -> {
+                            level = FactorLevel.NEUTRAL
+                            detail = "Esposizione ordinaria • Microclima temperato"
+                            modifier = 1.0
+                        }
+                    }
+                }
+            }
+        }
+
+        if (isSteep) {
+            level = if (level == FactorLevel.FAVORABLE) FactorLevel.NEUTRAL else FactorLevel.ADVERSE
+            detail = "Forte pendenza (${terrain.slopeDegrees.roundToInt()}°) • Ruscellamento elevato"
+            modifier = min(modifier, 0.92)
+        }
+
+        return TerrainAspectEvaluation(
+            terrain = terrain,
+            level = level,
+            formattedValue = formatted,
+            detail = detail,
+            modifier = modifier
+        )
+    }
+
     fun analyzeFutureTrend(processedData: List<ProcessedDay>): String {
         val todayIndex = 14
         if (processedData.size < todayIndex + 6) return ""
@@ -508,10 +721,11 @@ object MushroomAlgorithms {
         weatherScore: Int,
         habitatScore: Double,
         altitudeScore: Double,
-        seasonalityScore: Double
+        seasonalityScore: Double,
+        terrainModifier: Double = 1.0
     ): Int {
         val weightedWeatherScore = 100.0 * Math.pow(weatherScore / 100.0, 1.2)
-        val combined = weightedWeatherScore * habitatScore * altitudeScore * seasonalityScore
+        val combined = weightedWeatherScore * habitatScore * altitudeScore * seasonalityScore * terrainModifier
         return combined.toInt().coerceIn(0, 100)
     }
 
@@ -529,7 +743,8 @@ object MushroomAlgorithms {
         slopeText: String,
         species: MushroomSpecies = SPECIES_CATALOG[0],
         spunEcmText: String? = null,
-        spunHyphalText: String? = null
+        spunHyphalText: String? = null,
+        terrainEvaluation: TerrainAspectEvaluation? = null
     ): List<Factor> {
         val factors = mutableListOf<Factor>()
 
@@ -665,17 +880,29 @@ object MushroomAlgorithms {
         )
 
         // 9. Versante orografico
-        val slopeVal = slopeText.substringBefore(" (").replace("Versante: ", "").trim()
-        val slopeDetail = slopeText.substringAfter("(", "").replace(")", "").trim().ifEmpty { "Orientamento orografico" }
-        factors.add(
-            Factor(
-                id = FactorId.SLOPE,
-                label = "Esposizione versante",
-                formattedValue = slopeVal,
-                level = FactorLevel.INFORMATIVE,
-                detail = slopeDetail
+        if (terrainEvaluation != null) {
+            factors.add(
+                Factor(
+                    id = FactorId.SLOPE,
+                    label = "Esposizione versante",
+                    formattedValue = terrainEvaluation.formattedValue,
+                    level = terrainEvaluation.level,
+                    detail = terrainEvaluation.detail
+                )
             )
-        )
+        } else {
+            val slopeVal = slopeText.substringBefore(" (").replace("Versante: ", "").trim()
+            val slopeDetail = slopeText.substringAfter("(", "").replace(")", "").trim().ifEmpty { "Orientamento orografico" }
+            factors.add(
+                Factor(
+                    id = FactorId.SLOPE,
+                    label = "Esposizione versante",
+                    formattedValue = slopeVal,
+                    level = FactorLevel.INFORMATIVE,
+                    detail = slopeDetail
+                )
+            )
+        }
 
         // 10. SPUN Biodiversità micorrizica
         if (!spunEcmText.isNullOrEmpty()) {

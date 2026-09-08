@@ -5,11 +5,15 @@ import github.naturewhisp.myco.model.GeocodeResult
 import github.naturewhisp.myco.model.OverpassResponse
 import github.naturewhisp.myco.model.WeatherResponse
 import github.naturewhisp.myco.model.SpunData
+import github.naturewhisp.myco.model.TerrainAspectData
 import github.naturewhisp.myco.network.GeocodingService
 import github.naturewhisp.myco.network.NetworkClient
 import github.naturewhisp.myco.network.OverpassService
 import github.naturewhisp.myco.network.WeatherService
+import github.naturewhisp.myco.utils.MushroomAlgorithms
 import java.util.Locale
+import kotlin.math.cos
+import kotlin.math.max
 
 class MushroomRepository(
     private val cacheManager: CacheManager,
@@ -138,5 +142,45 @@ class MushroomRepository(
 
     suspend fun fetchSpunData(latitude: Double, longitude: Double, radiusMeters: Int): SpunData? {
         return spunDataManager.getSpunData(latitude, longitude, radiusMeters)
+    }
+
+    suspend fun fetchTerrainAspect(latitude: Double, longitude: Double): TerrainAspectData? {
+        val roundedLat = String.format(Locale.US, "%.4f", latitude)
+        val roundedLon = String.format(Locale.US, "%.4f", longitude)
+        val cacheKey = "terrain_${roundedLat}_${roundedLon}"
+
+        val cached = cacheManager.getCachedData(cacheKey, TerrainAspectData::class.java, 30L * 24 * 60 * 60 * 1000L) // 30 giorni
+        if (cached != null) {
+            return cached
+        }
+
+        return try {
+            val deltaMeters = 75.0
+            val metersPerDegLat = 111139.0
+            val latRad = Math.toRadians(latitude)
+            val metersPerDegLon = 111139.0 * cos(latRad)
+            val deltaLat = deltaMeters / metersPerDegLat
+            val deltaLon = deltaMeters / max(1.0, metersPerDegLon)
+
+            val latN = latitude + deltaLat
+            val latS = latitude - deltaLat
+            val lonE = longitude + deltaLon
+            val lonW = longitude - deltaLon
+
+            // Batch request per 5 punti: Centro, Nord, Sud, Est, Ovest
+            val latStr = String.format(Locale.US, "%.6f,%.6f,%.6f,%.6f,%.6f", latitude, latN, latS, latitude, latitude)
+            val lonStr = String.format(Locale.US, "%.6f,%.6f,%.6f,%.6f,%.6f", longitude, longitude, longitude, lonE, lonW)
+
+            val response = weatherService.getElevation(latStr, lonStr)
+            if (response.elevation.size >= 5) {
+                val terrainData = MushroomAlgorithms.calculateTerrainAspect(response.elevation, deltaMeters)
+                cacheManager.saveCachedData(cacheKey, terrainData)
+                terrainData
+            } else {
+                null
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 }

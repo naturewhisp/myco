@@ -52,6 +52,10 @@ fun MapViewContainer(
         factory = { context ->
             MapView(context).apply {
                 setMultiTouchControls(true)
+                isVerticalMapRepetitionEnabled = false
+                minZoomLevel = 4.0
+                maxZoomLevel = 20.0
+
                 tileProvider.tileSource = when (mapStyle) {
                     "topo" -> TileSourceFactory.OpenTopo
                     "dark" -> darkTileSource
@@ -88,6 +92,9 @@ fun MapViewContainer(
                     overlays.add(marker)
                     controller.setCenter(geoPoint)
                     controller.setZoom(13.0)
+                } else {
+                    controller.setZoom(6.0)
+                    controller.setCenter(GeoPoint(42.5, 12.5))
                 }
             }
         },
@@ -120,6 +127,9 @@ fun MapViewContainer(
                 mapView.overlays.add(marker)
                 
                 mapView.controller.setCenter(geoPoint)
+                if (mapView.zoomLevelDouble < 10.0) {
+                    mapView.controller.setZoom(13.0)
+                }
             }
             mapView.invalidate()
         }

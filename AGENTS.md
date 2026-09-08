@@ -92,10 +92,16 @@ app/src/main/
 - **Zero Emojis in Kotlin**: Do not use Unicode emojis in `.kt` source files. Use Material Icons M3 (`Icons.Outlined.*`, `Icons.Filled.*`) or typographic glyphs (`✳`).
 - **Strict Resource Hygiene**: With `UnusedResources` elevated to a fatal lint error, never add speculative entries to `res/values/strings.xml`. Every declared resource must be actively referenced.
 
-### 4.6 Scientific & Ecological Modeling Standards
+### 4.6 Mapping & OsmDroid Invariants
+- **Disable Vertical Repetition**: Always set `isVerticalMapRepetitionEnabled = false` on `MapView` instances to prevent vertical world-tiling on tall mobile displays.
+- **Enforce Zoom Clamping**: Always specify bounded zoom limits (e.g., `minZoomLevel = 4.0`, `maxZoomLevel = 20.0`).
+- **Sane Geographic Initialization**: When coordinates are null/unselected, initialize the viewport to a sensible regional centroid (e.g. Central Italy `GeoPoint(42.5, 12.5)` at zoom `6.0`) rather than leaving OsmDroid at zoom `0.0`.
+
+### 4.7 Scientific & Ecological Modeling Standards
 - **Continuous Biological Curves**: Model environmental variables (temperature, soil moisture, precipitation, elevation) with continuous normalized response functions ($0.0 \dots 1.0$) rather than discrete step functions.
 - **Unified Probability Calibration**: Aggregate probability scores must adhere to the standardized formula:
-  $$P = 100 \times (W / 100)^{1.2} \times H \times A \times S$$
+  $$P = 100 \times (W / 100)^{1.2} \times H \times A \times S \times T$$
+  where $W$ is weather score, $H$ is habitat score, $A$ is altitude score, $S$ is seasonality score, and $T$ is the continuous terrain aspect modifier ($0.50 \dots 1.10$).
 
 ---
 

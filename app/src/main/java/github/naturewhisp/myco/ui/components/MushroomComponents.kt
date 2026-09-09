@@ -1,9 +1,11 @@
 package github.naturewhisp.myco.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -449,10 +451,12 @@ fun GrowthPhaseBadge(
 }
 
 // Chip compatto per località salvate o recenti
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LocationChip(
     loc: SavedLocation,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     onRemoveClick: (() -> Unit)? = null
 ) {
     val colors = MycoTheme.colors
@@ -468,12 +472,21 @@ fun LocationChip(
     }
     val shape = RoundedCornerShape(4.dp)
 
+    val clickModifier = if (onLongClick != null) {
+        Modifier.combinedClickable(
+            onClick = onClick,
+            onLongClick = onLongClick
+        )
+    } else {
+        Modifier.clickable(onClick = onClick)
+    }
+
     Row(
         modifier = Modifier
             .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
-            .clickable(onClick = onClick)
+            .then(clickModifier)
             .padding(
                 start = 10.dp,
                 end = if (onRemoveClick != null) 6.dp else 10.dp,
@@ -492,7 +505,7 @@ fun LocationChip(
             Spacer(modifier = Modifier.width(4.dp))
         }
         Text(
-            text = loc.shortName,
+            text = loc.effectiveName,
             color = MaterialTheme.colorScheme.onSurface,
             fontSize = 12.sp,
             fontWeight = if (loc.isFavorite) FontWeight.SemiBold else FontWeight.Normal,

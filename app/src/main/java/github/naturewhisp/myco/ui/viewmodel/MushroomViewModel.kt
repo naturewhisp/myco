@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import github.naturewhisp.myco.model.DailyOutlook
 import github.naturewhisp.myco.model.Factor
+import github.naturewhisp.myco.model.GeocodeResult
 import github.naturewhisp.myco.model.HeatmapData
 import github.naturewhisp.myco.model.MushroomSpecies
 import github.naturewhisp.myco.model.PlaceName
@@ -17,7 +18,12 @@ import github.naturewhisp.myco.model.SpunData
 import github.naturewhisp.myco.model.TerrainAspectData
 import github.naturewhisp.myco.model.TerrainAspectEvaluation
 import github.naturewhisp.myco.platform.AiEngineStatus
+import github.naturewhisp.myco.platform.DeviceHeading
+import github.naturewhisp.myco.platform.MapOrientationMode
 import github.naturewhisp.myco.platform.PlatformAiEngine
+import github.naturewhisp.myco.platform.PlatformLocationProvider
+import github.naturewhisp.myco.platform.PlatformOrientationProvider
+import github.naturewhisp.myco.platform.UserLocation
 import github.naturewhisp.myco.repository.CacheManager
 import github.naturewhisp.myco.repository.MushroomRepository
 import github.naturewhisp.myco.repository.SpunDataManager
@@ -41,7 +47,9 @@ class MushroomViewModel(
     val cacheManager: CacheManager,
     val localAiService: PlatformAiEngine,
     val spunDataManager: SpunDataManager,
-    val themePreference: ThemePreference? = null
+    val themePreference: ThemePreference? = null,
+    val locationProvider: PlatformLocationProvider? = null,
+    val orientationProvider: PlatformOrientationProvider? = null
 ) : ViewModel() {
 
     // Settings State
@@ -84,6 +92,8 @@ class MushroomViewModel(
     var currentLocationIsFavorite by mutableStateOf(false)
         private set
     var currentLocationIsGps by mutableStateOf(false)
+        private set
+    var editingFavoriteLocation by mutableStateOf<SavedLocation?>(null)
         private set
     var cacheAgeText by mutableStateOf<String?>(null)
         private set
@@ -153,6 +163,92 @@ class MushroomViewModel(
         private set
     var calculationMode by mutableStateOf("UNIFIED")
         private set
+
+    // Navigazione da campo e orientamento mappa (100% puro Kotlin, agnostico da piattaforma)
+    var userLocation by mutableStateOf<UserLocation?>(null)
+        private set
+    var deviceHeading by mutableStateOf<DeviceHeading?>(null)
+        private set
+    var mapOrientationMode by mutableStateOf(MapOrientationMode.NORTH_UP)
+        private set
+    var isMapCenteredOnUser by mutableStateOf(false)
+        private set
+    var centerOnPointTrigger by mutableStateOf(0)
+        private set
+
+    val isCompassSupported: Boolean
+        get() = orientationProvider?.isSupported() ?: false
+
+    val mapRotationDegrees: Float
+        get() = when (mapOrientationMode) {
+            MapOrientationMode.NORTH_UP -> 0f
+            MapOrientationMode.HEADING_UP -> {
+                val azimuth = deviceHeading?.azimuthDegrees ?: 0f
+                (360f - azimuth) % 360f
+            }
+        }
+
+    private var locationTrackingJob: Job? = null
+    private var orientationTrackingJob: Job? = null
+
+    fun startLocationAndOrientationTracking() {
+        if (locationTrackingJob == null && locationProvider != null) {
+            locationTrackingJob = viewModelScope.launch {
+                locationProvider.locationUpdates().collect { loc ->
+                    userLocation = loc
+                }
+            }
+        }
+        if (orientationTrackingJob == null && orientationProvider != null && orientationProvider.isSupported()) {
+            orientationTrackingJob = viewModelScope.launch {
+                orientationProvider.headingUpdates().collect { heading ->
+                    deviceHeading = heading
+                }
+            }
+        }
+    }
+
+    fun stopLocationAndOrientationTracking() {
+        locationTrackingJob?.cancel()
+        locationTrackingJob = null
+        orientationTrackingJob?.cancel()
+        orientationTrackingJob = null
+    }
+
+    fun centerMapOnUser() {
+        if (userLocation != null) {
+            isMapCenteredOnUser = true
+            mapOrientationMode = MapOrientationMode.NORTH_UP
+        }
+    }
+
+    fun centerMapOnSelectedPoint() {
+        if (selectedLatLng != null) {
+            isMapCenteredOnUser = false
+            mapOrientationMode = MapOrientationMode.NORTH_UP
+            centerOnPointTrigger++
+        }
+    }
+
+    fun onMapDraggedByUser() {
+        isMapCenteredOnUser = false
+        mapOrientationMode = MapOrientationMode.NORTH_UP
+    }
+
+    fun resetToNorthUp() {
+        mapOrientationMode = MapOrientationMode.NORTH_UP
+    }
+
+    fun toggleMapOrientationMode() {
+        if (!isCompassSupported) {
+            mapOrientationMode = MapOrientationMode.NORTH_UP
+            return
+        }
+        mapOrientationMode = when (mapOrientationMode) {
+            MapOrientationMode.NORTH_UP -> MapOrientationMode.HEADING_UP
+            MapOrientationMode.HEADING_UP -> MapOrientationMode.NORTH_UP
+        }
+    }
 
     // Cache parametri correnti per ricalibrazione dinamica istantanea
     private var lastProcessedDays: List<ProcessedDay>? = null
@@ -264,12 +360,20 @@ class MushroomViewModel(
             spunHyphalDensity = lastSpunData?.hyphalDensity
         )
 
+        val fav = favoriteLocations.firstOrNull {
+            String.format(Locale.US, "%.3f", it.lat) == String.format(Locale.US, "%.3f", lastLat) &&
+            String.format(Locale.US, "%.3f", it.lon) == String.format(Locale.US, "%.3f", lastLon)
+        }
+        val customPrimary = fav?.customName?.takeIf { it.isNotBlank() }
+
         placeName = PlaceName.fromNominatimOrCoordinates(
             rawName = lastDisplayName,
             latitude = lastLat,
             longitude = lastLon,
             elevationMeters = lastElevation
-        )
+        ).let { base ->
+            if (customPrimary != null) base.copy(primary = customPrimary) else base
+        }
 
         isOutsideHabitat = lastFinalHabitatScore < 0.1
         isOutsideCoverage = lastSpunData == null && spunDataManager.findRegionFor(lastLat, lastLon) == null
@@ -368,6 +472,9 @@ class MushroomViewModel(
                         locationName = result.displayName
                         selectedLatLng = Pair(lat, lon)
                         showMap = true
+                        isMapCenteredOnUser = false
+                        mapOrientationMode = MapOrientationMode.NORTH_UP
+                        centerOnPointTrigger++
                         selectLocation(lat, lon, result.displayName, isGps = false)
                     } else {
                         errorMessage = "Coordinate non valide per la località trovata."
@@ -384,84 +491,42 @@ class MushroomViewModel(
         }
     }
 
-    /** Flusso B: geolocalizzazione GPS — fa reverse geocoding e poi chiama selectLocation */
+    /** Flusso B: geolocalizzazione GPS — avvia la selezione con geocodifica inversa e calcolo parallelo */
     fun selectLocationFromGps(lat: Double, lon: Double) {
+        userLocation = UserLocation(latitude = lat, longitude = lon)
+        isMapCenteredOnUser = true
         aiJob?.cancel()
-        viewModelScope.launch {
-            isLoading = true
-            loadingText = "Rilevamento posizione GPS..."
-            errorMessage = null
-            showMap = false
-
-            try {
-                // Avvia il precaricamento della regione SPUN appropriata in base al GPS
-                launch { spunDataManager.ensureRegionLoadedFor(lat, lon) }
-
-                // Reverse geocoding per ottenere un nome significativo
-                val geocoded = repository.reverseGeocode(lat, lon)
-                val resolvedName = geocoded?.displayName ?: "Posizione GPS (${
-                    String.format(Locale.US, "%.3f", lat)}, ${
-                    String.format(Locale.US, "%.3f", lon)})"
-
-                locationName = resolvedName
-                selectedLatLng = Pair(lat, lon)
-                showMap = true
-                searchQuery = resolvedName.split(",").firstOrNull()?.trim() ?: resolvedName
-
-                selectLocation(lat, lon, resolvedName, isGps = true)
-            } catch (e: Exception) {
-                e.printStackTrace()
-                // Fallback senza reverse geocoding
-                val fallbackName = "Posizione GPS"
-                locationName = fallbackName
-                selectedLatLng = Pair(lat, lon)
-                showMap = true
-                selectLocation(lat, lon, fallbackName, isGps = true)
-            }
-        }
+        viewModelScope.launch { spunDataManager.ensureRegionLoadedFor(lat, lon) }
+        selectLocation(lat, lon, displayName = "Posizione GPS", isGps = true)
     }
 
-    /** Flusso A: tap sulla mappa — fa reverse geocoding per ottenere un nome reale, poi selectLocation */
+    /** Flusso A: tap sulla mappa — imposta subito il punto e avvia geocodifica e calcoli in parallelo */
     fun selectLocationFromMap(lat: Double, lon: Double) {
         aiJob?.cancel()
-        viewModelScope.launch {
-            isLoading = true
-            loadingText = "Determinazione località..."
-            errorMessage = null
-
-            try {
-                val geocoded = repository.reverseGeocode(lat, lon)
-                val resolvedName = geocoded?.displayName ?: "Punto selezionato (${
-                    String.format(Locale.US, "%.3f", lat)}, ${
-                    String.format(Locale.US, "%.3f", lon)})"
-
-                locationName = resolvedName
-                selectedLatLng = Pair(lat, lon)
-                showMap = true
-                searchQuery = resolvedName.split(",").firstOrNull()?.trim() ?: resolvedName
-
-                selectLocation(lat, lon, resolvedName, isGps = false)
-            } catch (e: Exception) {
-                e.printStackTrace()
-                val fallbackName = "Punto selezionato"
-                locationName = fallbackName
-                selectedLatLng = Pair(lat, lon)
-                showMap = true
-                selectLocation(lat, lon, fallbackName, isGps = false)
-            }
-        }
+        isMapCenteredOnUser = false
+        mapOrientationMode = MapOrientationMode.NORTH_UP
+        centerOnPointTrigger++
+        selectLocation(lat, lon, displayName = "Localizzazione in corso...", isGps = false)
     }
 
     /** Carica una località salvata dalla cronologia/preferiti */
-
     fun selectSavedLocation(loc: SavedLocation) {
-        searchQuery = loc.shortName
+        searchQuery = loc.effectiveName
+        isMapCenteredOnUser = false
+        mapOrientationMode = MapOrientationMode.NORTH_UP
+        centerOnPointTrigger++
         selectLocation(loc.lat, loc.lon, loc.displayName, isGps = loc.isGpsLocation)
     }
 
     /** Aggiunge/rimuove il punto corrente dai preferiti */
     fun toggleCurrentFavorite() {
         val latLng = selectedLatLng ?: return
+        val rLat = String.format(Locale.US, "%.3f", latLng.first)
+        val rLon = String.format(Locale.US, "%.3f", latLng.second)
+        val existingFav = favoriteLocations.firstOrNull {
+            String.format(Locale.US, "%.3f", it.lat) == rLat &&
+            String.format(Locale.US, "%.3f", it.lon) == rLon
+        }
         val loc = SavedLocation(
             lat = latLng.first,
             lon = latLng.second,
@@ -469,7 +534,8 @@ class MushroomViewModel(
             shortName = locationName.split(",").firstOrNull()?.trim() ?: locationName,
             savedAt = System.currentTimeMillis(),
             isFavorite = !currentLocationIsFavorite,
-            isGpsLocation = currentLocationIsGps
+            isGpsLocation = currentLocationIsGps,
+            customName = existingFav?.customName
         )
         if (currentLocationIsFavorite) {
             cacheManager.removeFavorite(latLng.first, latLng.second)
@@ -486,6 +552,69 @@ class MushroomViewModel(
         toggleCurrentFavorite()
     }
 
+    /** Avvia la modifica del nome per un preferito specifico */
+    fun startEditingFavorite(loc: SavedLocation) {
+        editingFavoriteLocation = loc
+    }
+
+    /** Avvia la modifica del nome per il preferito attualmente attivo a schermo */
+    fun startEditingCurrentFavorite() {
+        val latLng = selectedLatLng ?: return
+        val rLat = String.format(Locale.US, "%.3f", latLng.first)
+        val rLon = String.format(Locale.US, "%.3f", latLng.second)
+        val currentFav = favoriteLocations.firstOrNull {
+            String.format(Locale.US, "%.3f", it.lat) == rLat &&
+            String.format(Locale.US, "%.3f", it.lon) == rLon
+        }
+        if (currentFav != null) {
+            editingFavoriteLocation = currentFav
+        } else if (currentLocationIsFavorite) {
+            editingFavoriteLocation = SavedLocation(
+                lat = latLng.first,
+                lon = latLng.second,
+                displayName = locationName,
+                shortName = locationName.split(",").firstOrNull()?.trim() ?: locationName,
+                savedAt = System.currentTimeMillis(),
+                isFavorite = true,
+                isGpsLocation = currentLocationIsGps
+            )
+        }
+    }
+
+    /** Chiude il dialogo di rinomina */
+    fun dismissEditingFavorite() {
+        editingFavoriteLocation = null
+    }
+
+    /** Salva il nome personalizzato per un preferito */
+    fun saveFavoriteCustomName(loc: SavedLocation, newName: String) {
+        val trimmed = newName.trim()
+        val customName = if (trimmed == loc.shortName || trimmed.isEmpty()) null else trimmed
+        cacheManager.renameFavorite(loc.lat, loc.lon, customName)
+        favoriteLocations = cacheManager.getFavoriteLocations()
+        recentLocations = cacheManager.getRecentLocations()
+
+        // Sincronizza il placeName attivo se corrisponde alla località modificata
+        selectedLatLng?.let { (curLat, curLon) ->
+            val rCurLat = String.format(Locale.US, "%.3f", curLat)
+            val rCurLon = String.format(Locale.US, "%.3f", curLon)
+            val rLocLat = String.format(Locale.US, "%.3f", loc.lat)
+            val rLocLon = String.format(Locale.US, "%.3f", loc.lon)
+            if (rCurLat == rLocLat && rCurLon == rLocLon) {
+                val primaryName = customName ?: loc.shortName
+                placeName = placeName?.copy(primary = primaryName)
+                searchQuery = primaryName
+            }
+        }
+        editingFavoriteLocation = null
+    }
+
+    /** Rimuove il preferito direttamente dal dialogo di rinomina */
+    fun removeFavoriteFromDialog(loc: SavedLocation) {
+        removeFavoriteLocation(loc)
+        editingFavoriteLocation = null
+    }
+
     /** Rimuove una località specifica dalla cronologia recenti */
     fun removeRecentLocation(loc: SavedLocation) {
         cacheManager.removeRecentLocation(loc.lat, loc.lon)
@@ -496,6 +625,12 @@ class MushroomViewModel(
     fun updateMapStyle(style: String) {
         mapStyle = style
         cacheManager.mapStyle = style
+    }
+
+    /** Commuta rapidamente tra stile topografico (OpenTopoMap) e toponomastico (OpenStreetMap standard) */
+    fun toggleMapStyle() {
+        val nextStyle = if (mapStyle == "standard") "topo" else "standard"
+        updateMapStyle(nextStyle)
     }
 
     /** Rimuove una località specifica dai preferiti */
@@ -534,13 +669,50 @@ class MushroomViewModel(
 
     fun selectLocation(lat: Double, lon: Double, displayName: String = "Punto selezionato", isGps: Boolean = false) {
         aiJob?.cancel()
+        if (!isGps) {
+            isMapCenteredOnUser = false
+            mapOrientationMode = MapOrientationMode.NORTH_UP
+            centerOnPointTrigger++
+        }
+
+        // Aggiornamento immediato sincrono a 0ms per marker e scheda
+        selectedLatLng = Pair(lat, lon)
+        showMap = true
+        currentLocationIsGps = isGps
+
+        val rLat = String.format(Locale.US, "%.3f", lat)
+        val rLon = String.format(Locale.US, "%.3f", lon)
+        val fav = favoriteLocations.firstOrNull {
+            String.format(Locale.US, "%.3f", it.lat) == rLat &&
+            String.format(Locale.US, "%.3f", it.lon) == rLon
+        }
+        currentLocationIsFavorite = (fav != null)
+
+        val isPlaceholder = SavedLocation.isPlaceholderName(displayName)
+        val cachedGeo = if (isPlaceholder) {
+            cacheManager.getCachedData("reverse_${rLat}_${rLon}", GeocodeResult::class.java, 7 * 24 * 60 * 60 * 1000L)
+        } else null
+
+        val initialTitle = fav?.effectiveName
+            ?: cachedGeo?.let { PlaceName.fromGeocodeResult(it).primary }
+            ?: if (isPlaceholder) "Localizzazione in corso..." else (displayName.split(",").firstOrNull()?.trim() ?: displayName)
+
+        locationName = initialTitle
+        placeName = if (cachedGeo != null && fav == null) {
+            PlaceName.fromGeocodeResult(cachedGeo, lastElevation)
+        } else {
+            PlaceName.fromNominatimOrCoordinates(
+                rawName = initialTitle,
+                latitude = lat,
+                longitude = lon,
+                elevationMeters = lastElevation
+            )
+        }
+
         viewModelScope.launch {
             isLoading = true
-            loadingText = "Analisi del punto selezionato in corso..."
+            loadingText = "Analisi micologica e ambientale in corso..."
             errorMessage = null
-            selectedLatLng = Pair(lat, lon)
-            showMap = true
-            currentLocationIsGps = isGps
 
             // Generazione istantanea della nuvola locale in background (<10ms)
             // Sfrutta i dati SPUN residenti in memoria senza attendere 3-5 secondi di chiamate di rete
@@ -572,8 +744,25 @@ class MushroomViewModel(
                 val ageMs = cacheManager.getWeatherCacheAge(lat, lon)
                 cacheAgeText = ageMs?.let { formatCacheAge(it) }
 
-                // Check favorite status
-                currentLocationIsFavorite = cacheManager.isFavorite(lat, lon)
+                // Se il nome è generico e non abbiamo una voce in cache, avvia il reverse geocoding in parallelo
+                val geocodeDeferred = if (isPlaceholder && cachedGeo == null) {
+                    async { repository.reverseGeocode(lat, lon) }
+                } else null
+
+                // Aggiorna subito il toponimo non appena il reverse geocoding risponde (~200ms)
+                if (geocodeDeferred != null) {
+                    launch {
+                        val geocoded = geocodeDeferred.await()
+                        if (geocoded != null && selectedLatLng == Pair(lat, lon)) {
+                            val resolvedName = geocoded.displayName
+                            locationName = resolvedName
+                            searchQuery = resolvedName.split(",").firstOrNull()?.trim() ?: resolvedName
+                            val customPrimary = fav?.customName?.takeIf { it.isNotBlank() }
+                            val base = PlaceName.fromGeocodeResult(geocoded, lastElevation)
+                            placeName = if (customPrimary != null) base.copy(primary = customPrimary) else base
+                        }
+                    }
+                }
 
                 // Fetch weather, habitat, SPUN micorrize, and terrain aspect in parallel
                 val weatherDeferred = async { repository.fetchWeather(lat, lon) }
@@ -587,6 +776,13 @@ class MushroomViewModel(
                 val habitatBonus = habitatBonusDeferred.await()
                 val spunData = spunDeferred.await()
                 val terrainData = terrainDeferred.await()
+                val resolvedGeo = geocodeDeferred?.await() ?: cachedGeo
+
+                val resolvedDisplayName = when {
+                    resolvedGeo != null -> resolvedGeo.displayName
+                    !isPlaceholder -> displayName
+                    else -> displayName
+                }
 
                 // Calculate Habitat Score
                 val forestCount = habitat?.elements?.size ?: 0
@@ -687,7 +883,7 @@ class MushroomViewModel(
                 )
 
                 // Assign states
-                locationName = displayName
+                locationName = resolvedDisplayName
                 growthPhase = growthPhaseVal
                 habitatText = habitatBaseText
                 habitatBonusText = habitatBonusTextVal
@@ -726,7 +922,7 @@ class MushroomViewModel(
                 lastSpunData = spunData
                 lastLat = lat
                 lastLon = lon
-                lastDisplayName = displayName
+                lastDisplayName = resolvedDisplayName
                 lastGrowthPhaseVal = growthPhaseVal
                 lastMoonPhase = moonPhase
                 lastSlopeTextVal = slopeTextVal
@@ -746,21 +942,22 @@ class MushroomViewModel(
                     altitudeScore = altitudeScore.score
                 )
 
-                // Salva nella cronologia recenti (solo se nome significativo)
-                val isPlaceholder = displayName == "Punto selezionato" || 
-                                    displayName == "Posizione GPS" || 
-                                    displayName.startsWith("Punto selezionato") || 
-                                    displayName.startsWith("Posizione GPS")
-                if (!isPlaceholder) {
-                    val shortName = displayName.split(",").firstOrNull()?.trim() ?: displayName
+                // Salva nella cronologia recenti (solo se toponimo reale e non segnaposto)
+                if (!SavedLocation.isPlaceholderName(resolvedDisplayName)) {
+                    val shortName = resolvedDisplayName.split(",").firstOrNull()?.trim() ?: resolvedDisplayName
+                    val existingFav = favoriteLocations.firstOrNull {
+                        String.format(Locale.US, "%.3f", it.lat) == rLat &&
+                        String.format(Locale.US, "%.3f", it.lon) == rLon
+                    }
                     val savedLoc = SavedLocation(
                         lat = lat,
                         lon = lon,
-                        displayName = displayName,
+                        displayName = resolvedDisplayName,
                         shortName = shortName,
                         savedAt = System.currentTimeMillis(),
                         isFavorite = currentLocationIsFavorite,
-                        isGpsLocation = isGps
+                        isGpsLocation = isGps,
+                        customName = existingFav?.customName
                     )
                     cacheManager.saveRecentLocation(savedLoc)
                     recentLocations = cacheManager.getRecentLocations()
@@ -935,5 +1132,10 @@ class MushroomViewModel(
             minutes < 60 -> "$minutes min fa"
             else -> "${minutes / 60}h fa"
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopLocationAndOrientationTracking()
     }
 }

@@ -180,7 +180,37 @@ fun SettingsScreen(
         MycoDivider(subtle = true)
         Spacer(modifier = Modifier.height(20.dp))
 
-        // SEZIONE 3: DIAGNOSTICA ARCHIVIO E STORAGE
+        // SEZIONE 3: BASE CARTOGRAFICA PREDEFINITA
+        Text(
+            text = "BASE CARTOGRAFICA PREDEFINITA",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
+        CalculationModeRow(
+            title = "Toponomastica & Sentieri (Consigliata)",
+            description = "Carta standard OpenStreetMap con nomi dei luoghi, borghi, frazioni, vette e sentieri chiaramente indicati.",
+            isSelected = viewModel.mapStyle == "standard",
+            onClick = { viewModel.updateMapStyle("standard") }
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        CalculationModeRow(
+            title = "Topografica (Rilievi & Isoipse)",
+            description = "OpenTopoMap con curve di livello e ombreggiatura orografica dei versanti. Ottimale per pendenze ed altimetria.",
+            isSelected = viewModel.mapStyle != "standard",
+            onClick = { viewModel.updateMapStyle("topo") }
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+        MycoDivider(subtle = true)
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // SEZIONE 4: DIAGNOSTICA ARCHIVIO E STORAGE
         Text(
             text = "ARCHIVIO E DIAGNOSTICA LOCALE",
             color = MaterialTheme.colorScheme.onSurfaceVariant,

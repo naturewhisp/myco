@@ -26,7 +26,7 @@ class CacheManager(private val storage: KeyValueStorage) {
     }
 
     var mapStyle: String
-        get() = storage.getString(KEY_MAP_STYLE, "topo") ?: "topo"
+        get() = storage.getString(KEY_MAP_STYLE, "standard") ?: "standard"
         set(value) = storage.putString(KEY_MAP_STYLE, value)
 
     var radius: Int
@@ -91,17 +91,23 @@ class CacheManager(private val storage: KeyValueStorage) {
         return try {
             val type = object : TypeToken<List<SavedLocation>>() {}.type
             val list = gson.fromJson<List<SavedLocation>>(json, type) ?: emptyList()
-            list.filter { loc ->
-                val name = loc.displayName
-                name != "Punto selezionato" && name != "Posizione GPS" &&
-                !name.startsWith("Punto selezionato") && !name.startsWith("Posizione GPS")
+            val sanitized = list.filter { loc ->
+                !SavedLocation.isPlaceholderName(loc.displayName) &&
+                !SavedLocation.isPlaceholderName(loc.shortName)
             }
+            if (sanitized.size != list.size) {
+                storage.putString(KEY_RECENT_LOCATIONS, gson.toJson(sanitized))
+            }
+            sanitized
         } catch (_: Exception) {
             emptyList()
         }
     }
 
     fun saveRecentLocation(loc: SavedLocation) {
+        if (SavedLocation.isPlaceholderName(loc.displayName) || SavedLocation.isPlaceholderName(loc.shortName)) {
+            return
+        }
         val current = getRecentLocations().toMutableList()
         // Dedup: rimuovi entry con stesse coordinate (~111m, 3 decimali)
         val roundedLat = String.format(Locale.US, "%.3f", loc.lat)
@@ -155,7 +161,12 @@ class CacheManager(private val storage: KeyValueStorage) {
             String.format(Locale.US, "%.3f", it.lat) == rLat &&
             String.format(Locale.US, "%.3f", it.lon) == rLon
         }
-        val favoriteLoc = loc.copy(isFavorite = true, savedAt = System.currentTimeMillis())
+        val existingCustomName = if (idx >= 0) favs[idx].customName else loc.customName
+        val favoriteLoc = loc.copy(
+            isFavorite = true,
+            savedAt = System.currentTimeMillis(),
+            customName = existingCustomName
+        )
         if (idx >= 0) {
             favs[idx] = favoriteLoc
         } else {
@@ -164,6 +175,33 @@ class CacheManager(private val storage: KeyValueStorage) {
         storage.putString(KEY_FAVORITE_LOCATIONS, gson.toJson(favs))
         // Aggiorna anche nella cronologia recenti
         saveRecentLocation(favoriteLoc)
+    }
+
+    /** Assegna o rimuove un nome personalizzato per un preferito */
+    fun renameFavorite(lat: Double, lon: Double, customName: String?) {
+        val rLat = String.format(Locale.US, "%.3f", lat)
+        val rLon = String.format(Locale.US, "%.3f", lon)
+        val trimmed = customName?.trim()?.takeIf { it.isNotEmpty() }
+
+        val favs = getFavoriteLocations().toMutableList()
+        val fIdx = favs.indexOfFirst {
+            String.format(Locale.US, "%.3f", it.lat) == rLat &&
+            String.format(Locale.US, "%.3f", it.lon) == rLon
+        }
+        if (fIdx >= 0) {
+            favs[fIdx] = favs[fIdx].copy(customName = trimmed)
+            storage.putString(KEY_FAVORITE_LOCATIONS, gson.toJson(favs))
+        }
+
+        val recents = getRecentLocations().toMutableList()
+        val rIdx = recents.indexOfFirst {
+            String.format(Locale.US, "%.3f", it.lat) == rLat &&
+            String.format(Locale.US, "%.3f", it.lon) == rLon
+        }
+        if (rIdx >= 0) {
+            recents[rIdx] = recents[rIdx].copy(customName = trimmed)
+            storage.putString(KEY_RECENT_LOCATIONS, gson.toJson(recents))
+        }
     }
 
     fun removeFavorite(lat: Double, lon: Double) {

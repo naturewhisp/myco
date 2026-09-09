@@ -29,12 +29,14 @@ import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
@@ -42,6 +44,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -63,6 +66,7 @@ import github.naturewhisp.myco.ui.theme.CodeTech
 import github.naturewhisp.myco.ui.theme.MycoTheme
 import github.naturewhisp.myco.ui.theme.NewsreaderFontFamily
 import github.naturewhisp.myco.ui.viewmodel.MushroomViewModel
+import github.naturewhisp.myco.utils.NavigationHelper
 
 // Schermata principale "Registro & Tavola Micologica" nello stile Herbarium
 @Composable
@@ -134,9 +138,23 @@ fun HomeScreen(
                 IconButton(onClick = { viewModel.toggleCurrentLocationFavorite() }) {
                     Icon(
                         imageVector = Icons.Default.Star,
-                        contentDescription = "Aggiungi ai preferiti",
+                        contentDescription = if (viewModel.currentLocationIsFavorite) "Rimuovi dai preferiti" else "Aggiungi ai preferiti",
                         tint = if (viewModel.currentLocationIsFavorite) mycoColors.scale2 else MaterialTheme.colorScheme.outline
                     )
+                }
+
+                // Pulsante per rinominare il preferito se la località corrente è salvata
+                if (viewModel.currentLocationIsFavorite) {
+                    IconButton(
+                        onClick = { viewModel.startEditingCurrentFavorite() }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Edit,
+                            contentDescription = "Rinomina preferito",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
 
                 IconButton(onClick = onOpenSettings) {
@@ -259,7 +277,10 @@ fun HomeScreen(
                 allChips.take(8).forEach { loc ->
                     LocationChip(
                         loc = loc,
-                        onClick = { viewModel.selectLocation(loc.lat, loc.lon, loc.displayName) },
+                        onClick = { viewModel.selectSavedLocation(loc) },
+                        onLongClick = if (loc.isFavorite) {
+                            { viewModel.startEditingFavorite(loc) }
+                        } else null,
                         onRemoveClick = if (!loc.isFavorite) {
                             { viewModel.removeRecentLocation(loc) }
                         } else null
@@ -432,23 +453,72 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // Pulsante rapido per aprire la mappa
-        Button(
-            onClick = onOpenMapTab,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(4.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = mycoColors.favorable,
-                contentColor = MaterialTheme.colorScheme.surface
-            )
-        ) {
-            Icon(imageVector = Icons.Default.Map, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Esplora Mappa & Heatmap Miceliare",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold
-            )
+        val context = LocalContext.current
+
+        // Pulsanti rapidi: Mappa e Navigazione al punto
+        if (viewModel.selectedLatLng != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onOpenMapTab,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(4.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = mycoColors.favorable,
+                        contentColor = MaterialTheme.colorScheme.surface
+                    )
+                ) {
+                    Icon(imageVector = Icons.Default.Map, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Mappa",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        val latLng = viewModel.selectedLatLng ?: return@OutlinedButton
+                        NavigationHelper.navigateTo(
+                            context = context,
+                            latitude = latLng.first,
+                            longitude = latLng.second,
+                            label = viewModel.placeName?.primary ?: viewModel.locationName
+                        )
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Naviga al punto",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        } else {
+            Button(
+                onClick = onOpenMapTab,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(4.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = mycoColors.favorable,
+                    contentColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Icon(imageVector = Icons.Default.Map, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Esplora Mappa & Heatmap Miceliare",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(32.dp))

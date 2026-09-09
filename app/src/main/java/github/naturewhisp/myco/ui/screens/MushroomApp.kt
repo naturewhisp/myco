@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import github.naturewhisp.myco.ui.components.RenameFavoriteDialog
 import github.naturewhisp.myco.ui.components.SpeciesSelectionSheet
 import github.naturewhisp.myco.ui.theme.MycoTheme
 import github.naturewhisp.myco.ui.viewmodel.MushroomViewModel
@@ -145,6 +146,17 @@ fun MushroomApp(
                 viewModel.setTargetSpeciesSheetVisibility(false)
             },
             sheetState = sheetState
+        )
+    }
+
+    // Dialog per la personalizzazione del nome del preferito
+    val editingLoc = viewModel.editingFavoriteLocation
+    if (editingLoc != null) {
+        RenameFavoriteDialog(
+            location = editingLoc,
+            onDismiss = { viewModel.dismissEditingFavorite() },
+            onSave = { newName -> viewModel.saveFavoriteCustomName(editingLoc, newName) },
+            onRemove = { viewModel.removeFavoriteFromDialog(editingLoc) }
         )
     }
 }

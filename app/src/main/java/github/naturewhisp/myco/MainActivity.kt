@@ -18,6 +18,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import github.naturewhisp.myco.network.LocalAiService
+import github.naturewhisp.myco.platform.android.AndroidLocationProvider
+import github.naturewhisp.myco.platform.android.AndroidSensorOrientationProvider
 import github.naturewhisp.myco.repository.CacheManager
 import github.naturewhisp.myco.repository.MushroomRepository
 import github.naturewhisp.myco.repository.SpunDataManager
@@ -59,11 +61,21 @@ class MainActivity : ComponentActivity() {
         val repository = MushroomRepository(cacheManager, spunDataManager)
         val localAiService = LocalAiService(applicationContext)
         val themePreference = ThemePreference(applicationContext)
+        val locationProvider = AndroidLocationProvider(applicationContext)
+        val orientationProvider = AndroidSensorOrientationProvider(applicationContext)
 
         viewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return MushroomViewModel(repository, cacheManager, localAiService, spunDataManager, themePreference) as T
+                return MushroomViewModel(
+                    repository = repository,
+                    cacheManager = cacheManager,
+                    localAiService = localAiService,
+                    spunDataManager = spunDataManager,
+                    themePreference = themePreference,
+                    locationProvider = locationProvider,
+                    orientationProvider = orientationProvider
+                ) as T
             }
         })[MushroomViewModel::class.java]
 

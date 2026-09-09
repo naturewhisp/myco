@@ -30,7 +30,8 @@ object HeatmapGenerator {
         spunDataManager: SpunDataManager,
         baseWeatherScore: Double,
         seasonalityScore: Double,
-        altitudeScore: Double
+        altitudeScore: Double,
+        isDark: Boolean = false
     ): HeatmapRaster? = withContext(Dispatchers.Default) {
         val region = spunDataManager.getCurrentRegionData(centerLat, centerLon) ?: return@withContext null
         val header = region.header
@@ -98,7 +99,7 @@ object HeatmapGenerator {
                         val weatherMultiplier = (0.70 + (weatherFactor * seasonFactor) * 0.50).toFloat()
 
                         val prob = (bioPotential * weatherMultiplier).toInt().coerceIn(0, 100)
-                        val baseColor = getHeatmapColor(prob)
+                        val baseColor = getHeatmapColor(prob, isDark)
 
                         // Sfumatura radiale morbida (feathering) sull'ultimo 25% del bordo esterno
                         // Elimina qualsiasi taglio netto o bordo squadrato sulla mappa
@@ -141,7 +142,8 @@ object HeatmapGenerator {
         spunDataManager: SpunDataManager,
         baseWeatherScore: Double,
         seasonalityScore: Double,
-        altitudeScore: Double
+        altitudeScore: Double,
+        isDark: Boolean = false
     ): HeatmapData? {
         val raster = generateHeatmapRaster(
             centerLat = centerLat,
@@ -149,35 +151,60 @@ object HeatmapGenerator {
             spunDataManager = spunDataManager,
             baseWeatherScore = baseWeatherScore,
             seasonalityScore = seasonalityScore,
-            altitudeScore = altitudeScore
+            altitudeScore = altitudeScore,
+            isDark = isDark
         ) ?: return null
 
         return raster.toHeatmapData()
     }
 
     /**
-     * Mappa la probabilità (0..100) sulla scala tassonomica a 5 livelli Herbarium
-     * (Salvia -> Ocra -> Terracotta -> Ruggine) con opacità costante per massima leggibilità toponomastica.
+     * Mappa la probabilità (0..100) sui pigmenti minerali botanici della scala Herbarium
+     * (Salvia/Lichene -> Ocra Dorata -> Terracotta Cinabro -> Ruggine Granato)
+     * con opacità progressiva equilibrata (115..180) e transizioni zonali armoniose per il perfetto
+     * compromesso tra estetica naturale e leggibilità cartografica.
      */
     fun getHeatmapColor(probability: Int, isDark: Boolean = false): Int {
-        if (probability < 20) return 0 // Trasparente per assenza di micelio significativo
+        if (probability < 16) return 0 // Trasparente per assenza di attività miceliare significativa
 
-        val baseAlpha = if (isDark) 150 else 128
+        // Pigmenti minerali botanici calibrati per contrasto e armonia naturale
+        val s1 = if (isDark) rgb(0x62, 0xB0, 0x58) else rgb(0x4E, 0x96, 0x48) // Salvia Viva / Lichene Luminoso
+        val s2 = if (isDark) rgb(0xFA, 0xB2, 0x2A) else rgb(0xD4, 0x9B, 0x24) // Ocra Dorata Solare / Ambra
+        val s3 = if (isDark) rgb(0xEB, 0x6E, 0x34) else rgb(0xC8, 0x64, 0x30) // Terracotta Cinabro
+        val s4 = if (isDark) rgb(0xD8, 0x34, 0x3E) else rgb(0x9E, 0x26, 0x2C) // Ruggine Granato Hotspot
 
-        // Pigmenti minerali della scala tassonomica Herbarium (0xRRGGBB)
-        val s1 = if (isDark) rgb(0x6B, 0x7A, 0x55) else rgb(0xBC, 0xC7, 0xA6) // Salvia
-        val s2 = if (isDark) rgb(0xDC, 0xB6, 0x5C) else rgb(0xC8, 0x9B, 0x3C) // Ocra
-        val s3 = if (isDark) rgb(0xC6, 0x7C, 0x4B) else rgb(0xB9, 0x6F, 0x42) // Terracotta
-        val s4 = if (isDark) rgb(0xB8, 0x5A, 0x45) else rgb(0x9B, 0x4A, 0x38) // Ruggine
+        // Feathering iniziale morbido tra 16% e 20% per evitare gradini netti al limite inferiore
+        if (probability < 20) {
+            val t = smoothStep((probability - 16f) / 4f)
+            val initialAlpha = (t * (if (isDark) 125 else 115)).toInt()
+            return (s1 and 0x00FFFFFF) or (initialAlpha shl 24)
+        }
 
-        val (c1, c2, fraction) = when {
-            probability < 40 -> Triple(s1, s2, (probability - 20f) / 20f)
-            probability < 60 -> Triple(s2, s3, (probability - 40f) / 20f)
-            probability < 75 -> Triple(s3, s4, (probability - 60f) / 15f)
+        // Opacità equilibrata: lascia respirare orografia, curve di livello e toponomastica (115..180)
+        val alphaMin = if (isDark) 125 else 115
+        val alphaMax = if (isDark) 195 else 180
+        val alphaT = smoothStep(((probability - 20f) / 65f).coerceIn(0f, 1f))
+        val alpha = (alphaMin + alphaT * (alphaMax - alphaMin)).toInt()
+
+        // Delimitazione zonale morbida per rendere ben distinguibili le 4 classi
+        // (Innesco 20-45%, Moderato 45-65%, Propizio 65-80%, Culmine >80%)
+        val (c1, c2, rawFraction) = when {
+            probability < 40 -> Triple(s1, s1, 0f)
+            probability < 50 -> Triple(s1, s2, (probability - 40f) / 10f)
+            probability < 60 -> Triple(s2, s2, 0f)
+            probability < 70 -> Triple(s2, s3, (probability - 60f) / 10f)
+            probability < 78 -> Triple(s3, s3, 0f)
+            probability < 86 -> Triple(s3, s4, (probability - 78f) / 8f)
             else -> Triple(s4, s4, 1.0f)
         }
 
-        return interpolateColorWithAlpha(c1, c2, fraction, baseAlpha)
+        val fraction = smoothStep(rawFraction)
+        return interpolateColorWithAlpha(c1, c2, fraction, alpha)
+    }
+
+    private fun smoothStep(t: Float): Float {
+        val x = t.coerceIn(0f, 1f)
+        return x * x * (3f - 2f * x)
     }
 
     private fun rgb(r: Int, g: Int, b: Int): Int {

@@ -292,4 +292,59 @@ class MushroomAlgorithmsTest {
             assertTrue("Factor ${f.id} formattedValue '${f.formattedValue}' is too long", f.formattedValue.length <= 25)
         }
     }
+
+    @Test
+    fun testHeatmapColorPaletteAndDynamicAlpha() {
+        // Probabilità inferiore a 16: completamente trasparente
+        assertEquals(0, github.naturewhisp.myco.utils.HeatmapGenerator.getHeatmapColor(10))
+        assertEquals(0, github.naturewhisp.myco.utils.HeatmapGenerator.getHeatmapColor(15))
+
+        // Feathering di ingresso morbido (16..19)
+        val c18 = github.naturewhisp.myco.utils.HeatmapGenerator.getHeatmapColor(18)
+        val alpha18 = (c18 ushr 24) and 0xFF
+        assertTrue("Alpha a prob 18 deve essere > 0 per morbidezza bordo", alpha18 > 0)
+        assertTrue("Alpha a prob 18 deve essere inferiore ad alpha base 150", alpha18 < 150)
+
+        // Verifica opacità progressiva
+        val c25 = github.naturewhisp.myco.utils.HeatmapGenerator.getHeatmapColor(25)
+        val c50 = github.naturewhisp.myco.utils.HeatmapGenerator.getHeatmapColor(50)
+        val c68 = github.naturewhisp.myco.utils.HeatmapGenerator.getHeatmapColor(68)
+        val c85 = github.naturewhisp.myco.utils.HeatmapGenerator.getHeatmapColor(85)
+
+        val a25 = (c25 ushr 24) and 0xFF
+        val a50 = (c50 ushr 24) and 0xFF
+        val a68 = (c68 ushr 24) and 0xFF
+        val a85 = (c85 ushr 24) and 0xFF
+
+        assertTrue("Alpha deve crescere con la probabilità (a25=$a25, a50=$a50)", a25 <= a50)
+        assertTrue("Alpha deve crescere con la probabilità (a50=$a50, a68=$a68)", a50 <= a68)
+        assertTrue("Alpha deve crescere con la probabilità (a68=$a68, a85=$a85)", a68 <= a85)
+        assertTrue("Alpha a 85 deve raggiungere opacità equilibrata (>= 175)", a85 >= 175)
+
+        // Distinzione cromatica netta tra le 4 classi (RGB non coincidenti)
+        val r25 = (c25 ushr 16) and 0xFF
+        val g25 = (c25 ushr 8) and 0xFF
+        val b25 = c25 and 0xFF
+
+        val r50 = (c50 ushr 16) and 0xFF
+        val g50 = (c50 ushr 8) and 0xFF
+        val b50 = c50 and 0xFF
+
+        val r68 = (c68 ushr 16) and 0xFF
+        val g68 = (c68 ushr 8) and 0xFF
+        val b68 = c68 and 0xFF
+
+        val r85 = (c85 ushr 16) and 0xFF
+        val g85 = (c85 ushr 8) and 0xFF
+        val b85 = c85 and 0xFF
+
+        // Innesco (25) è verde: G dominante su R
+        assertTrue("Innesco deve avere componente verde dominante", g25 > r25)
+        // Moderato (50) è ambra/oro: R dominante, G sostenuto, B basso
+        assertTrue("Moderato deve avere R > B", r50 > b50 && g50 > b50)
+        // Propizio (68) è terracotta: R più alto di G
+        assertTrue("Propizio deve avere R nettamente superiore a G", r68 > g68)
+        // Culmine (85) è cremisi profondo: R dominante, G basso
+        assertTrue("Culmine deve essere rosso granato con G basso", r85 > g85 && g85 < 50)
+    }
 }

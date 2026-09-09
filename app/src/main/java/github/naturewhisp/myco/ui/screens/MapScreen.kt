@@ -5,11 +5,13 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -149,17 +151,22 @@ fun MapScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "LEGENDA PROBABILITÀ SPUN",
+                            text = "LEGENDA SPUN",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
+                            letterSpacing = 1.sp,
+                            modifier = Modifier.weight(1f)
                         )
 
-                        // Pulsante toggle Heatmap
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // Pulsante toggle Heatmap compatto
                         Button(
                             onClick = { viewModel.toggleHeatmap() },
                             shape = RoundedCornerShape(4.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.heightIn(min = 32.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (viewModel.showHeatmap) mycoColors.favorable else MaterialTheme.colorScheme.surfaceVariant,
                                 contentColor = if (viewModel.showHeatmap) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface

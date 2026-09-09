@@ -82,6 +82,10 @@ docs/
   - The right `Text` must set `textAlign = TextAlign.End` and must receive strictly compact, atomic tokens (e.g., `"Sud"`, `"1422 m"`, `"20.0°C"`).
   - Extended descriptions or narrative explanations must **never** be passed into compact value slots; they belong strictly in dedicated subtitle/detail fields.
   - Rows must enforce consistent vertical rhythm (e.g., `Modifier.heightIn(min = 48.dp)` and uniform vertical padding).
+- **Prevent Header & Action Collisions**: In horizontal card headers or rows pairing a label with an action control/button:
+  - The label must specify `Modifier.weight(1f, fill = false)` or `Modifier.weight(1f)` to guarantee responsive space allocation.
+  - Action buttons inside compact headers must use bounded internal padding (e.g. `contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)`) and bounded height (`Modifier.heightIn(min = 32.dp)`).
+  - An explicit horizontal `Spacer(Modifier.width(8.dp))` must separate label and action button to guarantee zero overlap across all screen widths.
 
 ### 4.5 Design Tokens, Iconography & Resource Cleanliness
 - **Zero Hardcoded Colors**: `Color(0x...)` definitions must reside exclusively in `ui/theme/Color.kt`. Composable functions must access colors via `MaterialTheme.colorScheme` or custom theme attributes (`HerbariumTheme`).
@@ -92,6 +96,10 @@ docs/
 - **Disable Vertical Repetition**: Always set `isVerticalMapRepetitionEnabled = false` on `MapView` instances to prevent vertical world-tiling on tall mobile displays.
 - **Enforce Zoom Clamping**: Always specify bounded zoom limits (e.g., `minZoomLevel = 4.0`, `maxZoomLevel = 20.0`).
 - **Sane Geographic Initialization**: When coordinates are null/unselected, initialize the viewport to a sensible regional centroid (e.g. Central Italy `GeoPoint(42.5, 12.5)` at zoom `6.0`) rather than leaving OsmDroid at zoom `0.0`.
+- **Cartographic Heatmap Balance (Legibility vs Design)**:
+  - **Balanced Progressive Opacity**: Overlays placed atop dense topographic maps (contours, elevation relief, roads) must never use flat low opacity (e.g. 50% washes out) nor heavy opacity (>80% blinds underlying topography). Opacity must scale dynamically across probability tiers within a balanced window ($115 \dots 180$, $\sim 45\% \dots 70\%$).
+  - **Chromatic Anchor Separation**: Multi-tier palettes must span distinct, readable spectral anchors (botanical green $\to$ golden amber $\to$ cinnabar terracotta $\to$ crimson garnet) rather than clustering in narrow monochromatic brown/pastel hues that camouflage against mountain terrain.
+  - **Smoothstep Zonal Delineation**: To make probability zones identifiable without pixelation or stair-stepping, each tier must maintain a distinct core color plateau with smooth $C^1$ smoothstep transitions around boundary thresholds.
 
 ### 4.7 Scientific & Ecological Modeling Standards
 - **Continuous Biological Curves**: Model environmental variables (temperature, soil moisture, precipitation, elevation) with continuous normalized response functions ($0.0 \dots 1.0$) rather than discrete step functions.

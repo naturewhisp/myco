@@ -1,12 +1,14 @@
 package github.naturewhisp.myco.utils
 
 import github.naturewhisp.myco.model.DailyOutlook
+import github.naturewhisp.myco.model.EcologicalWeightsConfig
 import github.naturewhisp.myco.model.Factor
 import github.naturewhisp.myco.model.FactorId
 import github.naturewhisp.myco.model.FactorLevel
 import github.naturewhisp.myco.model.MushroomSpecies
 import github.naturewhisp.myco.model.ProcessedDay
 import github.naturewhisp.myco.model.SPECIES_CATALOG
+import github.naturewhisp.myco.model.TerrainAspectConfig
 import github.naturewhisp.myco.model.TerrainAspectData
 import github.naturewhisp.myco.model.TerrainAspectEvaluation
 import github.naturewhisp.myco.model.WeatherResponse
@@ -18,15 +20,58 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+/**
+ * Risultato del calcolo di un punteggio normalizzato con relativa descrizione testuale.
+ *
+ * @property score Punteggio numerico normalizzato, solitamente compreso nell'intervallo [0.0, 1.0].
+ * @property text Descrizione testuale qualitativa del fattore valutato.
+ */
 data class ScoreResult(val score: Double, val text: String)
+
+/**
+ * Rappresentazione dello stato e della fase del ciclo lunare.
+ *
+ * @property text Nome descrittivo della fase lunare (es. "Luna Nuova", "Crescente").
+ * @property code Codice standard identificativo della fase (es. "NEW_MOON", "WAXING_CRESCENT").
+ * @property favorable Indica se la fase lunare è considerata tradizionalmente favorevole per la fruttificazione.
+ */
 data class MoonPhaseResult(val text: String, val code: String, val favorable: Boolean) {
     val emoji: String get() = code
 }
+
+/**
+ * Valutazione discreta legacy dello stato di pioggia cumulata.
+ *
+ * @property score Punteggio associato alla quantità di pioggia.
+ * @property label Etichetta qualitativa (es. "Ottimale", "Scarsa").
+ */
 data class RainStatus(val score: Int, val label: String)
+
+/**
+ * Valutazione discreta legacy dello stato termico medio.
+ *
+ * @property score Punteggio associato al regime termico.
+ * @property label Etichetta qualitativa (es. "Ideale", "Troppo freddo").
+ */
 data class TempStatus(val score: Int, val label: String)
 
+/**
+ * Motore matematico e biologico per la modellazione della crescita e fruttificazione fungina.
+ *
+ * Fornisce funzioni 100% pure Kotlin per:
+ * - Aggregazione e normalizzazione serie storiche e previsionali meteo ([processWeatherData]).
+ * - Calcolo probabilistico ecologico continuo con curve di risposta biologiche ([dailyGrowthProbability], [calculateWeatherScore]).
+ * - Analisi orografica, slope, aspect e insolazione da DEM ([calculateTerrainAspect], [evaluateTerrainAspect]).
+ * - Generazione scomposizione strutturata fattori ([calculateFactors]) e previsioni temporali ([calculateDailyOutlooks]).
+ */
 object MushroomAlgorithms {
 
+    /**
+     * Trasforma la risposta oraria e giornaliera Open-Meteo in una serie aggregata giornaliera di [ProcessedDay].
+     *
+     * @param data Dati grezzi restituiti dal servizio meteorologico [WeatherResponse].
+     * @return Lista ordinata cronologicamente di giorni elaborati con temperatura media, pioggia cumulata e umidità.
+     */
     fun processWeatherData(data: WeatherResponse): List<ProcessedDay> {
         val dailyMap = mutableMapOf<String, TempDailyAccumulator>()
         val hourlyTimes = data.hourly.time
@@ -68,7 +113,12 @@ object MushroomAlgorithms {
         var weatherCode: Int? = null
     }
 
-    // Weather thresholds mapping
+    /**
+     * Valuta discretamente il livello delle precipitazioni cumulate recenti (funzione legacy).
+     *
+     * @param totalRain Millimetri complessivi di pioggia caduta nel periodo di riferimento.
+     * @return Istanza di [RainStatus] con punteggio e descrizione.
+     */
     fun getRainStatus(totalRain: Double): RainStatus {
         return when {
             totalRain >= 40.0 -> RainStatus(40, "Ottimale")
@@ -79,6 +129,12 @@ object MushroomAlgorithms {
         }
     }
 
+    /**
+     * Valuta discretamente il regime termico medio recente (funzione legacy).
+     *
+     * @param avgTemp Temperatura media registrata in °C.
+     * @return Istanza di [TempStatus] con punteggio e descrizione.
+     */
     fun getTempStatus(avgTemp: Double): TempStatus {
         return when {
             avgTemp >= 14.0 && avgTemp <= 22.0 -> TempStatus(30, "Ideale")
@@ -88,6 +144,12 @@ object MushroomAlgorithms {
         }
     }
 
+    /**
+     * Calcola il punteggio di umidità relativa secondo le soglie standard (funzione legacy).
+     *
+     * @param avgHumidity Percentuale media di umidità relativa dell'aria.
+     * @return Punteggio intero (0, 10 o 15).
+     */
     fun getHumidityScore(avgHumidity: Double): Int {
         return when {
             avgHumidity >= 85.0 -> 15
@@ -96,6 +158,12 @@ object MushroomAlgorithms {
         }
     }
 
+    /**
+     * Calcola la risposta ecologica generica in base all'altitudine (funzione baseline per Boletus edulis s.l.).
+     *
+     * @param elevation Quota altimetrica sul livello del mare in metri.
+     * @return Istanza di [ScoreResult] con moltiplicatore (0.6..1.0) e sintesi testuale.
+     */
     fun calculateAltitudeScore(elevation: Float): ScoreResult {
         val score: Double
         val desc: String
@@ -124,6 +192,12 @@ object MushroomAlgorithms {
         return ScoreResult(score, "Altitudine: ${elevation.toInt()}m ($desc).")
     }
 
+    /**
+     * Calcola il coefficiente di stagionalità fenologica generico (0..11, 0 = Gennaio).
+     *
+     * @param month Indice del mese da 0 (Gennaio) a 11 (Dicembre).
+     * @return Istanza di [ScoreResult] con moltiplicatore (0.1..1.0) e descrizione fenologica.
+     */
     fun calculateSeasonalityScore(month: Int): ScoreResult {
         // month is 0-indexed (0 = Gennaio, 11 = Dicembre)
         val monthsNames = listOf(
@@ -163,6 +237,12 @@ object MushroomAlgorithms {
         return ScoreResult(score, "Stagione: $monthName ($desc).")
     }
 
+    /**
+     * Calcola la fase lunare corrente o per una specifica data basandosi sul ciclo sinodico medio (29.53 giorni).
+     *
+     * @param date Data di riferimento per il calcolo astronomico (default data odierna).
+     * @return Istanza di [MoonPhaseResult] contenente etichetta, codice identificativo e indicazione di favorevolezza.
+     */
     fun getMoonPhase(date: Date = Date()): MoonPhaseResult {
         // Known New Moon: 2000-01-06T18:14:00Z
         val knownNewMoonMs = 947182440000L
@@ -222,34 +302,51 @@ object MushroomAlgorithms {
         return MoonPhaseResult(phaseText, code, favorable)
     }
 
+    /**
+     * Calcola il punteggio meteorologico composito (0..100) per una specifica data.
+     *
+     * Integra le quattro componenti continue ponderate secondo [EcologicalWeightsConfig]:
+     * - Idratazione da precipitazioni cumulate ([EcologicalWeightsConfig.rainWeight]%)
+     * - Regime termico medio recente ([EcologicalWeightsConfig.tempWeight]%)
+     * - Umidità relativa aria/suolo ([EcologicalWeightsConfig.humidityWeight]%)
+     * - Shock termico induttivo primordiale ([EcologicalWeightsConfig.thermalShockWeight]%)
+     *
+     * @param dayIndex Indice del giorno bersaglio all'interno della lista cronologica [allData].
+     * @param allData Serie temporale completa dei dati meteorologici giornalieri [ProcessedDay].
+     * @param spunHyphalDensity Densità ifale sotterranea SPUN in m/cm³, se disponibile.
+     * @param species Profilo ecologico della specie target [MushroomSpecies].
+     * @param config Configurazione tipizzata dei pesi e delle finestre climatiche [EcologicalWeightsConfig].
+     * @return Punteggio meteorologico intero normalizzato nell'intervallo [0, 100].
+     */
     fun calculateWeatherScore(
         dayIndex: Int,
         allData: List<ProcessedDay>,
         spunHyphalDensity: Float? = null,
-        species: MushroomSpecies = SPECIES_CATALOG[0]
+        species: MushroomSpecies = SPECIES_CATALOG[0],
+        config: EcologicalWeightsConfig = EcologicalWeightsConfig.DEFAULT
     ): Int {
         if (dayIndex < 0 || dayIndex >= allData.size) return 0
 
-        // Calcolo continuo della pioggia cumulata (finestra da 10 a 2 giorni fa)
-        val rainStart = max(0, dayIndex - 10)
-        val rainEnd = max(0, dayIndex - 2)
+        // Calcolo continuo della pioggia cumulata (finestra da rainWindowDays a rainLagDays giorni fa)
+        val rainStart = max(0, dayIndex - config.rainWindowDays)
+        val rainEnd = max(0, dayIndex - config.rainLagDays)
         val rainWindow = if (rainStart < rainEnd && rainEnd <= allData.size) {
             allData.subList(rainStart, rainEnd)
         } else {
             emptyList()
         }
         val totalRainLast10Days = rainWindow.sumOf { it.totalPrecip.toDouble() }
-        var rainScore = rainScoreSmooth(totalRainLast10Days, species) * 40.0
+        var rainScore = rainScoreSmooth(totalRainLast10Days, species) * config.rainWeight
 
         // Modulatore biologico SPUN: rete ifale densa (>5.0 m/cm3) amplifica la risposta a piogge moderate
-        if (spunHyphalDensity != null && spunHyphalDensity >= 5.0f && totalRainLast10Days >= 12.0) {
-            rainScore = min(40.0, rainScore + 6.0)
+        if (spunHyphalDensity != null && spunHyphalDensity >= 5.0f && totalRainLast10Days >= config.minRainForShockMm) {
+            rainScore = min(config.rainWeight, rainScore + 6.0)
         } else if (spunHyphalDensity != null && spunHyphalDensity < 2.5f) {
             rainScore = max(0.0, rainScore - 4.0)
         }
 
-        // Calcolo continuo della temperatura media (finestra ultimi 5 giorni)
-        val tempStart = max(0, dayIndex - 5)
+        // Calcolo continuo della temperatura media (finestra ultimi tempWindowDays giorni)
+        val tempStart = max(0, dayIndex - config.tempWindowDays)
         val tempWindow = if (tempStart < dayIndex && dayIndex <= allData.size) {
             allData.subList(tempStart, dayIndex)
         } else {
@@ -260,10 +357,10 @@ object MushroomAlgorithms {
         } else {
             0.0
         }
-        val tempScore = tempScoreSmooth(avgTempLast5Days, species) * 30.0
+        val tempScore = tempScoreSmooth(avgTempLast5Days, species) * config.tempWeight
 
-        // Calcolo continuo dell'umidità relativa (finestra 3 giorni fino a oggi)
-        val humStart = max(0, dayIndex - 3)
+        // Calcolo continuo dell'umidità relativa (finestra humidityWindowDays giorni fino a oggi)
+        val humStart = max(0, dayIndex - config.humidityWindowDays)
         val humEnd = min(allData.size, dayIndex + 1)
         val humWindow = if (humStart < humEnd) {
             allData.subList(humStart, humEnd)
@@ -275,25 +372,35 @@ object MushroomAlgorithms {
         } else {
             0.0
         }
-        val humScore = humidityScoreSmooth(avgHumidityRecent) * 15.0
+        val humScore = humidityScoreSmooth(avgHumidityRecent) * config.humidityWeight
 
         // Calcolo continuo dello shock termico induttivo dei primordi
         var shockScore = 0.0
-        if (dayIndex > 4 && totalRainLast10Days >= 12.0) {
+        if (dayIndex > 4 && totalRainLast10Days >= config.minRainForShockMm) {
             val tempBefore = allData[dayIndex - 4].avgTemp
             val tempAfter = allData[dayIndex - 1].avgTemp
             val drop = (tempBefore - tempAfter).toDouble()
-            val minDrop = if (spunHyphalDensity != null && spunHyphalDensity >= 5.0f) 2.0 else 3.0
+            val minDrop = if (spunHyphalDensity != null && spunHyphalDensity >= 5.0f) {
+                config.spunAssistedThermalDropMin
+            } else {
+                config.standardThermalDropMin
+            }
             if (drop > minDrop) {
-                val dropFactor = ((drop - minDrop) / 3.0).coerceIn(0.0, 1.0)
-                val rainFactor = (totalRainLast10Days / 25.0).coerceIn(0.0, 1.0)
-                shockScore = 15.0 * dropFactor * rainFactor
+                val dropFactor = ((drop - minDrop) / config.shockDropSaturationSpan).coerceIn(0.0, 1.0)
+                val rainFactor = (totalRainLast10Days / config.shockRainSaturationMm).coerceIn(0.0, 1.0)
+                shockScore = config.thermalShockWeight * dropFactor * rainFactor
             }
         }
 
         return (rainScore + tempScore + humScore + shockScore).coerceIn(0.0, 100.0).roundToInt()
     }
 
+    /**
+     * Determina la fase fenologica di sviluppo miceliare e fruttificazione a partire dalla serie storica recente.
+     *
+     * @param processedData Serie temporale dei giorni elaborati contenente lo storico meteo.
+     * @return Stringa descrittiva della fase fenologica corrente (es. Idratazione, Incubazione primordi, Buttata attiva).
+     */
     fun calculateGrowthPhase(processedData: List<ProcessedDay>): String {
         val todayIndex = 14
         if (processedData.size <= todayIndex) {
@@ -339,6 +446,14 @@ object MushroomAlgorithms {
         }
     }
 
+    /**
+     * Fornisce una raccomandazione euristica sull'esposizione del versante ottimale in base al mese e al clima.
+     *
+     * @param seasonalityScore Punteggio stagionale corrente (0.0..1.0).
+     * @param avgTemp Temperatura media attuale in °C.
+     * @param month Mese dell'anno (0..11).
+     * @return Testo sintetico con il versante consigliato e la motivazione termica.
+     */
     fun getSlopeRecommendation(seasonalityScore: Double, avgTemp: Double, month: Int): String {
         return when {
             seasonalityScore < 0.2 -> "Indifferente (Fuori stagione fenologica)"
@@ -348,7 +463,24 @@ object MushroomAlgorithms {
         }
     }
 
-    fun calculateTerrainAspect(elevations: List<Float>, deltaMeters: Double = 75.0): TerrainAspectData {
+    /**
+     * Calcola pendenza, direzione ed esposizione cardinale del versante a partire da 5 quote DEM.
+     *
+     * Utilizza il metodo delle differenze finite centrate sulle 4 direzioni cardinali (N, S, E, W)
+     * e quota centrale, calcolando il gradiente vettoriale e l'orientamento di massima pendenza:
+     * $$\frac{\partial z}{\partial x} = \frac{z_E - z_W}{2 \cdot \Delta}, \quad \frac{\partial z}{\partial y} = \frac{z_N - z_S}{2 \cdot \Delta}$$
+     *
+     * @param elevations Lista ordinata di almeno 5 elevazioni DEM: [Centro, Nord, Sud, Est, Ovest].
+     * @param deltaMeters Distanza cartesiana in metri tra il centro e i punti cardinali (default [TerrainAspectConfig.deltaMeters]).
+     * @param config Configurazione dei parametri orografici e soglie di pendenza [TerrainAspectConfig].
+     * @return [TerrainAspectData] contenente pendenza percentuale/in gradi, azimut del versante e direzione cardinale.
+     */
+    fun calculateTerrainAspect(
+        elevations: List<Float>,
+        deltaMeters: Double = 75.0,
+        config: TerrainAspectConfig = TerrainAspectConfig.DEFAULT
+    ): TerrainAspectData {
+        val effectiveDelta = if (deltaMeters != 75.0) deltaMeters else config.deltaMeters
         if (elevations.size < 5) {
             val center = elevations.firstOrNull() ?: 0f
             return TerrainAspectData(
@@ -368,14 +500,14 @@ object MushroomAlgorithms {
         val zWest = elevations[4]
 
         // Derivate parziali dell'elevazione (differenze finite centrate)
-        val dzdx = (zEast - zWest).toDouble() / (2.0 * deltaMeters)
-        val dzdy = (zNorth - zSouth).toDouble() / (2.0 * deltaMeters)
+        val dzdx = (zEast - zWest).toDouble() / (2.0 * effectiveDelta)
+        val dzdy = (zNorth - zSouth).toDouble() / (2.0 * effectiveDelta)
 
         val slopeRatio = Math.sqrt(dzdx * dzdx + dzdy * dzdy)
         val slopeDegrees = Math.toDegrees(Math.atan(slopeRatio)).toFloat()
         val slopePercent = (slopeRatio * 100.0).toFloat()
 
-        val isFlat = slopeDegrees < 3.0f
+        val isFlat = slopeDegrees < config.flatSlopeThresholdDegrees
 
         // Vettore di massima discesa: verso cui il versante scende
         val vx = -dzdx
@@ -410,12 +542,29 @@ object MushroomAlgorithms {
         )
     }
 
+    /**
+     * Valuta l'idoneità micologica del versante orografico incrociando esposizione, pendenza, mese e termofilia.
+     *
+     * Modula il moltiplicatore probabilistico continuo (0.50..1.10) in base al regime microclimatico:
+     * - Versanti *solatìi* (Sud/Est): favoriti in autunno/primavera o per specie termofile.
+     * - Versanti *bacìi* (Nord/Ovest): favoriti in estate o periodi torridi per conservazione dell'umidità.
+     * - Forti pendenze (> [config.steepSlopeThresholdDegrees]°): penalizzate per eccessivo ruscellamento idrico.
+     *
+     * @param terrain Dati orografici calcolati [TerrainAspectData], o null in caso di fallback.
+     * @param month Mese dell'anno (0-indexed: 0 = Gennaio .. 11 = Dicembre).
+     * @param avgTemp Temperatura media recente in gradi Celsius.
+     * @param seasonalityScore Punteggio stagionale della specie bersaglio.
+     * @param species Profilo biologico della specie target [MushroomSpecies].
+     * @param config Configurazione dei moltiplicatori e soglie orografiche [TerrainAspectConfig].
+     * @return [TerrainAspectEvaluation] con livello Herbarium, descrizione e moltiplicatore continuo.
+     */
     fun evaluateTerrainAspect(
         terrain: TerrainAspectData?,
         month: Int,
         avgTemp: Double,
         seasonalityScore: Double,
-        species: MushroomSpecies = SPECIES_CATALOG[0]
+        species: MushroomSpecies = SPECIES_CATALOG[0],
+        config: TerrainAspectConfig = TerrainAspectConfig.DEFAULT
     ): TerrainAspectEvaluation {
         if (terrain == null) {
             val rec = getSlopeRecommendation(seasonalityScore, avgTemp, month)
@@ -442,7 +591,7 @@ object MushroomAlgorithms {
         }
 
         val formatted = String.format(Locale.US, "%d° %s", terrain.slopeDegrees.roundToInt(), terrain.cardinalAbbreviation)
-        val isSteep = terrain.slopeDegrees > 38f
+        val isSteep = terrain.slopeDegrees > config.steepSlopeThresholdDegrees
 
         val aspect = terrain.aspectDegrees
         val isNorth = aspect >= 315f || aspect <= 45f // N, NO, NE
@@ -460,7 +609,7 @@ object MushroomAlgorithms {
                 isSouth || (isEast && aspect > 90f) -> {
                     level = FactorLevel.FAVORABLE
                     detail = "Solatìo caldo • Ottimale per specie termofila"
-                    modifier = 1.05
+                    modifier = config.favorableMultiplier
                 }
                 isNorth -> {
                     if (avgTemp >= 24.0) {
@@ -470,7 +619,7 @@ object MushroomAlgorithms {
                     } else {
                         level = FactorLevel.ADVERSE
                         detail = "Versante freddo a bacìo • Insolazione scarsa"
-                        modifier = 0.90
+                        modifier = config.adverseMultiplier
                     }
                 }
                 else -> {
@@ -489,12 +638,12 @@ object MushroomAlgorithms {
                         isNorth -> {
                             level = FactorLevel.FAVORABLE
                             detail = "Versante fresco a bacìo • Ottima umidità estiva"
-                            modifier = 1.05
+                            modifier = config.favorableMultiplier
                         }
                         isSouth -> {
                             level = FactorLevel.ADVERSE
                             detail = "Solatìo arido • Elevata evapotraspirazione"
-                            modifier = 0.90
+                            modifier = config.adverseMultiplier
                         }
                         else -> {
                             level = FactorLevel.NEUTRAL
@@ -508,12 +657,12 @@ object MushroomAlgorithms {
                         isSouth -> {
                             level = FactorLevel.FAVORABLE
                             detail = "Solatìo soleggiato • Accumulo termico autunnale"
-                            modifier = 1.05
+                            modifier = config.favorableMultiplier
                         }
                         isNorth -> {
                             level = FactorLevel.ADVERSE
                             detail = "Bacìo freddo • Rischio blocco termico miceliare"
-                            modifier = 0.90
+                            modifier = config.adverseMultiplier
                         }
                         else -> {
                             level = FactorLevel.NEUTRAL
@@ -527,12 +676,12 @@ object MushroomAlgorithms {
                         isEast -> {
                             level = FactorLevel.FAVORABLE
                             detail = "Esposizione Est • Soleggiamento mattutino mite"
-                            modifier = 1.03
+                            modifier = config.morningSunMultiplier
                         }
                         isSouth -> {
                             level = FactorLevel.FAVORABLE
                             detail = "Esposizione Sud • Buon soleggiamento"
-                            modifier = 1.02
+                            modifier = config.moderateSunMultiplier
                         }
                         else -> {
                             level = FactorLevel.NEUTRAL
@@ -547,7 +696,7 @@ object MushroomAlgorithms {
         if (isSteep) {
             level = if (level == FactorLevel.FAVORABLE) FactorLevel.NEUTRAL else FactorLevel.ADVERSE
             detail = "Forte pendenza (${terrain.slopeDegrees.roundToInt()}°) • Ruscellamento elevato"
-            modifier = min(modifier, 0.92)
+            modifier = min(modifier, config.steepSlopePenaltyMax)
         }
 
         return TerrainAspectEvaluation(
@@ -559,6 +708,12 @@ object MushroomAlgorithms {
         )
     }
 
+    /**
+     * Analizza la finestra previsionale futura (+1..+5 giorni) per stimare il trend di crescita.
+     *
+     * @param processedData Serie temporale dei giorni con storico e previsioni future.
+     * @return Paragrafo descrittivo Markdown con l'evoluzione del trend idrico e di fruttificazione.
+     */
     fun analyzeFutureTrend(processedData: List<ProcessedDay>): String {
         val todayIndex = 14
         if (processedData.size < todayIndex + 6) return ""
@@ -579,6 +734,22 @@ object MushroomAlgorithms {
         }
     }
 
+    /**
+     * Sintetizza in un testo discorsivo i punti di forza, i fattori limitanti e il contesto biologico generale.
+     *
+     * @param weatherScore Punteggio meteo complessivo (0..100).
+     * @param habitatScore Punteggio dell'habitat forestale (0..1).
+     * @param habitatText Descrizione qualitativa dell'habitat.
+     * @param altitudeScore Risposta altimetrica (0..1).
+     * @param altitudeText Descrizione dell'altitudine.
+     * @param seasonalityScore Coefficiente stagionale (0..1).
+     * @param seasonalityText Descrizione del periodo fenologico.
+     * @param totalRain Pioggia cumulata recente in mm.
+     * @param futureTrend Analisi del trend meteo futuro.
+     * @param spunEcmText Descrizione del livello di ectomicorrize SPUN, se presente.
+     * @param spunHyphalText Descrizione della densità ifale SPUN, se presente.
+     * @return Testo discorsivo completo per l'interfaccia utente.
+     */
     fun generateSummaryText(
         weatherScore: Double,
         habitatScore: Double,
@@ -639,7 +810,13 @@ object MushroomAlgorithms {
         return summary
     }
 
-    // Calcolo continuo della temperatura rispetto al profilo biologico della specie
+    /**
+     * Curva di risposta termica biologica continua normalizzata nell'intervallo [0.0, 1.0].
+     *
+     * @param temp Temperatura media registrata in °C.
+     * @param species Profilo biologico della specie micologica target [MushroomSpecies].
+     * @return Punteggio continuo normalizzato [0.0, 1.0].
+     */
     fun tempScoreSmooth(temp: Double, species: MushroomSpecies = SPECIES_CATALOG[0]): Double {
         return when {
             temp < species.toleratedTempMin || temp > species.toleratedTempMax -> 0.0
@@ -655,7 +832,13 @@ object MushroomAlgorithms {
         }.coerceIn(0.0, 1.0)
     }
 
-    // Calcolo continuo della pioggia cumulata
+    /**
+     * Risposta idrica continua da precipitazioni cumulate [0.0, 1.0] parametrata sul fabbisogno della specie.
+     *
+     * @param rainMm Millimetri complessivi di pioggia caduta.
+     * @param species Specie micologica target [MushroomSpecies].
+     * @return Punteggio continuo normalizzato [0.0, 1.0].
+     */
     fun rainScoreSmooth(rainMm: Double, species: MushroomSpecies = SPECIES_CATALOG[0]): Double {
         val target = species.minRainAccumulation.toDouble()
         return when {
@@ -666,7 +849,12 @@ object MushroomAlgorithms {
         }
     }
 
-    // Calcolo continuo dell'umidità relativa
+    /**
+     * Risposta continua all'umidità relativa dell'aria [0.0, 1.0].
+     *
+     * @param humidity Percentuale media di umidità relativa (0..100).
+     * @return Punteggio continuo normalizzato [0.0, 1.0].
+     */
     fun humidityScoreSmooth(humidity: Double): Double {
         return when {
             humidity < 50.0 -> 0.0
@@ -675,7 +863,13 @@ object MushroomAlgorithms {
         }
     }
 
-    // Altitudine calibrata sulla specie
+    /**
+     * Valuta la risposta altimetrica continua specifica per la specie selezionata.
+     *
+     * @param elevation Quota sul livello del mare in metri.
+     * @param species Specie micologica target [MushroomSpecies].
+     * @return [ScoreResult] con punteggio continuo (0.4..1.0) e descrizione della fascia altimetrica.
+     */
     fun calculateSpeciesAltitudeScore(elevation: Float, species: MushroomSpecies): ScoreResult {
         val score = when {
             elevation < species.minElevation || elevation > species.maxElevation -> 0.4
@@ -698,7 +892,13 @@ object MushroomAlgorithms {
         return ScoreResult(score, "Altitudine: ${elevation.toInt()} m ($desc)")
     }
 
-    // Stagionalità calibrata sui mesi attivi della specie
+    /**
+     * Valuta la stagionalità fenologica calibrata sui mesi attivi e limitrofi della specie.
+     *
+     * @param month Mese dell'anno da 0 (Gennaio) a 11 (Dicembre).
+     * @param species Specie micologica target [MushroomSpecies].
+     * @return [ScoreResult] con punteggio continuo (0.1..1.0) e descrizione della fase stagionale.
+     */
     fun calculateSpeciesSeasonalityScore(month: Int, species: MushroomSpecies): ScoreResult {
         val monthNames = listOf(
             "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
@@ -716,20 +916,58 @@ object MushroomAlgorithms {
         return ScoreResult(score, "Stagione: $monthName ($desc)")
     }
 
-    // Calcolo della probabilità giornaliera continua combinata
+    /**
+     * Calcola la probabilità giornaliera continua combinata di fruttificazione (0..100%).
+     *
+     * Applica la formula canonica calibrata descritta in AGENTS.md:
+     * $$P = 100 \times \left(\frac{W}{100}\right)^{1.2} \times H \times A \times S \times T$$
+     * dove:
+     * - $W$ = punteggio meteo ponderato tramite [config.weatherExponent]
+     * - $H$ = moltiplicatore habitat boschivo (0.10..1.00)
+     * - $A$ = moltiplicatore altimetrico continuo per specie (0.40..1.00)
+     * - $S$ = moltiplicatore stagionale fenologico (0.10..1.00)
+     * - $T$ = modificatore orografico del versante ed esposizione (0.50..1.10)
+     *
+     * @param weatherScore Punteggio meteorologico calcolato (0..100).
+     * @param habitatScore Punteggio vegetazionale / boschivo (0.0..1.0).
+     * @param altitudeScore Risposta altimetrica continua della specie (0.0..1.0).
+     * @param seasonalityScore Risposta fenologica stagionale del mese corrente (0.0..1.0).
+     * @param terrainModifier Modificatore continuo del versante, pendenza ed esposizione orografica (default 1.0).
+     * @param config Configurazione dei pesi ed esponenti ecologici [EcologicalWeightsConfig].
+     * @return Probabilità percentuale complessiva normalizzata nell'intervallo [0, 100].
+     */
     fun dailyGrowthProbability(
         weatherScore: Int,
         habitatScore: Double,
         altitudeScore: Double,
         seasonalityScore: Double,
-        terrainModifier: Double = 1.0
+        terrainModifier: Double = 1.0,
+        config: EcologicalWeightsConfig = EcologicalWeightsConfig.DEFAULT
     ): Int {
-        val weightedWeatherScore = 100.0 * Math.pow(weatherScore / 100.0, 1.2)
+        val weightedWeatherScore = 100.0 * Math.pow(weatherScore / 100.0, config.weatherExponent)
         val combined = weightedWeatherScore * habitatScore * altitudeScore * seasonalityScore * terrainModifier
         return combined.toInt().coerceIn(0, 100)
     }
 
-    // Genera la lista tipizzata dei fattori ecologici e ambientali per la visualizzazione Herbarium
+    /**
+     * Scompone le variabili ambientali e geografiche nella lista tipizzata di fattori [Factor] per la visualizzazione Herbarium.
+     *
+     * @param avgTemp Temperatura media attuale in °C.
+     * @param totalRain Pioggia cumulata recente in mm.
+     * @param avgHumidity Percentuale media di umidità relativa.
+     * @param habitatScore Punteggio dell'habitat forestale (0..1).
+     * @param habitatText Descrizione dell'habitat botanico.
+     * @param elevation Quota altimetrica in metri.
+     * @param month Mese dell'anno (0..11).
+     * @param growthPhaseText Descrizione fenologica della fase di crescita.
+     * @param moon Risultato del calcolo della fase lunare [MoonPhaseResult].
+     * @param slopeText Raccomandazione del versante.
+     * @param species Profilo biologico della specie micologica target [MushroomSpecies].
+     * @param spunEcmText Descrizione del livello di ectomicorrize SPUN, se disponibile.
+     * @param spunHyphalText Descrizione della densità ifale SPUN, se disponibile.
+     * @param terrainEvaluation Valutazione dettagliata di pendenza ed esposizione [TerrainAspectEvaluation], se disponibile.
+     * @return Lista ordinata di elementi [Factor] pronti per il rendering nelle schede ecologiche.
+     */
     fun calculateFactors(
         avgTemp: Double,
         totalRain: Double,
@@ -935,7 +1173,18 @@ object MushroomAlgorithms {
         return factors
     }
 
-    // Calcola le previsioni giornaliere per tutti i giorni previsionali
+    /**
+     * Calcola le proiezioni giornaliere [DailyOutlook] per tutti i giorni futuri della serie temporale.
+     *
+     * @param processedDays Serie completa dei giorni elaborati.
+     * @param startIndex Indice da cui iniziare il calcolo (default 14, corrispondente alla data odierna).
+     * @param species Specie micologica target [MushroomSpecies].
+     * @param habitatScore Punteggio dell'habitat forestale (0..1).
+     * @param elevation Quota altimetrica in metri.
+     * @param month Mese dell'anno (0..11).
+     * @param spunHyphalDensity Densità ifale sotterranea SPUN, se disponibile.
+     * @return Lista di [DailyOutlook] per ciascun giorno previsionale.
+     */
     fun calculateDailyOutlooks(
         processedDays: List<ProcessedDay>,
         startIndex: Int = 14,

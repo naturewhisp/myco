@@ -6,9 +6,15 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
+/**
+ * Client HTTP centralizzato con configurazione di pooling, timeout e header identificativi conformi alle policy OSM.
+ *
+ * Configura un'istanza riutilizzabile di [OkHttpClient] con User-Agent customizzato per rispettare
+ * i termini di servizio di Nominatim e Overpass, gestendo il parsing JSON tramite [GsonConverterFactory].
+ */
 object NetworkClient {
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = HttpLoggingInterceptor.Level.NONE // Can set to BODY for debugging
+        level = HttpLoggingInterceptor.Level.NONE
     }
 
     private val httpClient = OkHttpClient.Builder()
@@ -28,6 +34,14 @@ object NetworkClient {
         .client(httpClient)
         .addConverterFactory(GsonConverterFactory.create())
 
+    /**
+     * Crea un'implementazione del servizio Retrofit specificato collegato all'URL base fornito.
+     *
+     * @param T Tipo dell'interfaccia di servizio Retrofit.
+     * @param serviceClass Classe Java dell'interfaccia.
+     * @param baseUrl URL base dell'endpoint remoto (es. "https://api.open-meteo.com/").
+     * @return Istanza proxy del servizio Retrofit pronta all'uso.
+     */
     fun <T> createService(serviceClass: Class<T>, baseUrl: String): T {
         return retrofitBuilder.baseUrl(baseUrl).build().create(serviceClass)
     }

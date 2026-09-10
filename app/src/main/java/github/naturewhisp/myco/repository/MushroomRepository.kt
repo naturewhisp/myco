@@ -3,9 +3,10 @@ package github.naturewhisp.myco.repository
 import com.google.gson.Gson
 import github.naturewhisp.myco.model.GeocodeResult
 import github.naturewhisp.myco.model.OverpassResponse
-import github.naturewhisp.myco.model.WeatherResponse
 import github.naturewhisp.myco.model.SpunData
+import github.naturewhisp.myco.model.TerrainAspectConfig
 import github.naturewhisp.myco.model.TerrainAspectData
+import github.naturewhisp.myco.model.WeatherResponse
 import github.naturewhisp.myco.network.GeocodingService
 import github.naturewhisp.myco.network.NetworkClient
 import github.naturewhisp.myco.network.OverpassService
@@ -15,6 +16,16 @@ import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.max
 
+/**
+ * Repository centrale per l'aggregazione e il coordinamento delle sorgenti dati remote e locali.
+ *
+ * Gestisce l'interrogazione delle API REST (Nominatim, Open-Meteo, Overpass OSM), la lettura
+ * degli asset biologici SPUN e applica strategie di caching multilivello con TTL differenziati
+ * tramite [CacheManager]. Totalmente privo di import `android.*`.
+ *
+ * @param cacheManager Gestore della cache multilivello [CacheManager].
+ * @property spunDataManager Gestore degli asset di biodiversità del consorzio SPUN [SpunDataManager].
+ */
 class MushroomRepository(
     private val cacheManager: CacheManager,
     val spunDataManager: SpunDataManager
@@ -35,6 +46,12 @@ class MushroomRepository(
 
     private val gson = Gson()
 
+    /**
+     * Esegue la geocodifica diretta per nome toponomastico o indirizzo testuale.
+     *
+     * @param query Testo digitato dall'utente per la ricerca della località.
+     * @return [GeocodeResult] con le coordinate trovate, o null se nessun riscontro.
+     */
     suspend fun searchLocation(query: String): GeocodeResult? {
         val cacheKey = query.lowercase().trim()
         val cached = cacheManager.getGeocodeCache(cacheKey)
@@ -55,6 +72,13 @@ class MushroomRepository(
         return null
     }
 
+    /**
+     * Esegue il reverse geocoding per risalire al toponimo a partire da latitudine e longitudine WGS84.
+     *
+     * @param latitude Latitudine in gradi decimali.
+     * @param longitude Longitudine in gradi decimali.
+     * @return [GeocodeResult] strutturato, con cache di 7 giorni.
+     */
     suspend fun reverseGeocode(latitude: Double, longitude: Double): GeocodeResult? {
         val roundedLat = String.format(Locale.US, "%.3f", latitude)
         val roundedLon = String.format(Locale.US, "%.3f", longitude)
@@ -73,6 +97,13 @@ class MushroomRepository(
         }
     }
 
+    /**
+     * Recupera le serie temporali meteorologiche (passato 14gg + previsione 7gg) da Open-Meteo.
+     *
+     * @param latitude Latitudine in gradi decimali.
+     * @param longitude Longitudine in gradi decimali.
+     * @return [WeatherResponse] con dati orari e giornalieri, con cache di 1 ora.
+     */
     suspend fun fetchWeather(latitude: Double, longitude: Double): WeatherResponse {
         val roundedLat = String.format(Locale.US, "%.4f", latitude)
         val roundedLon = String.format(Locale.US, "%.4f", longitude)
@@ -88,6 +119,15 @@ class MushroomRepository(
         return response
     }
 
+    /**
+     * Interroga l'API Overpass di OpenStreetMap per quantificare i poligoni boschivi nell'area.
+     *
+     * Implementa il failover automatico su endpoint mirror europei in caso di timeout.
+     *
+     * @param latitude Latitudine in gradi decimali.
+     * @param longitude Longitudine in gradi decimali.
+     * @return [OverpassResponse] con gli elementi boschivi individuati, con cache di 24 ore.
+     */
     suspend fun fetchHabitat(latitude: Double, longitude: Double): OverpassResponse? {
         val roundedLat = String.format(Locale.US, "%.4f", latitude)
         val roundedLon = String.format(Locale.US, "%.4f", longitude)
@@ -114,6 +154,13 @@ class MushroomRepository(
         return null
     }
 
+    /**
+     * Interroga Overpass per rilevare la presenza di generi arborei forestali specifici e simbionti.
+     *
+     * @param latitude Latitudine in gradi decimali.
+     * @param longitude Longitudine in gradi decimali.
+     * @return [OverpassResponse] con essenze arboree rilevate, con cache di 24 ore.
+     */
     suspend fun fetchSpecificHabitatBonus(latitude: Double, longitude: Double): OverpassResponse? {
         val roundedLat = String.format(Locale.US, "%.4f", latitude)
         val roundedLon = String.format(Locale.US, "%.4f", longitude)
@@ -140,10 +187,25 @@ class MushroomRepository(
         return null
     }
 
+    /**
+     * Esegue l'interrogazione geospaziale degli asset binari SPUN tramite [SpunDataManager].
+     *
+     * @param latitude Latitudine in gradi decimali.
+     * @param longitude Longitudine in gradi decimali.
+     * @param radiusMeters Raggio di scansione in metri.
+     * @return [SpunData] con ricchezza EcM e densità ifale, o null se fuori copertura.
+     */
     suspend fun fetchSpunData(latitude: Double, longitude: Double, radiusMeters: Int): SpunData? {
         return spunDataManager.getSpunData(latitude, longitude, radiusMeters)
     }
 
+    /**
+     * Calcola pendenza ed esposizione del versante tramite campionamento DEM a 5 punti su Open-Meteo.
+     *
+     * @param latitude Latitudine centrale in gradi decimali.
+     * @param longitude Longitudine centrale in gradi decimali.
+     * @return [TerrainAspectData] con i dati orografici calcolati, con cache di 30 giorni.
+     */
     suspend fun fetchTerrainAspect(latitude: Double, longitude: Double): TerrainAspectData? {
         val roundedLat = String.format(Locale.US, "%.4f", latitude)
         val roundedLon = String.format(Locale.US, "%.4f", longitude)
@@ -155,7 +217,7 @@ class MushroomRepository(
         }
 
         return try {
-            val deltaMeters = 75.0
+            val deltaMeters = TerrainAspectConfig.DEFAULT.deltaMeters
             val metersPerDegLat = 111139.0
             val latRad = Math.toRadians(latitude)
             val metersPerDegLon = 111139.0 * cos(latRad)

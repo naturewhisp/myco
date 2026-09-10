@@ -3,8 +3,23 @@ package github.naturewhisp.myco.model
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-enum class WeatherCondition { CLEAR, CLOUDY, RAIN, STORM, UNKNOWN }
+/**
+ * Condizioni meteorologiche sintetizzate per la rappresentazione iconografica.
+ */
+enum class WeatherCondition {
+    CLEAR,
+    CLOUDY,
+    RAIN,
+    STORM,
+    UNKNOWN
+}
 
+/**
+ * Converte un codice meteorologico WMO Open-Meteo nell'enumerazione [WeatherCondition].
+ *
+ * @param code Codice WMO numerico fornito dal servizio meteorologico.
+ * @return [WeatherCondition] corrispondente.
+ */
 fun weatherCondition(code: Int?): WeatherCondition = when (code) {
     null -> WeatherCondition.UNKNOWN
     0 -> WeatherCondition.CLEAR
@@ -14,7 +29,23 @@ fun weatherCondition(code: Int?): WeatherCondition = when (code) {
     else -> WeatherCondition.CLOUDY
 }
 
-// Previsione giornaliera unificata con probabilità e classificazione tassonomica
+/**
+ * Modello unificato per la previsione fenologica giornaliera a 7 giorni.
+ *
+ * Combina i parametri meteorologici fisici con la probabilità percentuale di crescita fungina
+ * e il corrispondente livello ordinale [ProbabilityTier].
+ *
+ * @property dateIso Data in formato ISO standard ("YYYY-MM-DD").
+ * @property dayOfWeek Nome abbreviato del giorno della settimana in italiano (es. "Lun", "Mar").
+ * @property dayOfMonth Giorno e mese formattati in italiano (es. "12 Ott").
+ * @property weatherCode Codice meteorologico WMO Open-Meteo.
+ * @property avgTemp Temperatura media del giorno in gradi Celsius.
+ * @property totalPrecipMm Precipitazioni cumulate nelle 24 ore in millimetri.
+ * @property avgHumidityPercent Umidità relativa media nelle 24 ore in percentuale.
+ * @property probability Probabilità di crescita stimata (0..100%).
+ * @property tier Livello ordinale della scala di probabilità (0..4).
+ * @property condition Categoria sintetica della condizione atmosferica [WeatherCondition].
+ */
 data class DailyOutlook(
     val dateIso: String,
     val dayOfWeek: String,
@@ -27,16 +58,26 @@ data class DailyOutlook(
     val tier: Int,
     val condition: WeatherCondition = weatherCondition(weatherCode)
 ) {
+    /**
+     * Risolve il livello ordinale [tier] nel corrispondente [ProbabilityTier].
+     */
+    val probabilityTier: ProbabilityTier
+        get() = ProbabilityTier.fromTierIndex(tier)
+
+    /**
+     * Etichetta sintetica del livello di probabilità (es. "Inattivo", "Innesco", "Discreto", "Propizio", "Culmine").
+     */
     val tierLabel: String
-        get() = when (tier) {
-            0 -> "Inattivo"
-            1 -> "Innesco"
-            2 -> "Discreto"
-            3 -> "Propizio"
-            else -> "Culmine"
-        }
+        get() = probabilityTier.shortLabel
 
     companion object {
+        /**
+         * Crea un'istanza di [DailyOutlook] a partire da un [ProcessedDay] meteorologico e la probabilità calcolata.
+         *
+         * @param day Dati meteorologici giornalieri aggregati [ProcessedDay].
+         * @param probability Probabilità di crescita percentuale stimata per il giorno.
+         * @return [DailyOutlook] formattato con classificazione [ProbabilityTier].
+         */
         fun fromProcessedDay(
             day: ProcessedDay,
             probability: Int
@@ -56,13 +97,7 @@ data class DailyOutlook(
                 day.date to ""
             }
 
-            val tier = when {
-                probability < 20 -> 0
-                probability < 40 -> 1
-                probability < 60 -> 2
-                probability < 75 -> 3
-                else -> 4
-            }
+            val pTier = ProbabilityTier.fromProbability(probability)
 
             return DailyOutlook(
                 dateIso = day.date,
@@ -73,7 +108,7 @@ data class DailyOutlook(
                 totalPrecipMm = day.totalPrecip,
                 avgHumidityPercent = day.avgHumidity,
                 probability = probability,
-                tier = tier
+                tier = pTier.tierIndex
             )
         }
     }

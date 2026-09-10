@@ -1,10 +1,8 @@
 package github.naturewhisp.myco.repository
 
-import android.content.Context
 import github.naturewhisp.myco.model.SpunData
 import github.naturewhisp.myco.model.SpunRegionDescriptor
 import github.naturewhisp.myco.model.SpunRegionHeader
-import github.naturewhisp.myco.platform.AndroidAssetProvider
 import github.naturewhisp.myco.platform.AssetProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -21,9 +19,15 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+/**
+ * Gestore dei dati di biodiversità fungina e densità ifale sotterranea del consorzio SPUN.
+ *
+ * Totalmente agnostico dalla piattaforma e privo di dipendenze da Android, legge i file binari
+ * compressi zlib tramite l'astrazione [AssetProvider] e fornisce interrogazioni geospaziali ad alta efficienza.
+ *
+ * @param assetProvider Astrazione per l'accesso agli asset dell'applicazione [AssetProvider].
+ */
 class SpunDataManager(private val assetProvider: AssetProvider) {
-
-    constructor(context: Context) : this(AndroidAssetProvider(context))
 
     // Regioni registrate disponibili
     val availableRegions = listOf(

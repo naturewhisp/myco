@@ -1,7 +1,7 @@
 package github.naturewhisp.myco.utils
 
 import android.content.Context
-import github.naturewhisp.myco.platform.AndroidPlatformNavigator
+import github.naturewhisp.myco.platform.android.AndroidPlatformNavigator
 import github.naturewhisp.myco.platform.PlatformNavigator
 
 object NavigationHelper {

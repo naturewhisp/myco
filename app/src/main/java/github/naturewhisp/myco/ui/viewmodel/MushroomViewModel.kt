@@ -8,7 +8,7 @@ import androidx.lifecycle.viewModelScope
 import github.naturewhisp.myco.model.DailyOutlook
 import github.naturewhisp.myco.model.Factor
 import github.naturewhisp.myco.model.GeocodeResult
-import github.naturewhisp.myco.model.HeatmapData
+import github.naturewhisp.myco.platform.android.HeatmapData
 import github.naturewhisp.myco.model.MushroomSpecies
 import github.naturewhisp.myco.model.PlaceName
 import github.naturewhisp.myco.model.ProcessedDay
@@ -42,6 +42,25 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+/**
+ * ViewModel centrale dell'applicazione Myco secondo l'architettura MVVM.
+ *
+ * Coordina lo stato reattivo Compose per:
+ * - Ricerca geocoding e cronologia posizioni salvate.
+ * - Aggregazione dati meteorologici storici e previsionali tramite [MushroomRepository].
+ * - Interrogazione dati pedologici e micorrizici globali SPUN ([SpunDataManager]).
+ * - Calcolo probabilistico ecologico continuo ([MushroomAlgorithms]) e raster termico ([HeatmapGenerator]).
+ * - Interazione con l'engine di intelligenza artificiale locale on-device ([PlatformAiEngine]).
+ * - Ricezione live della posizione geografica ([PlatformLocationProvider]) e della bussola ([PlatformOrientationProvider]).
+ *
+ * @param repository Repository per l'accesso alle API remote (Open-Meteo, Overpass, Nominatim).
+ * @param cacheManager Gestore dello stato di persistenza delle preferenze utente e cache HTTP.
+ * @param localAiService Engine astratto per la generazione delle risposte AI locali.
+ * @param spunDataManager Gestore del dataset micorrizico globale SPUN.
+ * @param themePreference Gestore della preferenza del tema visivo (Chiaro, Scuro, Sistema).
+ * @param locationProvider Provider astratto per la geolocalizzazione live.
+ * @param orientationProvider Provider astratto per la bussola e l'orientamento del dispositivo.
+ */
 class MushroomViewModel(
     private val repository: MushroomRepository,
     val cacheManager: CacheManager,
@@ -838,10 +857,10 @@ class MushroomViewModel(
                 forecastDays = processedDays.subList(todayIndex, min(processedDays.size, todayIndex + 5))
 
                 val elevation = weather.elevation
-                val altitudeScore = MushroomAlgorithms.calculateAltitudeScore(elevation)
+                val altitudeScore = MushroomAlgorithms.calculateSpeciesAltitudeScore(elevation, selectedSpecies)
                 val calendar = Calendar.getInstance()
                 val currentMonth = calendar.get(Calendar.MONTH) // 0-indexed
-                val seasonalityScore = MushroomAlgorithms.calculateSeasonalityScore(currentMonth)
+                val seasonalityScore = MushroomAlgorithms.calculateSpeciesSeasonalityScore(currentMonth, selectedSpecies)
                 val growthPhaseVal = MushroomAlgorithms.calculateGrowthPhase(processedDays)
                 val moonPhase = MushroomAlgorithms.getMoonPhase()
 
@@ -872,14 +891,6 @@ class MushroomViewModel(
                     processedDays,
                     spunHyphalDensity = spunData?.hyphalDensity,
                     species = selectedSpecies
-                )
-                
-                // Probability calculation
-                todayProbability = MushroomAlgorithms.dailyGrowthProbability(
-                    weatherScore = rawWeatherScore,
-                    habitatScore = finalHabitatScore,
-                    altitudeScore = altitudeScore.score,
-                    seasonalityScore = seasonalityScore.score
                 )
 
                 // Assign states

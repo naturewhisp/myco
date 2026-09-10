@@ -4,7 +4,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Point
 import android.graphics.Rect
-import github.naturewhisp.myco.model.HeatmapData
+import github.naturewhisp.myco.platform.android.HeatmapData
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Overlay

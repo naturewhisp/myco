@@ -12,9 +12,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import github.naturewhisp.myco.model.ProbabilityTier
 import github.naturewhisp.myco.ui.theme.MycoTheme
 
-// Barra di probabilità tassonomica a 5 segmenti discreti separati da gap
+/**
+ * Barra di probabilità a 5 segmenti discreti separati da gap millimetrici (stile botanico Herbarium).
+ *
+ * Mappa la probabilità percentuale calcolata sui 5 livelli tassonomici di [ProbabilityTier],
+ * evidenziando i segmenti attivi con il corrispondente pigmento cromatico minerale.
+ *
+ * @param probability Valore percentuale intero della probabilità di crescita (0..100).
+ * @param modifier Modificatore Compose per personalizzazione del layout.
+ * @param height Altezza verticale dei singoli segmenti (default 6.dp).
+ */
 @Composable
 fun ProbabilityBar(
     probability: Int,
@@ -22,13 +32,8 @@ fun ProbabilityBar(
     height: Dp = 6.dp
 ) {
     val mycoColors = MycoTheme.colors
-    val activeTiers = when {
-        probability < 20 -> 0
-        probability < 40 -> 1
-        probability < 60 -> 2
-        probability < 75 -> 3
-        else -> 4
-    }
+    val tier = ProbabilityTier.fromProbability(probability)
+    val activeTiers = tier.tierIndex
 
     val activeColor = mycoColors.scaleForTier(activeTiers)
     val inactiveColor = mycoColors.scale0

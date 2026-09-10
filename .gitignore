@@ -48,3 +48,6 @@ gradlew
 gradlew.bat
 gradle/wrapper/
 
+# Multi-agent teamwork artifacts
+.agents/
+ORIGINAL_REQUEST.md

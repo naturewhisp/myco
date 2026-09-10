@@ -1,16 +1,20 @@
 package github.naturewhisp.myco.repository
 
-import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import github.naturewhisp.myco.model.SavedLocation
-import github.naturewhisp.myco.platform.AndroidSharedPreferencesStorage
 import github.naturewhisp.myco.platform.KeyValueStorage
 import java.util.Locale
 
+/**
+ * Gestore centralizzato della persistenza su disco e della cache multi-livello di Myco.
+ *
+ * Totalmente disaccoppiato da Android, opera esclusivamente tramite l'astrazione [KeyValueStorage],
+ * gestendo preferenze utente, cronologia toponomastica, località preferite e cache con TTL di risposte API.
+ *
+ * @param storage Astrazione di persistenza chiave-valore [KeyValueStorage].
+ */
 class CacheManager(private val storage: KeyValueStorage) {
-
-    constructor(context: Context) : this(AndroidSharedPreferencesStorage(context))
 
     private val gson = Gson()
 

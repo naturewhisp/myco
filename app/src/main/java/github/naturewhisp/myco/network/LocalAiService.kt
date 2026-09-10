@@ -17,6 +17,12 @@ import kotlinx.coroutines.withContext
 
 /**
  * Implementazione Android di [PlatformAiEngine] basata su Google AI Edge AICore (Gemini Nano).
+ *
+ * Esegue l'inferenza linguistica completamente on-device su Android 14+ (API 34+), senza inviare
+ * dati climatici né coordinate geografiche a server remoti. In caso di hardware non supportato o
+ * modello in download, il sistema commuta sul motore di sintesi deterministica di [github.naturewhisp.myco.utils.MushroomAlgorithms].
+ *
+ * @param context Contesto Android dell'applicazione.
  */
 class LocalAiService(private val context: Context) : PlatformAiEngine {
 
@@ -88,10 +94,21 @@ class LocalAiService(private val context: Context) : PlatformAiEngine {
         }
     }
 
+    /**
+     * Verifica se il modello on-device Gemini Nano è presente e pronto per l'inferenza.
+     *
+     * @return True se lo stato è [AiEngineStatus.READY] e il modello è istanziato.
+     */
     override fun isAvailable(): Boolean {
         return _status.value == AiEngineStatus.READY && generativeModel != null
     }
 
+    /**
+     * Esegue la generazione del riassunto micologico a partire dal prompt strutturato dei fattori.
+     *
+     * @param prompt Testo contenente i dati meteorologici, altimetrici, orografici e SPUN formattati.
+     * @return Stringa della risposta generata localmente da Gemini Nano, o null in caso di errore o indisponibilità.
+     */
     override suspend fun generateAdvancedSummary(prompt: String): String? {
         if (!isAvailable()) return null
         return withContext(Dispatchers.Default) {

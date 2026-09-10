@@ -15,10 +15,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import github.naturewhisp.myco.model.ProbabilityTier
 import github.naturewhisp.myco.ui.theme.MycoTheme
 import github.naturewhisp.myco.ui.theme.NewsreaderFontFamily
 
-// Testata principale del responso di probabilità con gradazione tassonomica
+/**
+ * Testata principale del responso di probabilità con gradazione tassonomica Herbarium.
+ *
+ * Visualizza la percentuale grande nel carattere serif Newsreader, l'etichetta estesa
+ * del livello [ProbabilityTier], il nome vernacolare opzionale della specie e la [ProbabilityBar].
+ *
+ * @param probability Valore percentuale calcolato della probabilità (0..100).
+ * @param modifier Modificatore Compose per personalizzazione del layout.
+ * @param speciesVernacular Nome volgare/vernacolare opzionale della specie (es. "Porcino d'Autunno").
+ */
 @Composable
 fun ProbabilityHeadline(
     probability: Int,
@@ -26,23 +36,14 @@ fun ProbabilityHeadline(
     speciesVernacular: String? = null
 ) {
     val mycoColors = MycoTheme.colors
-    val tier = when {
-        probability < 20 -> 0
-        probability < 40 -> 1
-        probability < 60 -> 2
-        probability < 75 -> 3
-        else -> 4
-    }
+    val tier = ProbabilityTier.fromProbability(probability)
 
-    val tierLabel = when (tier) {
-        0 -> "INATTIVO • CONDIZIONI SFAVOREVOLI"
-        1 -> "EMERGENTE • INNESCO MICELIARE"
-        2 -> "MODERATO • POTENZIALE DISCRETO"
-        3 -> "PROPIZIO • BUTTATA IN CORSO"
-        else -> "CULMINE • MASSIMA PROBABILITÀ"
+    val tierLabel = tier.descriptiveLabel
+    val tierColor = if (tier == ProbabilityTier.VERY_LOW) {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    } else {
+        mycoColors.scaleForTier(tier.tierIndex)
     }
-
-    val tierColor = if (tier == 0) MaterialTheme.colorScheme.onSurfaceVariant else mycoColors.scaleForTier(tier)
 
     Column(
         modifier = modifier.fillMaxWidth()

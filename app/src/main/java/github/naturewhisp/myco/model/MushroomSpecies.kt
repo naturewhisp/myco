@@ -1,13 +1,43 @@
 package github.naturewhisp.myco.model
 
-// Categoria ecologica della specie fungina
+/**
+ * Categoria ecologica della specie fungina in base alla modalità di nutrizione.
+ *
+ * @property label Etichetta sintetica della categoria.
+ * @property description Descrizione ecologica delle modalità trofiche e simbiosi.
+ */
 enum class EcologicalCategory(val label: String, val description: String) {
+    /** Funghi mutualistici legati alle radici di piante arboree forestali. */
     ECTOMYCORRHIZAL("Simbiotico EcM", "Legato a radici di alberi specifici (castagno, faggio, abete, quercia)"),
+    /** Funghi decompositori della sostanza organica della lettiera e humus. */
     SAPROTROPHIC("Saprofita umicolo", "Cresce su lettiera organica, prati e margini boschivi"),
+    /** Funghi agenti di carie del legno o parassiti su ceppaie. */
     PARASITIC("Lignicolo / Parassita", "Sviluppo su tronchi vivi o ceppaie in decomposizione")
 }
 
-// Profilo biologico ed ecologico di una specie fungina bersaglio
+/**
+ * Profilo biologico, altimetrico ed ecologico di una specie fungina bersaglio.
+ *
+ * Incapsula l'escursione altimetrica tollerata e ottimale, il regime termico preferenziale,
+ * la soglia pluviometrica minima, le essenze forestali simbionti e i mesi fenologici attivi.
+ *
+ * @property id Identificatore univoco della specie (es. "boletus_edulis", "general").
+ * @property binomialName Nomenclatura binomiale scientifica latina con autore.
+ * @property vernacularName Nome comune o vernacolare italiano.
+ * @property category Categoria trofica ed ecologica [EcologicalCategory].
+ * @property minElevation Quota altimetrica minima assoluta in metri s.l.m.
+ * @property maxElevation Quota altimetrica massima assoluta in metri s.l.m.
+ * @property idealElevationMin Quota minima della fascia ottimale in metri s.l.m.
+ * @property idealElevationMax Quota massima della fascia ottimale in metri s.l.m.
+ * @property idealTempMin Temperatura minima dell'intervallo termico ideale in °C.
+ * @property idealTempMax Temperatura massima dell'intervallo termico ideale in °C.
+ * @property toleratedTempMin Temperatura minima assoluta di tolleranza miceliare in °C.
+ * @property toleratedTempMax Temperatura massima assoluta di tolleranza miceliare in °C.
+ * @property minRainAccumulation Precipitazione minima cumulata richiesta per l'innesco in mm.
+ * @property preferredCanopyTypes Generi arborei forestali simbionti o associati (nomi botanici minuscoli).
+ * @property fruitingPeriodDescription Descrizione discorsiva del calendario di fruttificazione.
+ * @property activeMonths Lista degli indici dei mesi attivi (0-indexed: 0 = Gennaio .. 11 = Dicembre).
+ */
 data class MushroomSpecies(
     val id: String,
     val binomialName: String,
@@ -26,11 +56,16 @@ data class MushroomSpecies(
     val fruitingPeriodDescription: String,
     val activeMonths: List<Int>
 ) {
+    /**
+     * Indica se la specie rappresenta il modello baseline polifito generale.
+     */
     val isGeneralBaseline: Boolean
         get() = id == "general"
 }
 
-// Catalogo canonico delle specie Herbarium
+/**
+ * Catalogo tassonomico canonico delle specie fungine supportate da Myco.
+ */
 val SPECIES_CATALOG: List<MushroomSpecies> = listOf(
     MushroomSpecies(
         id = "general",

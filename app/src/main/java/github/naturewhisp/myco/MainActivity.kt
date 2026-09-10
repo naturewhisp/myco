@@ -18,8 +18,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import github.naturewhisp.myco.network.LocalAiService
+import github.naturewhisp.myco.platform.android.AndroidAssetProvider
 import github.naturewhisp.myco.platform.android.AndroidLocationProvider
 import github.naturewhisp.myco.platform.android.AndroidSensorOrientationProvider
+import github.naturewhisp.myco.platform.android.AndroidSharedPreferencesStorage
 import github.naturewhisp.myco.repository.CacheManager
 import github.naturewhisp.myco.repository.MushroomRepository
 import github.naturewhisp.myco.repository.SpunDataManager
@@ -56,8 +58,10 @@ class MainActivity : ComponentActivity() {
         )
         Configuration.getInstance().userAgentValue = packageName
 
-        val cacheManager = CacheManager(applicationContext)
-        val spunDataManager = SpunDataManager(applicationContext)
+        val storage = AndroidSharedPreferencesStorage(applicationContext)
+        val cacheManager = CacheManager(storage)
+        val assetProvider = AndroidAssetProvider(applicationContext)
+        val spunDataManager = SpunDataManager(assetProvider)
         val repository = MushroomRepository(cacheManager, spunDataManager)
         val localAiService = LocalAiService(applicationContext)
         val themePreference = ThemePreference(applicationContext)

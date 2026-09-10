@@ -3,8 +3,31 @@ package github.naturewhisp.myco.ui.theme
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import github.naturewhisp.myco.model.ProbabilityTier
 
-// Rappresentazione immutabile della tavolozza semantica botanica Herbarium
+/**
+ * Rappresentazione immutabile della tavolozza semantica botanica Herbarium.
+ *
+ * Fornisce i token cromatici per la scala tassonomica a 5 livelli di probabilità,
+ * gli indicatori di stato (favorable, neutral, adverse, meteo), le linee di demarcazione
+ * e il supporto per i temi Naturalist (chiaro) e Nocturne (scuro).
+ *
+ * @property scale0 Colore per il livello di probabilità 0 (Inattivo).
+ * @property scale1 Colore per il livello di probabilità 1 (Innesco).
+ * @property scale2 Colore per il livello di probabilità 2 (Discreto).
+ * @property scale3 Colore per il livello di probabilità 3 (Propizio).
+ * @property scale4 Colore per il livello di probabilità 4 (Culmine).
+ * @property favorable Colore semantico positivo / ottimale.
+ * @property neutral Colore semantico neutro.
+ * @property adverse Colore semantico avverso / penalizzante.
+ * @property meteo Colore semantico per dati climatici e idrologici.
+ * @property ruleHairline Linea di demarcazione finissima (stile incisione).
+ * @property ruleSubtle Linea di demarcazione tenue.
+ * @property inkVague Inchiostro attenuato per testo disabilitato o secondario.
+ * @property onMap Colore di contrasto per etichette cartografiche.
+ * @property scrimAlpha Trasparenza della velatura di sfondo.
+ * @property isDark Flag indicante la modalità scura (Nocturne).
+ */
 @Immutable
 data class MycoColors(
     val scale0: Color,
@@ -20,20 +43,33 @@ data class MycoColors(
     val ruleSubtle: Color,
     val inkVague: Color,
     val onMap: Color,
-    val heatmapAlpha: Float,
     val scrimAlpha: Float,
     val isDark: Boolean,
 ) {
-    // Restituisce il colore corrispondente della scala tassonomica a 5 livelli (0..4)
-    fun scaleForProbability(probability: Int): Color = when {
-        probability < 20 -> scale0
-        probability < 40 -> scale1
-        probability < 60 -> scale2
-        probability < 75 -> scale3
-        else -> scale4
-    }
+    /**
+     * Restituisce il colore corrispondente della scala tassonomica calcolato tramite [ProbabilityTier].
+     *
+     * @param probability Valore percentuale intero della probabilità (0..100).
+     * @return [Color] associato al livello di probabilità.
+     */
+    fun scaleForProbability(probability: Int): Color =
+        scaleForTier(ProbabilityTier.fromProbability(probability).tierIndex)
 
-    // Restituisce il colore per livello ordinale 0..4
+    /**
+     * Restituisce il colore corrispondente a uno specifico [ProbabilityTier].
+     *
+     * @param tier Scaglione canonico [ProbabilityTier].
+     * @return [Color] associato.
+     */
+    fun scaleForProbabilityTier(tier: ProbabilityTier): Color =
+        scaleForTier(tier.tierIndex)
+
+    /**
+     * Restituisce il colore per indice ordinale 0..4.
+     *
+     * @param tier Indice ordinale (0..4).
+     * @return [Color] corrispondente.
+     */
     fun scaleForTier(tier: Int): Color = when (tier) {
         0 -> scale0
         1 -> scale1
@@ -43,6 +79,9 @@ data class MycoColors(
     }
 }
 
+/**
+ * Tavolozza Herbarium Naturalist per tema chiaro ispirata alla carta pergamena e inchiostri vegetali.
+ */
 val NaturalistMycoColors = MycoColors(
     scale0 = Scale0,
     scale1 = Scale1,
@@ -57,11 +96,13 @@ val NaturalistMycoColors = MycoColors(
     ruleSubtle = RuleSubtle,
     inkVague = InkDisabled,
     onMap = InkMap,
-    heatmapAlpha = 0.50f,
     scrimAlpha = 0.50f,
     isDark = false,
 )
 
+/**
+ * Tavolozza Herbarium Nocturne per tema scuro con contrasto calibrato per escursioni notturne.
+ */
 val NocturneMycoColors = MycoColors(
     scale0 = NightScale0,
     scale1 = NightScale1,
@@ -76,9 +117,11 @@ val NocturneMycoColors = MycoColors(
     ruleSubtle = NightRuleSubtle,
     inkVague = NightInkVague,
     onMap = NightInk,
-    heatmapAlpha = 0.59f,
     scrimAlpha = 0.60f,
     isDark = true,
 )
 
+/**
+ * CompositionLocal per la propagazione implicita dell'istanza [MycoColors] nell'albero Compose.
+ */
 val LocalMycoColors = staticCompositionLocalOf { NaturalistMycoColors }

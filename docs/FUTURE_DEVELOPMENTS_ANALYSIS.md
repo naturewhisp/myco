@@ -149,6 +149,7 @@ A causa della Zero Diagnostic Policy, gli sviluppatori hanno evitato l'inserimen
   import android.content.Context
   constructor(context: Context) : this(AndroidAssetProvider(context))
   ```
+* **Stato**: **RISOLTO (v1.1)** | **Commit**: `78b05ce` (Rimossi i costruttori secondari con Context; adottate interfacce pure `KeyValueStorage` e `AssetProvider`).
 * **Descrizione del Rischio**: Violazione del vincolo di purezza definito in `AGENTS.md` e `docs/MACOS_ARCHITECTURE.md`. Il layer `repository` contiene classi con costruttori secondari che importano simboli `android.*`, impedendo l'estrazione diretta del codice in un modulo condiviso Kotlin Multiplatform (`commonMain`).
 * **Proposta di Remediation**: Eliminare i costruttori secondari con `Context`. Spostare la responsabilità di istanziazione all'Application/Dependency Factory (`MainActivity` o modulo DI) passando esclusivamente le interfacce pure `KeyValueStorage` e `AssetProvider`.
 
@@ -216,6 +217,7 @@ A causa della Zero Diagnostic Policy, gli sviluppatori hanno evitato l'inserimen
       ...
   """.trimIndent()
   ```
+* **Stato**: **RISOLTO (v1.1)** | **Commit**: `7b89925` (Iniezione tassonomia, nome binomiale, parametri ideali e canopia arborea nel prompt Gemini Nano).
 * **Descrizione del Rischio**: Il nome del fungo target (`selectedSpecies.vernacularName` / `scientificName`) non è presente nel prompt. Di conseguenza, l'AI genera considerazioni generiche sulla fruttificazione fungina e non è in grado di avvisare se le temperature attuali sono idonee per l'ovolo buono (*Amanita caesarea*) rispetto a un fungo tardo-autunnale come il finferlo (*Cantharellus cibarius*).
 * **Proposta di Remediation**: Iniettare nome scientifico, nome volgare, tipo ecologico (simbionte/saprotrofo) e range termico ottimale direttamente nell'header del prompt AI.
 
@@ -240,6 +242,7 @@ A causa della Zero Diagnostic Policy, gli sviluppatori hanno evitato l'inserimen
   val humidityWeighted = humidityScore * 0.15
   val shockWeighted = thermalShockScore * 0.15
   ```
+* **Stato**: **RISOLTO (v1.1)** | **Commit**: `78b05ce` (Estratta la configurazione immutabile tipizzata `EcologicalWeightsConfig` con pesi personalizzabili e valori di default validati).
 * **Descrizione del Rischio**: L'impossibilità di calibrare o variare questi parametri rende rigido l'algoritmo, ostacolando esperimenti di ottimizzazione euristica o tuning stagionale.
 * **Proposta di Remediation**: Estrarre questi valori in una classe di configurazione immutabile tipizzata (`EcologicalWeightsConfig`), definita con parametri di default e iniettabile nell'algoritmo.
 
@@ -678,28 +681,28 @@ O       │  • TASK-02: Namespace Cache (TD-18)        • FEAT-06: Radar Prec
 *Formula di Punteggio di Priorità*:
 $$\text{Priority Score} = (\text{Impatto} \times 2) - \text{Sforzo} \quad (\text{Scala: } 1.0 \dots 10.0)$$
 
-| ID | Categoria | Titolo Iniziativa | Impatto (1-5) | Sforzo (1-5) | Priority Score | Priorità | Complessità (Story Points / T-Shirt) | Release Target |
-|---|---|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **FIX-01** | Lifecycle | Risoluzione leak sensori orientamento e GPS in `MapScreen` | 5 | 1 | **9.0** | **P1** | 2 SP / **S** | v1.1 |
-| **FIX-02** | Concurrency | Cancellazione job di fetch concorrenti in `selectLocation` | 4 | 1 | **7.0** | **P1** | 2 SP / **S** | v1.1 |
-| **FIX-03** | Safety | Modale disclaimer legale e avvisi sosia velenosi | 5 | 2 | **8.0** | **P1** | 3 SP / **S** | v1.1 |
-| **FIX-04** | AI Pipeline | Iniezione tassonomia specie nel prompt Gemini Nano | 4 | 1 | **7.0** | **P1** | 1 SP / **XS** | v1.1 |
-| **FIX-05** | Refactoring | Estrazione pesi matematici ed ecologici tipizzati | 4 | 1 | **7.0** | **P1** | 2 SP / **S** | v1.1 |
-| **FIX-06** | Architecture | Rimozione costruttori `Context` in `repository/` | 4 | 1 | **7.0** | **P1** | 2 SP / **S** | v1.1 |
-| **ARCH-01**| Storage | Migrazione cache da SharedPreferences ad AndroidX Room | 5 | 3 | **7.0** | **P1** | 8 SP / **M** | v1.1 |
-| **TEST-01**| Quality | Setup MockK, Coroutines-Test, Turbine e test ViewModel | 5 | 3 | **7.0** | **P1** | 8 SP / **M** | v1.1 |
-| **FEAT-01**| Science | Condizionamento dell'Heatmap alla specie attiva | 5 | 3 | **7.0** | **P1** | 5 SP / **M** | v1.2 |
-| **FEAT-02**| Science | Umidità suolo 0-7cm, 7-28cm ed evapotraspirazione | 4 | 3 | **5.0** | **P2** | 5 SP / **M** | v1.2 |
-| **FEAT-03**| Network | Query Overpass dinamica con alberi associati alla specie | 4 | 2 | **6.0** | **P2** | 3 SP / **S** | v1.2 |
-| **FEAT-04**| Field Ops | Bundle geografici offline e mappe vettoriali MBTiles | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v1.2 |
-| **TASK-01**| Network | User-Agent dinamico e parametrico | 2 | 1 | **3.0** | **P3** | 1 SP / **XS** | v1.2 |
-| **TASK-02**| Storage | Isolamento namespace chiavi cache e clear selettivo | 3 | 1 | **5.0** | **P2** | 2 SP / **S** | v1.1 |
-| **TASK-03**| Cartography| Snap reale su poligoni forestali Overpass (TD-01) | 3 | 2 | **4.0** | **P2** | 3 SP / **S** | v1.2 |
-| **TASK-04**| Localization| Estrazione stringhe UI in `strings.xml` | 4 | 3 | **5.0** | **P2** | 5 SP / **M** | v1.2 |
-| **KMP-01** | Architecture| Riorganizzazione Gradle in multi-modulo `:core` KMP | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v2.0 |
-| **KMP-02** | Desktop UI | Implementazione client macOS con Compose Desktop | 4 | 5 | **3.0** | **P3** | 21 SP / **XL** | v2.0 |
-| **FEAT-05**| Hardware | Sensore barometrico nativo e telemetria sonde BLE | 3 | 4 | **2.0** | **P3** | 8 SP / **M** | v2.0 |
-| **FEAT-06**| Weather | Overlay radar precipitativo animato su MapView | 3 | 3 | **3.0** | **P3** | 5 SP / **M** | v2.0 |
+| ID | Categoria | Titolo Iniziativa | Impatto (1-5) | Sforzo (1-5) | Priority Score | Priorità | Complessità (Story Points / T-Shirt) | Release Target | Stato |
+|---|---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **FIX-01** | Lifecycle | Risoluzione leak sensori orientamento e GPS in `MapScreen` | 5 | 1 | **9.0** | **P1** | 2 SP / **S** | v1.1 | **COMPLETATO** (`7b89925`) |
+| **FIX-02** | Concurrency | Cancellazione job di fetch concorrenti in `selectLocation` | 4 | 1 | **7.0** | **P1** | 2 SP / **S** | v1.1 | **COMPLETATO** (`7b89925`) |
+| **FIX-03** | Safety | Modale disclaimer legale e avvisi sosia velenosi | 5 | 2 | **8.0** | **P1** | 3 SP / **S** | v1.1 | **COMPLETATO** (`7b89925`) |
+| **FIX-04** | AI Pipeline | Iniezione tassonomia specie nel prompt Gemini Nano | 4 | 1 | **7.0** | **P1** | 1 SP / **XS** | v1.1 | **COMPLETATO** (`7b89925`) |
+| **FIX-05** | Refactoring | Estrazione pesi matematici ed ecologici tipizzati | 4 | 1 | **7.0** | **P1** | 2 SP / **S** | v1.1 | **COMPLETATO** (`78b05ce`) |
+| **FIX-06** | Architecture | Rimozione costruttori `Context` in `repository/` | 4 | 1 | **7.0** | **P1** | 2 SP / **S** | v1.1 | **COMPLETATO** (`78b05ce`) |
+| **ARCH-01**| Storage | Migrazione cache da SharedPreferences ad AndroidX Room | 5 | 3 | **7.0** | **P1** | 8 SP / **M** | v1.1 | *Pianificato* |
+| **TEST-01**| Quality | Setup MockK, Coroutines-Test, Turbine e test ViewModel | 5 | 3 | **7.0** | **P1** | 8 SP / **M** | v1.1 | *Pianificato* |
+| **FEAT-01**| Science | Condizionamento dell'Heatmap alla specie attiva | 5 | 3 | **7.0** | **P1** | 5 SP / **M** | v1.2 | *Pianificato* |
+| **FEAT-02**| Science | Umidità suolo 0-7cm, 7-28cm ed evapotraspirazione | 4 | 3 | **5.0** | **P2** | 5 SP / **M** | v1.2 | *Pianificato* |
+| **FEAT-03**| Network | Query Overpass dinamica con alberi associati alla specie | 4 | 2 | **6.0** | **P2** | 3 SP / **S** | v1.2 | *Pianificato* |
+| **FEAT-04**| Field Ops | Bundle geografici offline e mappe vettoriali MBTiles | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v1.2 | *Pianificato* |
+| **TASK-01**| Network | User-Agent dinamico e parametrico | 2 | 1 | **3.0** | **P3** | 1 SP / **XS** | v1.2 | *Pianificato* |
+| **TASK-02**| Storage | Isolamento namespace chiavi cache e clear selettivo | 3 | 1 | **5.0** | **P2** | 2 SP / **S** | v1.1 | *Pianificato* |
+| **TASK-03**| Cartography| Snap reale su poligoni forestali Overpass (TD-01) | 3 | 2 | **4.0** | **P2** | 3 SP / **S** | v1.2 | *Pianificato* |
+| **TASK-04**| Localization| Estrazione stringhe UI in `strings.xml` | 4 | 3 | **5.0** | **P2** | 5 SP / **M** | v1.2 | *Pianificato* |
+| **KMP-01** | Architecture| Riorganizzazione Gradle in multi-modulo `:core` KMP | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v2.0 | *Pianificato* |
+| **KMP-02** | Desktop UI | Implementazione client macOS con Compose Desktop | 4 | 5 | **3.0** | **P3** | 21 SP / **XL** | v2.0 | *Pianificato* |
+| **FEAT-05**| Hardware | Sensore barometrico nativo e telemetria sonde BLE | 3 | 4 | **2.0** | **P3** | 8 SP / **M** | v2.0 | *Pianificato* |
+| **FEAT-06**| Weather | Overlay radar precipitativo animato su MapView | 3 | 3 | **3.0** | **P3** | 5 SP / **M** | v2.0 | *Pianificato* |
 
 ---
 
@@ -710,10 +713,11 @@ gantt
     title Roadmap di Rilascio Myco (2026-2027)
     dateFormat  YYYY-MM-DD
     section Fase 1: v1.1 Hardening
-    Fix Concorrenza & Lifecycle (FIX-01, FIX-02) :crit, active, 2026-09-15, 7d
-    Disclaimer Tossicologico (FIX-03)           :active, 2026-09-18, 5d
-    Integrazione Specie in Prompt AI (FIX-04)   :2026-09-20, 3d
-    Migrazione Cache su Room DB (ARCH-01)       :crit, 2026-09-22, 12d
+    Fix Concorrenza & Lifecycle (FIX-01, FIX-02) :crit, done, 2026-09-15, 2026-09-16
+    Disclaimer Tossicologico (FIX-03)           :done, 2026-09-16, 2026-09-17
+    Integrazione Specie in Prompt AI (FIX-04)   :done, 2026-09-17, 2026-09-18
+    Refactoring Pesi & Modelli Puri (FIX-05, FIX-06) :done, 2026-09-15, 2026-09-16
+    Migrazione Cache su Room DB (ARCH-01)       :crit, active, 2026-09-22, 12d
     Test Suite & MockK / Turbine (TEST-01)      :2026-09-25, 10d
     Release v1.1 Stabile                        :milestone, 2026-10-08, 0d
 
@@ -737,12 +741,14 @@ gantt
 *Obiettivo Primario*: Eliminare le vulnerabilità del ciclo di vita, blindare la concorrenza, sanare lo storage e raggiungere una solida copertura di test unitari senza modificare l'esperienza d'uso fondamentale.
 
 * **Deliverable e Interventi**:
-  1. **Lifecycle & Battery Fix**: Associazione dei sensori di orientamento e GPS al ciclo di vita dell'Activity in `MapScreen` tramite `LifecycleEventEffect`; aggancio dei metodi `onResume()`, `onPause()` e `onDetach()` su `MapViewContainer`.
-  2. **Concurrency Hardening**: Tracciamento di `dataFetchJob` in `MushroomViewModel` con cancellazione deterministica delle coroutine obsolete prima di ogni nuovo caricamento di coordinate.
-  3. **Sicurezza Micologica**: Integrazione della schermata modale di disclaimer legale al primo avvio e inserimento degli avvisi sui sosia tossici mortali nel dettaglio specie.
-  4. **AI Context Injection**: Inclusione della tassonomia della specie attiva (`selectedSpecies`) nel prompt generato per Gemini Nano AICore.
-  5. **Migrazione Persistenza**: Sostituzione di `SharedPreferences` con **AndroidX Room** (`MycoDatabase`) per la memorizzazione di previsioni meteo, dati Overpass e cache geocoding.
-  6. **Quality & Test Foundation**: Introduzione a build script di `mockk`, `kotlinx-coroutines-test` e `turbine`; implementazione della suite di test per `MushroomViewModel` e `MushroomRepository` con target di copertura $>75\%$.
+  1. [x] **Lifecycle & Battery Fix (FIX-01)**: **COMPLETATO** (commit `7b89925`) — Associazione dei sensori di orientamento e GPS al ciclo di vita dell'Activity in `MapScreen` tramite `LifecycleEventObserver`; aggancio dei metodi `onResume()`, `onPause()` e `onDetach()` su `MapViewContainer`.
+  2. [x] **Concurrency Hardening (FIX-02)**: **COMPLETATO** (commit `7b89925`) — Tracciamento di `dataFetchJob` in `MushroomViewModel` con cancellazione deterministica delle coroutine obsolete prima di ogni nuovo caricamento di coordinate e deallocazione in `onCleared()`.
+  3. [x] **Sicurezza Micologica & Sosia Tossici (FIX-03)**: **COMPLETATO** (commit `7b89925`) — Integrazione della schermata modale di disclaimer legale al primo avvio (`SafetyDisclaimerDialog`), persistenza preferenza e censimento avvisi sui sosia tossici mortali nel dettaglio specie (`MushroomSpecies`).
+  4. [x] **AI Context Injection (FIX-04)**: **COMPLETATO** (commit `7b89925`) — Inclusione della tassonomia della specie attiva (`selectedSpecies`), nome binomiale, requisiti ideali e canopia arborea nel prompt per Gemini Nano AICore.
+  5. [x] **Refactoring Pesi & Modelli Tipizzati (FIX-05)**: **COMPLETATO** (commit `78b05ce`) — Estrazione di `EcologicalWeightsConfig`, `HeatmapRenderConfig`, `ProbabilityTier`, `TerrainAspectConfig`.
+  6. [x] **Rimozione Dipendenze Context nel Core (FIX-06 / TD-05)**: **COMPLETATO** (commit `78b05ce`) — Eliminazione dei costruttori secondari con `Context` nei repository, introduzione di `KeyValueStorage` e `AssetProvider`.
+  7. [ ] **Migrazione Persistenza (ARCH-01)**: *In attesa* — Sostituzione di `SharedPreferences` con **AndroidX Room** (`MycoDatabase`) per la memorizzazione di previsioni meteo, dati Overpass e cache geocoding.
+  8. [ ] **Quality & Test Foundation (TEST-01)**: *In attesa* — Introduzione a build script di `mockk`, `kotlinx-coroutines-test` e `turbine`; implementazione della suite di test per `MushroomViewModel` e `MushroomRepository` con target di copertura $>75\%$.
 
 * **Criteri di Rilascio v1.1**:
   - Zero warning da `lintDebug` e rispetto della Zero Diagnostic Policy.

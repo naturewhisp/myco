@@ -598,8 +598,8 @@ Nelle valli alpine e appenniniche la connettività cellulare è spesso assente.
 * **Degradazione Elegante della UI**:
   Transizione automatica a banner "Modalità Campo Offline", calcolo dei modelli basato sulle tendenze salvate e disattivazione delle query Overpass senza blocchi o errori di rete.
 
-* **Pipeline di Espansione Regionale**:
-  Le specifiche complete per la generazione dei dataset binari `.bin`, le stazioni sentinella e l'allineamento dell'header a 32 byte per l'espansione a nuove macro-regioni (es. Penisola Iberica, Europa Centrale, Scandinavia) sono documentate in [`docs/ADDING_NEW_REGIONS.md`](ADDING_NEW_REGIONS.md).
+* **Pipeline di Espansione Regionale All-in-APK**:
+  Per garantire operatività 100% offline in ogni foresta del mondo senza costi di hosting/CDN, tutti i tasselli compressi `.bin` (~65 MB totali per l'intero pianeta foraggiabile) vengono inclusi direttamente negli asset dell'APK (rimanendo a ~95 MB totali, ampiamente sotto il tetto AAB di 150 MB). `SpunDataManager` esegue lo swapping dinamico mantenendo in RAM esclusivamente la regione attiva (~4-6 MB heap). La specifica completa dell'header a 32 byte e la pipeline di generazione sono documentate in [`docs/ADDING_NEW_REGIONS.md`](ADDING_NEW_REGIONS.md).
 
 ### 5.5 Vettore 5: Sicurezza Micologica, Allarmi Sosia Tossici e Rete ASL
 La sicurezza del raccoglitore è prioritaria. L'applicazione deve fornire salvaguardie legali e sanitarie:

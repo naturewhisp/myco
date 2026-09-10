@@ -679,6 +679,12 @@ Per i punti situati oltre i confini della griglia SPUN (o in aree alpine/maritti
 
 La funzione `findClosestCoveragePoint(lat, lon): ClosestCoverageResult` valuta le distanze ortodromiche Haversine verso tutte le sentinelle e restituisce il punto di copertura più prossimo con la distanza esatta in km. Il componente `OutsideCoverageNotice` visualizza il toponimo del landmark e la distanza calcolata, offrendo il riposizionamento immediato tramite `snapToClosestCoverage()`.
 
+#### Architettura "All-in-APK" a Tassellatura e Swapping Lazy in RAM
+Per supportare la copertura micorrizica globale mantenendo l'esperienza **100% offline da campo**, Myco adotta una strategia di inclusione diretta di tutti i tasselli macro-regionali compressi `.bin` all'interno degli asset dell'APK (`assets/spun/`):
+* **Budget di Archiviazione:** L'intero catalogo delle macro-regioni forestali mondiali (~12-15 tasselli) pesa circa **~65 MB** compresso zlib (livello 9), consentendo all'APK/AAB di mantenersi su **~95 MB**, ampiamente al di sotto del tetto di 150 MB imposto da Google Play.
+* **Footprint di Memoria RAM Statico (~4–6 MB):** A runtime, `SpunDataManager` non carica l'intero archivio: decomprime e mantiene in RAM **esclusivamente il tassello attivo** contenente le coordinate correnti. Quando l'utente naviga verso un'altra macro-regione, la memoria preesistente viene deallocata istantaneamente e il nuovo tassello viene decompressa in streaming in meno di 15 millisecondi.
+* **Zero Dipendenze Cloud:** Non richiede download ausiliari, server remoti CDN, connessioni internet in boschi esteri o roaming cellulare.
+
 > [!TIP]
 > **Guida Operativa alle Nuove Regioni:**  
 > Per la procedura dettagliata di generazione dei file binari `.bin`, le specifiche dell'header a 32 byte e la pipeline di aggiunta di nuove macro-regioni (es. Penisola Iberica, Scandinavia), consultare la guida dedicata: [`docs/ADDING_NEW_REGIONS.md`](ADDING_NEW_REGIONS.md).

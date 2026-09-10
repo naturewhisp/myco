@@ -22,7 +22,7 @@ enum class AiEngineStatus {
  * Astrazione agnostica del motore di intelligenza artificiale locale su dispositivo.
  *
  * Consente l'integrazione con Google AI Edge AICore su Android e con
- * CoreML / Apple Intelligence / MLX / Ollama su macOS.
+ * CoreML / Apple Intelligence su iOS.
  */
 interface PlatformAiEngine {
     /**

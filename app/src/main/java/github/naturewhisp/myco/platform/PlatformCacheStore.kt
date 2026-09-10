@@ -15,7 +15,7 @@ data class CacheStats(
  * Porta di persistenza per la cache geospaziale e strutturata di Myco (Pattern Architettura Esagonale).
  *
  * Disaccoppia la logica di business e i repository dalle implementazioni
- * concrete di database (SQLite relazionale su Android, SQLite/File su macOS Desktop,
+ * concrete di database (SQLite relazionale su Android, SQLite nativo C-API / SQLDelight su iOS,
  * InMemory per test unitari JVM) senza alcuna dipendenza verso il runtime del sistema operativo.
  */
 interface PlatformCacheStore {

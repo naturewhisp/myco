@@ -66,14 +66,14 @@ class PlatformNavigationTest {
     }
 
     @Test
-    fun testMacOsPlatformFallback() {
-        // Simula provider su macOS dove la bussola hardware è assente
-        val macOrientationProvider = object : PlatformOrientationProvider {
+    fun testOrientationUnavailablePlatformFallback() {
+        // Simula provider su target/ambienti dove la bussola hardware è assente (es. iPad WiFi, simulatori)
+        val fallbackOrientationProvider = object : PlatformOrientationProvider {
             override fun headingUpdates(): Flow<DeviceHeading> = flowOf(DeviceHeading(0f, isReliable = false))
             override fun isSupported(): Boolean = false
         }
 
-        assertFalse("Su macOS isSupported deve ritornare false", macOrientationProvider.isSupported())
+        assertFalse("Quando la bussola non è supportata isSupported deve ritornare false", fallbackOrientationProvider.isSupported())
     }
 
     @Test

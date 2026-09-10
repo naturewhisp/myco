@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.Flow
 /**
  * Astrazione del sensore di orientamento e bussola del dispositivo.
  * Su Android sfrutta Sensor.TYPE_ROTATION_VECTOR.
- * Su macOS risponde con isSupported = false (o stima del corso di movimento).
+ * Su iOS sfrutta CoreLocation CLHeading (con supporto completo al magnetometro su iPhone).
  */
 interface PlatformOrientationProvider {
     /**

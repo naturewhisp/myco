@@ -5,7 +5,7 @@ import java.io.InputStream
 /**
  * Astrazione per l'accesso a risorse binarie e asset confezionati con l'applicazione.
  *
- * Permette la separazione tra l'AssetManager di Android e le risorse di sistema macOS (Bundle/Filesystem).
+ * Permette la separazione tra l'AssetManager di Android e le risorse di sistema iOS (NSBundle.mainBundle).
  */
 fun interface AssetProvider {
     /**

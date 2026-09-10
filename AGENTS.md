@@ -50,7 +50,7 @@ app/src/main/
 │       └── MushroomAlgorithms.kt      # Mathematical modeling of fungal fruiting probability & HeatmapGenerator
 └── res/                               # Assets, mipmap adaptive icons, backup rules (no XML layouts)
 docs/
-└── MACOS_ARCHITECTURE.md              # Hexagonal architecture blueprint & macOS porting roadmap
+└── IOS_ARCHITECTURE.md                # Hexagonal architecture blueprint & iOS porting roadmap
 ```
 
 ---
@@ -59,7 +59,7 @@ docs/
 
 ### 4.1 Kotlin & Android Best Practices
 - **Android KTX Extensions**: Always use KTX extension functions (e.g., `prefs.edit { putString(...) }` instead of legacy chaining `.edit().putString(...).apply()`; `createBitmap(...)` from `androidx.core.graphics` instead of `Bitmap.createBitmap(...)`).
-- **Platform-Agnostic Core**: Business logic, mycological algorithms, data parsers (SPUN), and models must remain 100% pure Kotlin with zero `android.*` imports. Operating system capabilities must be accessed exclusively through `github.naturewhisp.myco.platform` interfaces to ensure seamless compatibility with macOS/Desktop.
+- **Platform-Agnostic Core**: Business logic, mycological algorithms, data parsers (SPUN), and models must remain 100% pure Kotlin with zero `android.*` imports. Operating system capabilities must be accessed exclusively through `github.naturewhisp.myco.platform` interfaces to ensure seamless compatibility with iOS.
 - **Raster & Pixel Buffering**: Algorithmic raster engines must produce raw 32-bit ARGB pixel arrays (`HeatmapRaster`) via bitwise operations rather than directly allocating or drawing onto platform graphics objects (`android.graphics.Bitmap`, `Color`).
 - **Time & Durations**: Use typed Kotlin `Duration` (e.g. `import kotlin.time.Duration.Companion.milliseconds` -> `delay(10.milliseconds)`) rather than raw `Long` millisecond overloads.
 - **Explicit Locales**: Never call `String.format(...)` without an explicit `Locale`. Use `Locale.getDefault()` for UI strings, or `Locale.US` for coordinate numbers, query keys, or serialization.

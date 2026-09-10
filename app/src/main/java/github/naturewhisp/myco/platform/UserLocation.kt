@@ -2,7 +2,7 @@ package github.naturewhisp.myco.platform
 
 /**
  * Posizione geografica live dell'utente con metadati di accuratezza.
- * 100% puro Kotlin senza alcuna dipendenza da android.* (pronto per CoreLocation su macOS).
+ * 100% puro Kotlin senza alcuna dipendenza da android.* (pronto per CoreLocation su iOS).
  */
 data class UserLocation(
     val latitude: Double,

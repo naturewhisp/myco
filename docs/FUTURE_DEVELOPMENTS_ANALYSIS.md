@@ -4,7 +4,7 @@
 **Documento**: `docs/FUTURE_DEVELOPMENTS_ANALYSIS.md`  
 **Data di Redazione**: 2026-09-09  
 **Stato**: Approvato — Baseline per le Release v1.1, v1.2 e v2.0  
-**Riferimenti Architetturali**: `AGENTS.md`, `docs/MACOS_ARCHITECTURE.md`, `PROJECT.md`  
+**Riferimenti Architetturali**: `AGENTS.md`, `docs/IOS_ARCHITECTURE.md`, `PROJECT.md`  
 
 ---
 
@@ -152,7 +152,7 @@ A causa della Zero Diagnostic Policy, gli sviluppatori hanno evitato l'inserimen
   constructor(context: Context) : this(AndroidAssetProvider(context))
   ```
 * **Stato**: **RISOLTO (v1.1)** | **Commit**: `78b05ce` (Rimossi i costruttori secondari con Context; adottate interfacce pure `KeyValueStorage` e `AssetProvider`).
-* **Descrizione del Rischio**: Violazione del vincolo di purezza definito in `AGENTS.md` e `docs/MACOS_ARCHITECTURE.md`. Il layer `repository` contiene classi con costruttori secondari che importano simboli `android.*`, impedendo l'estrazione diretta del codice in un modulo condiviso Kotlin Multiplatform (`commonMain`).
+* **Descrizione del Rischio**: Violazione del vincolo di purezza definito in `AGENTS.md` e `docs/IOS_ARCHITECTURE.md`. Il layer `repository` contiene classi con costruttori secondari che importano simboli `android.*`, impedendo l'estrazione diretta del codice in un modulo condiviso Kotlin Multiplatform (`commonMain`).
 * **Proposta di Remediation**: Eliminare i costruttori secondari con `Context`. Spostare la responsabilità di istanziazione all'Application/Dependency Factory (`MainActivity` o modulo DI) passando esclusivamente le interfacce pure `KeyValueStorage` e `AssetProvider`.
 
 #### TD-06: Churn Allocativo nella Decompressione Zlib del Mycelium Atlas
@@ -613,9 +613,9 @@ La sicurezza del raccoglitore è prioritaria. L'applicazione deve fornire salvag
 
 ---
 
-## 6. Predisposizione Multiplatform e Desktop (Allineamento con `docs/MACOS_ARCHITECTURE.md`)
+## 6. Predisposizione Multiplatform e Mobile iOS (Allineamento con `docs/IOS_ARCHITECTURE.md`)
 
-Il documento `docs/MACOS_ARCHITECTURE.md` specifica le linee guida per la realizzazione della versione desktop macOS condividendo il 100% della logica di business.
+Il documento `docs/IOS_ARCHITECTURE.md` specifica le linee guida per la realizzazione della versione mobile iOS (iPhone e iPad) condividendo il 100% della logica di business.
 
 ```mermaid
 graph TD
@@ -633,28 +633,28 @@ graph TD
             A_ADAPT[Android Adapters: FusedLocation, SharedPreferences, AICore Nano]
         end
 
-        subgraph "app:desktop (macOS Desktop Application)"
-            D_UI[Compose Multiplatform Desktop]
-            D_MAP[MapLibre Compose / Skia Topo Viewer]
-            D_ADAPT[macOS Adapters: CoreLocation, PropertiesFile, Ollama / MLX]
+        subgraph "app:ios (iOS Mobile Application)"
+            I_UI[Compose Multiplatform iOS o SwiftUI]
+            I_MAP[MapLibre Compose / MapKit Viewer]
+            I_ADAPT[iOS Adapters: CoreLocation, NSUserDefaults, CoreML / Apple Intelligence]
         end
 
         A_UI --> R
         A_ADAPT -.->|implements| P_PORT
-        D_UI --> R
-        D_ADAPT -.->|implements| P_PORT
+        I_UI --> R
+        I_ADAPT -.->|implements| P_PORT
     end
 ```
 
 ### 6.1 Verifica di Portabilità del Core Condiviso
-* **Buffer Raster Pure Kotlin**: `HeatmapRaster` impiega già un `IntArray` 32-bit ARGB senza riferimenti ad `android.graphics.Bitmap`. Sulla versione desktop, questo buffer viene convertito direttamente in un'immagine Skia (`org.jetbrains.skia.Image.makeRaster`) o in un `NSImage` nativo Apple senza necessità di emulare Android.
+* **Buffer Raster Pure Kotlin**: `HeatmapRaster` impiega già un `IntArray` 32-bit ARGB senza riferimenti ad `android.graphics.Bitmap`. Sulla versione iOS, questo buffer viene convertito direttamente in un'immagine Skia (`org.jetbrains.skia.Image.makeRaster`) o in un `CGImage` nativo Apple senza necessità di emulare Android.
 * **Indipendenza degli Algoritmi**: `MushroomAlgorithms.kt` non possiede alcuna dipendenza verso librerie Android o Java non portabili.
-* **Interfacce Port già Esistenti**: `AssetProvider`, `KeyValueStorage`, `PlatformNavigator`, `PlatformLocationProvider` e `PlatformOrientationProvider` in `github.naturewhisp.myco.platform` consentono un innesto plug-and-play di implementazioni per macOS (`MacPreferencesStorage`, `MacAssetProvider`, `MacPlatformNavigator`).
+* **Interfacce Port già Esistenti**: `AssetProvider`, `KeyValueStorage`, `PlatformNavigator`, `PlatformLocationProvider` e `PlatformOrientationProvider` in `github.naturewhisp.myco.platform` consentono un innesto plug-and-play di implementazioni per iOS (`IosUserDefaultsStorage`, `IosAssetProvider`, `IosLocationProvider`, `IosOrientationProvider`, `IosPlatformNavigator`).
 
 ### 6.2 Azioni Preliminari Necessarie per la Modularizzazione KMP
 1. **Rimozione dei costruttori con `Context` nei Repository** (risolve TD-05).
 2. **Spostamento della classe `HeatmapData`** (che contiene il riferimento a `android.graphics.Bitmap`) dal package model del core al layer di presentazione Android (`ui/components` o `platform/android`).
-3. **Conversione del build script di Gradle** da Groovy DSL singolo (`app/build.gradle`) a multi-modulo con Kotlin DSL (`settings.gradle.kts`, `:core`, `:app`, `:desktop`).
+3. **Conversione del build script di Gradle** da Groovy DSL singolo (`app/build.gradle`) a multi-modulo con Kotlin DSL (`settings.gradle.kts`, `:core`, `:app`, `:iosApp`).
 
 ---
 
@@ -676,7 +676,7 @@ A       │
 T       │  [ATTIVITÀ MINORI / FILL-INS]              [EVOLUTIVE A LUNGO TERMINE]
 T       │  • TASK-01: User-Agent Dinamico (TD-14)    • FEAT-05: Barometro & Sonde BLE (V-03)
 O       │  • TASK-02: Namespace Cache (TD-18)        • FEAT-06: Radar Precipitativo Real-Time
-        │  • TASK-03: Snapping Foresta Reale (TD-01) • KMP-02: Release macOS Desktop Compose
+        │  • TASK-03: Snapping Foresta Reale (TD-01) • KMP-02: Release iOS Mobile App
         │  • TASK-04: Estrazione strings.xml (TD-17)
         │
         └─────────────────────────────────────────────────────────────────────────────►
@@ -707,7 +707,7 @@ $$\text{Priority Score} = (\text{Impatto} \times 2) - \text{Sforzo} \quad (\text
 | **TASK-03**| Cartography| Snap reale su poligoni forestali Overpass (TD-01) | 3 | 2 | **4.0** | **P2** | 3 SP / **S** | v1.2 | **COMPLETATO** (v1.2) |
 | **TASK-04**| Localization| Estrazione stringhe UI in `strings.xml` (TD-17) | 4 | 3 | **5.0** | **P2** | 5 SP / **M** | v1.2 | **COMPLETATO** (v1.2) |
 | **KMP-01** | Architecture| Riorganizzazione Gradle in multi-modulo `:core` KMP | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v2.0 | *Pianificato* |
-| **KMP-02** | Desktop UI | Implementazione client macOS con Compose Desktop | 4 | 5 | **3.0** | **P3** | 21 SP / **XL** | v2.0 | *Pianificato* |
+| **KMP-02** | Mobile UI | Implementazione client iOS con Compose Multiplatform / SwiftUI | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v2.0 | *Pianificato* |
 | **FEAT-05**| Hardware | Sensore barometrico nativo e telemetria sonde BLE | 3 | 4 | **2.0** | **P3** | 8 SP / **M** | v2.0 | *Pianificato* |
 | **FEAT-06**| Weather | Overlay radar precipitativo animato su MapView | 3 | 3 | **3.0** | **P3** | 5 SP / **M** | v2.0 | *Pianificato* |
 
@@ -739,12 +739,12 @@ gantt
     Localizzazione strings.xml (TASK-04)        :done, 2026-11-20, 2026-11-25
     Release v1.2 Stabile                        :milestone, 2026-12-05, 0d
 
-    section Fase 3: v2.0 Multiplatform Desktop
+    section Fase 3: v2.0 Multiplatform iOS
     Modularizzazione Gradle KMP :core (KMP-01)  :crit, 2027-01-10, 21d
-    Adapter macOS (CoreLocation, NSBundle, Ollama) :2027-02-01, 14d
-    UI Compose Multiplatform Desktop (KMP-02)   :crit, 2027-02-15, 28d
+    Adapter iOS (CoreLocation, NSUserDefaults, CoreML) :2027-02-01, 14d
+    UI Compose Multiplatform iOS / SwiftUI (KMP-02)   :crit, 2027-02-15, 28d
     Sensori Barometrici & Sonde BLE (FEAT-05)   :2027-03-01, 14d
-    Release v2.0 macOS & Android                :milestone, 2027-04-01, 0d
+    Release v2.0 iOS & Android                  :milestone, 2027-04-01, 0d
 ```
 
 ### 8.1 Fase 1: Release v1.1 — Affidabilità, Sicurezza e Consolidamento Architetturale
@@ -786,20 +786,22 @@ gantt
 
 ---
 
-### 8.3 Fase 3: Release v2.0 — Porting Desktop macOS e Telemetria Hardware sul Campo
-*Obiettivo Primario*: Rilasciare la versione desktop nativa per macOS condividendo il 100% della logica di business e abilitare funzionalità hardware avanzate per raccoglitori professionisti.
+### 8.3 Fase 3: Release v2.0 — Porting Mobile iOS e Telemetria Hardware sul Campo
+*Obiettivo Primario*: Rilasciare la versione mobile nativa per iOS (iPhone e iPad) condividendo il 100% della logica di business e abilitare funzionalità hardware avanzate per raccoglitori professionisti sul campo.
 
 * **Deliverable e Interventi**:
-  1. **Riorganizzazione Gradle Multiplatform**: Scorporo del repository nei moduli `:core` (Kotlin Multiplatform puro), `:app` (Android) e `:desktop` (macOS).
-  2. **Implementazione macOS Adapters**:
-     - `MacAssetProvider` con accesso a risorse bundle Apple.
-     - `MacPreferencesStorage` basato su file di configurazione o binding `NSUserDefaults`.
-     - `MacPlatformNavigator` con apertura di coordinate su Apple Maps via `NSWorkspace`.
-     - `MacAiEngine` con integrazione di modelli LLM locali tramite Ollama / Apple MLX.
-  3. **Interfaccia Grafica Desktop**: Realizzazione dell'interfaccia utente macOS con **Compose Multiplatform for Desktop**, ottimizzata per schermi grandi, navigazione multi-finestra, gestione avanzata dei preferiti ed esportazione report in PDF/GPX.
-  4. **Altimetria Barometrica Nativa**: Lettura del barometro di bordo per calibrazione della quota e allarmi meteo rapidi.
-  5. **Integrazione Sonde BLE di Terze Parti**: Supporto per la connessione con sonde di umidità e temperatura del terreno Bluetooth.
+  1. **Riorganizzazione Gradle Multiplatform**: Scorporo del repository nei moduli `:core` (Kotlin Multiplatform puro con `commonMain`, `androidMain`, `iosMain`), `:app` (Android) e `:iosApp` (iOS).
+  2. **Implementazione iOS Adapters**:
+     - `IosAssetProvider` con accesso all'atlante SPUN tramite `NSBundle.mainBundle`.
+     - `IosUserDefaultsStorage` basato su `NSUserDefaults` per preferenze e preferiti.
+     - `IosLocationProvider` con Apple `CoreLocation` (`CLLocationManager`) e `IosOrientationProvider` con `CLHeading` per bussola hardware da campo.
+     - `IosPlatformNavigator` con apertura di coordinate su Apple Maps via `maps://` o `MKMapItem`.
+     - `IosAiEngine` con integrazione di modelli on-device tramite Apple Intelligence / CoreML.
+     - `IosSqliteCacheStore` basato su SQLite nativo C-API o SQLDelight.
+  3. **Interfaccia Grafica Mobile iOS**: Realizzazione dell'interfaccia utente con **Compose Multiplatform for iOS** (o SwiftUI nativo), ottimizzata per iPhone, navigazione fluida, gestione preferiti, widget per la schermata di blocco/home screen ed esportazione waypoint.
+  4. **Altimetria Barometrica Nativa**: Lettura del barometro di bordo (`CMAltimeter` su iOS, `Sensor.TYPE_PRESSURE` su Android) per calibrazione della quota e allarmi meteo rapidi.
+  5. **Integrazione Sonde BLE di Terze Parti**: Supporto per la connessione con sonde di umidità e temperatura del terreno Bluetooth via `CoreBluetooth`.
 
 * **Criteri di Rilascio v2.0**:
-  - Applicazione desktop per macOS pacchettizzata come DMG notarizzato tramite `jpackage` / Conveyor.
-  - Condivisione verificata di oltre il 90% del codice logico e dei modelli tra le piattaforme.
+  - Applicazione mobile per iOS pacchettizzata come `.ipa` e distribuita tramite TestFlight / App Store.
+  - Condivisione verificata di oltre l'85-90% del codice logico, dei modelli e dell'interfaccia tra le piattaforme.

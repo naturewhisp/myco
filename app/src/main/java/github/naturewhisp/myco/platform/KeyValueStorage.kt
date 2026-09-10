@@ -2,7 +2,7 @@ package github.naturewhisp.myco.platform
 
 /**
  * Astrazione di persistenza chiave-valore per disaccoppiare la logica applicativa
- * da `android.content.SharedPreferences` e consentire implementazioni native macOS
+ * da `android.content.SharedPreferences` e consentire implementazioni native iOS
  * (es. NSUserDefaults o storage su file).
  */
 interface KeyValueStorage {

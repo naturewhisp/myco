@@ -22,12 +22,12 @@ import kotlin.math.max
  *
  * La logica di calcolo dei campioni raster e la composizione dei colori a 32-bit ARGB
  * sono al 100% pure e indipendenti dal sistema operativo, pronte per essere condivise
- * con la futura versione desktop macOS, conformemente ad AGENTS.md.
+ * con la futura versione mobile iOS, conformemente ad AGENTS.md.
  */
 object HeatmapGenerator {
 
     /**
-     * Genera la superficie raster pura [HeatmapRaster] (100% Kotlin agnostico da Android/macOS).
+     * Genera la superficie raster pura [HeatmapRaster] (100% Kotlin agnostico da Android/iOS).
      *
      * @param centerLat Latitudine WGS84 del centro di campionamento.
      * @param centerLon Longitudine WGS84 del centro di campionamento.

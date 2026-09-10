@@ -5,7 +5,7 @@ package github.naturewhisp.myco.platform
  * tramite app esterne o provider di mappe di sistema.
  *
  * Questa porta esagonale è al 100% pura Kotlin e disaccoppia il dominio applicativo
- * dalle API geografiche della piattaforma (Intent Android o URL scheme su macOS).
+ * dalle API geografiche della piattaforma (Intent Android o URL scheme su iOS).
  */
 interface PlatformNavigator {
     /**

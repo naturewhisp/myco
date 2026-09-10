@@ -5,7 +5,7 @@ package github.naturewhisp.myco.model
  *
  * Contiene i pixel di colore a 32-bit (ARGB_8888) e il bounding box geografico WGS84.
  * Privo di qualsiasi dipendenza da `android.*`, può essere convertito in un `android.graphics.Bitmap`
- * su Android o in un `NSImage` / Skia `ImageBitmap` su macOS.
+ * su Android o in un `CGImage` / Skia `ImageBitmap` su iOS.
  *
  * @property argbPixels Array primitivo monodimensionale contenente i valori di colore ARGB a 32-bit.
  * @property width Larghezza della griglia raster in celle/pixel.

@@ -12,7 +12,7 @@ data class LocationCoordinates(
 
 /**
  * Astrazione per l'acquisizione della posizione geografica corrente del dispositivo.
- * Permette di isolare Google Play Services Location su Android e CoreLocation su macOS.
+ * Permette di isolare Google Play Services Location su Android e CoreLocation su iOS.
  */
 interface PlatformLocationProvider {
     /**

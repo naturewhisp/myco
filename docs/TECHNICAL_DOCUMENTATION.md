@@ -1,7 +1,7 @@
 # Documentazione Tecnica e Architetturale del Progetto Myco
 
 **Progetto:** Myco (`github.naturewhisp.myco`)  
-**Piattaforma:** Android (minSdk 31, targetSdk 36, compileSdk 36, Java 17) & macOS (Ready via Hexagonal Architecture)  
+**Piattaforma:** Android (minSdk 31, targetSdk 36, compileSdk 36, Java 17) & iOS (Ready via Hexagonal Architecture)  
 **Versione Documento:** 1.0.0  
 **Data:** 2026-09-09  
 **Stato:** Ufficiale / Architettura e Governance  
@@ -22,7 +22,7 @@
    - 3.1 Principio di Inversione delle Dipendenze
    - 3.2 Contratti delle Porte Piattaforma
    - 3.3 Implementazioni Android Esistenti
-   - 3.4 Predisposizione al Porting macOS e Roadmap Multiplatform
+   - 3.4 Predisposizione al Porting iOS e Roadmap Multiplatform
 4. [Pipeline di Calcolo ed Inferenza Micologica](#4-pipeline-di-calcolo-ed-inferenza-micologica)
    - 4.1 Catalogo Tassonomico e Profili Ecologici
    - 4.2 Formula Unificata di Calibrazione della Probabilità
@@ -66,7 +66,7 @@
 ## 1. Sintesi Esecutiva & Panoramica del Sistema
 
 ### 1.1 Missione e Dominio
-**Myco** è un'applicazione mobile nativa per Android (progettata secondo un'architettura esagonale predisposta all'estensione multiplatform desktop su macOS) finalizzata alla stima scientifica e alla modellazione probabilistica dell'accrescimento e della fruttificazione dei funghi epigei, con particolare specializzazione per il genere *Boletus* (porcini) ed altre specie commestibili pregiate dell'areale biogeografico europeo e mediterraneo.
+**Myco** è un'applicazione mobile nativa per Android (progettata secondo un'architettura esagonale predisposta all'estensione multiplatform mobile su iOS) finalizzata alla stima scientifica e alla modellazione probabilistica dell'accrescimento e della fruttificazione dei funghi epigei, con particolare specializzazione per il genere *Boletus* (porcini) ed altre specie commestibili pregiate dell'areale biogeografico europeo e mediterraneo.
 
 Il sistema supera gli approcci aneddotici tradizionali mediante l'integrazione sinergica di sei fonti informative eterogenee:
 1. **Dati Meteorologici Orari e Storici:** Monitoraggio delle precipitazioni cumulate a 14 giorni, temperature medie a 5 giorni, umidità relativa e crollo termico repentino (shock induttivo) interrogati tramite Open-Meteo.
@@ -128,7 +128,7 @@ L'applicazione è strutturata secondo i canoni della **Clean Architecture** e de
 │     NETWORK LAYER      │   │   ALGORITHMS CORE   │  │   PLATFORM ADAPTERS  │
 │ Retrofit APIs, OkHttp  │   │ MushroomAlgorithms, │  │ Android (Sensors,    │
 │                        │   │  HeatmapGenerator   │  │ SharedPrefs, Fused)  │
-│                        │   │  (Pure Kotlin)      │  │ macOS (Futuro Core)  │
+│                        │   │  (Pure Kotlin)      │  │ iOS (Futuro Core/UI) │
 └────────────────────────┘   └─────────────────────┘  └──────────────────────┘
 ```
 
@@ -232,7 +232,7 @@ graph TD
 ### 3.1 Principio di Inversione delle Dipendenze
 La stabilità scientifica del modello micologico richiede che l'algoritmo non sia legato alle API di uno specifico sistema operativo. I moduli del core di business comunicano con l'esterno unicamente tramite **porte** (interfacce Kotlin nel package `github.naturewhisp.myco.platform`). 
 
-In questo modo, la logica di calcolo, la gestione dei dati SPUN e l'elaborazione del raster possono essere compilate indifferentemente per **Android**, **macOS Desktop** o come test unitario su JVM senza necessità di framework di mocking complessi come Robolectric.
+In questo modo, la logica di calcolo, la gestione dei dati SPUN e l'elaborazione del raster possono essere compilate indifferentemente per **Android**, **iOS** o come test unitario su JVM senza necessità di framework di mocking complessi come Robolectric.
 
 ### 3.2 Contratti delle Porte Piattaforma
 
@@ -333,19 +333,19 @@ Le classi nel package `github.naturewhisp.myco.platform.android` collegano le po
 * `AndroidPlatformNavigator`: Costruisce e avvia un Intent nativo con schema URI `geo:lat,lon?q=lat,lon(label)`.
 * `LocalAiService`: Implementazione Android di `PlatformAiEngine` basata su Google AI Edge AICore (`com.google.ai.edge.aicore`).
 
-### 3.4 Predisposizione al Porting macOS e Roadmap Multiplatform
-In conformità a `docs/MACOS_ARCHITECTURE.md`, Myco è predisposta per il riutilizzo del 100% della logica di calcolo su macOS. Il disaccoppiamento richiede unicamente la fornitura degli adapter specifici:
+### 3.4 Predisposizione al Porting iOS e Roadmap Multiplatform
+In conformità a `docs/IOS_ARCHITECTURE.md`, Myco è predisposta per il riutilizzo del 100% della logica di calcolo su iOS. Il disaccoppiamento richiede unicamente la fornitura degli adapter specifici:
 
-| Porta Piattaforma | Implementazione Android Attuale | Implementazione macOS Prevista |
+| Porta Piattaforma | Implementazione Android Attuale | Implementazione iOS Prevista |
 |---|---|---|
-| `AssetProvider` | `context.assets.open(path)` | `Bundle.main.resourceURL` / FileSystem locale |
-| `KeyValueStorage` | `SharedPreferences` via KTX | `NSUserDefaults` o file `.properties` / JSON |
-| `PlatformCacheStore` | `AndroidSqliteCacheStore` (SQLite nativo) | SQLite nativo C / JVM SQLite / File Cache |
-| `PlatformAiEngine` | Google AICore (Gemini Nano) | Apple Intelligence / CoreML / MLX / Ollama |
+| `AssetProvider` | `context.assets.open(path)` | `IosAssetProvider` (`NSBundle.mainBundle`) |
+| `KeyValueStorage` | `SharedPreferences` via KTX | `IosUserDefaultsStorage` (`NSUserDefaults`) |
+| `PlatformCacheStore` | `AndroidSqliteCacheStore` (SQLite nativo) | `IosSqliteCacheStore` (SQLite3 C-API / SQLDelight) |
+| `PlatformAiEngine` | Google AICore (Gemini Nano) | Apple Intelligence / CoreML on-device |
 | `PlatformLocationProvider` | Google Play Services Fused Location | Apple `CoreLocation` (`CLLocationManager`) |
-| `PlatformOrientationProvider`| Android `SensorManager` | Bearing calcolato da GPS / Bussola Mac (se presente) |
-| `PlatformNavigator` | Android `Intent("geo:...")` | `NSWorkspace.open("maps://?ll=lat,lon")` |
-| **Interfaccia Grafica** | Jetpack Compose M3 (Android) | Compose Multiplatform Desktop o Swift/SwiftUI |
+| `PlatformOrientationProvider`| Android `SensorManager` (Rot. Vector) | Apple `CoreLocation` (`CLHeading` / magnetometro iPhone) |
+| `PlatformNavigator` | Android `Intent("geo:...")` | Apple Maps URL `maps://?ll=lat,lon&q=...` / `MKMapItem` |
+| **Interfaccia Grafica** | Jetpack Compose M3 (Android) | Compose Multiplatform for iOS o SwiftUI nativo |
 
 ---
 

@@ -676,8 +676,8 @@ A       │
 T       │  [ATTIVITÀ MINORI / FILL-INS]              [EVOLUTIVE A LUNGO TERMINE]
 T       │  • TASK-01: User-Agent Dinamico (TD-14)    • FEAT-05: Barometro & Sonde BLE (V-03)
 O       │  • TASK-02: Namespace Cache (TD-18)        • FEAT-06: Radar Precipitativo Real-Time
-        │  • TASK-03: Snapping Foresta Reale (TD-01) • KMP-02: Release iOS Mobile App
-        │  • TASK-04: Estrazione strings.xml (TD-17)
+        │  • TASK-03: Snapping Foresta Reale (TD-01) • FEAT-07: WeatherNext 3 Nowcasting (Post v2.0)
+        │  • TASK-04: Estrazione strings.xml (TD-17) • KMP-02: Release iOS Mobile App
         │
         └─────────────────────────────────────────────────────────────────────────────►
           BASSO (1)                             SFORZO                      ALTO (5)
@@ -710,6 +710,7 @@ $$\text{Priority Score} = (\text{Impatto} \times 2) - \text{Sforzo} \quad (\text
 | **KMP-02** | Mobile UI | Implementazione client iOS con Compose Multiplatform / SwiftUI | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v2.0 | *Pianificato* |
 | **FEAT-05**| Hardware | Sensore barometrico nativo e telemetria sonde BLE | 3 | 4 | **2.0** | **P3** | 8 SP / **M** | v2.0 | *Pianificato* |
 | **FEAT-06**| Weather | Overlay radar precipitativo animato su MapView | 3 | 3 | **3.0** | **P3** | 5 SP / **M** | v2.0 | *Pianificato* |
+| **FEAT-07**| AI Weather | Nowcasting predittivo WeatherNext 3 (Google DeepMind) per FEAT-06 | 4 | 4 | **4.0** | **P3** | 13 SP / **L** | Post v2.0 | *Valutazione (Subordinata a FEAT-06)* |
 
 ---
 
@@ -744,7 +745,11 @@ gantt
     Adapter iOS (CoreLocation, NSUserDefaults, CoreML) :2027-02-01, 14d
     UI Compose Multiplatform iOS / SwiftUI (KMP-02)   :crit, 2027-02-15, 28d
     Sensori Barometrici & Sonde BLE (FEAT-05)   :2027-03-01, 14d
+    Radar Precipitativo Real-Time (FEAT-06)     :2027-03-10, 14d
     Release v2.0 iOS & Android                  :milestone, 2027-04-01, 0d
+
+    section Post Fase 3: Evolutive Avanzate
+    Nowcasting AI WeatherNext 3 (FEAT-07 sub FEAT-06) :2027-04-15, 28d
 ```
 
 ### 8.1 Fase 1: Release v1.1 — Affidabilità, Sicurezza e Consolidamento Architetturale
@@ -805,3 +810,73 @@ gantt
 * **Criteri di Rilascio v2.0**:
   - Applicazione mobile per iOS pacchettizzata come `.ipa` e distribuita tramite TestFlight / App Store.
   - Condivisione verificata di oltre l'85-90% del codice logico, dei modelli e dell'interfaccia tra le piattaforme.
+
+---
+
+### 8.4 Orizzonte Evolutivo Post-Fase 3: Integrazione WeatherNext 3 (Google DeepMind) Subordinata a FEAT-06
+*Obiettivo Primario*: Valutare e definire l'innesto del modello predittivo globale ad altissima risoluzione **Google DeepMind WeatherNext 3** come acceleratore e motore predittivo per il radar nowcasting (`FEAT-06`), subordinando tassativamente la sua adozione al completamento preliminare della Fase 3 (v2.0 Multiplatform iOS) e della baseline radar standard.
+
+```mermaid
+graph TD
+    subgraph "Core Algoritmico Micologico (Open-Meteo & SPUN)"
+        OM_HIST["Open-Meteo Archive API<br>• Piogge cumulate 14 gg<br>• Shock termico T° 5 gg"]
+        OM_SOIL["Open-Meteo Agrometeo<br>• Umidità suolo 0-7 cm e 7-28 cm<br>• Evapotraspirazione ET₀"]
+        SPUN_BIO["SPUN Mycorrhizal Atlas<br>• Biomassa miceliare ipogea<br>• Indice simbiotico EcM"]
+        ALG_CORE["MushroomAlgorithms Pipeline<br>(Formula Unificata Probabilità)"]
+        OM_HIST & OM_SOIL & SPUN_BIO --> ALG_CORE
+    end
+
+    subgraph "Radar Precipitativo & Nowcasting (FEAT-06 & FEAT-07)"
+        RADAR_LIVE["FEAT-06: Radar Convenzionale<br>(RainViewer / DPC Rete Nazionale)<br>• Copertura precipitativa istantanea"]
+        WN3_GCP["Google Cloud Platform (WeatherNext 3)<br>• Risoluzione 0.05° (~5 km)<br>• 64 membri ensemble (p10, p50, p90)<br>• Orizzonte orario 1-24h"]
+        PROXY["Backend Serverless (Cloud Run / Cloud Functions)<br>• Bounding-box crop territoriale<br>• Caching geospaziale a celle<br>• Generazione GeoJSON / Tile vettoriali"]
+        RADAR_MAP["MapView Overlay Precipitativo<br>• Mappa di pioggia passata / presente<br>• Cono predittivo temporali e grandine"]
+        
+        WN3_GCP --> PROXY
+        PROXY -.->|FEAT-07 (Post-Fase 3)| RADAR_MAP
+        RADAR_LIVE -->|FEAT-06 Baseline| RADAR_MAP
+    end
+
+    ALG_CORE --> UI_PROB["Dashboard & Heatmap Probabilità"]
+    RADAR_MAP --> UI_MAP["MapView con Allerta Meteo da Campo"]
+```
+
+#### 8.4.1 Contesto Tecnologico di Google DeepMind WeatherNext 3
+Rilasciato il 3 settembre 2026 da Google DeepMind e Google Research, **WeatherNext 3** rappresenta la nuova generazione di modelli globali fondazionali per le previsioni meteorologiche basati su intelligenza artificiale:
+* **Risoluzione Spaziale Globale:** Griglia ad altissima densità di **$0.05^\circ$ (circa 5 km)** all'equatore e alle medie latitudini europee (sensibilmente superiore ai $9 \dots 25\text{ km}$ dei modelli numerici sinottici tradizionali quali IFS ECMWF o GFS NOAA).
+* **Frequenza Temporale e Cadenza di Corsa:** Risoluzione oraria (1-hour forecast step) con corse multiple giornaliere o orarie ad aggiornamento continuo.
+* **Previsione Probabilistica Ensemble:** Generazione di **64 membri ensemble**, che permettono di calcolare distribuzioni percentili di precipitazione ($p_{10}, p_{50}, p_{90}$) e quantificare l'incertezza intrinseca dei fenomeni convettivi violenti.
+* **Canali di Accesso Cloud:** Dataset operativi resi disponibili su Google Cloud Platform tramite **BigQuery**, **Google Earth Engine** e bucket Google Cloud Storage in formato compresso multidimensionale **Zarr v3**.
+
+#### 8.4.2 Perché NON Sostituisce Open-Meteo nel Core Micologico
+L'indagine scientifica e algoritmica condotta evidenzia che WeatherNext 3 **non può sostituire** Open-Meteo per il calcolo della probabilità di crescita dei funghi:
+1. **Assenza di Serie Storiche Pregresse:** La fruttificazione dei macromiceti epigei (es. *Boletus edulis*, *Cantharellus cibarius*) non è governata dalle condizioni previste per i prossimi giorni, bensì dalla pioggia caduta nei **10–14 giorni precedenti** (necessaria per idratare il feltro miceliare sotterraneo e indurre il differenziamento dei primordi) e dallo shock termico passato. WeatherNext 3 è un modello di pura *prognosi futura* (forward forecast) e non un archivio rianalitico/osservato retrospettivo.
+2. **Assenza della Stratigrafia Idrica Sotterranea:** Myco modella l'ecologia fungina attraverso l'umidità volumetrica del suolo a due profondità differenziate ($0 \dots 7\text{ cm}$ per l'orizzonte primordiale e $7 \dots 28\text{ cm}$ per il micelio perenne) fornite da Open-Meteo / ERA5-Land. WeatherNext 3 simula le variabili atmosferiche e le grandezze di superficie, ma non include la fisica idrologica complessa dei suoli boschivi multilivello.
+
+*Conclusione*: **Open-Meteo rimane il motore esclusivo e irrinunciabile per la pipeline agro-meteorologica di calcolo della probabilità di fruttificazione (`MushroomAlgorithms`).**
+
+#### 8.4.3 Sinergia Strategica con FEAT-06 (Nowcasting & Radar Precipitativo)
+Il valore applicativo di WeatherNext 3 per Myco risiede interamente nella dimensione di **sicurezza del raccoglitore e nowcasting a brevissimo termine** durante le escursioni boschive in ambiente montano:
+* **Previsione Tempestiva di Celle Temporalesche Orografiche:** I raccoglitori di funghi operano in vallate alpine e appenniniche dove i temporali estivo-autunnali si formano rapidamente per convezione locale. La risoluzione a 5 km e l'orizzonte a 1–6 ore consentono di prevedere l'innesco di celle temporalesche e grandinate con un anticipo e una precisione orografica inaccessibili ai modelli sinottici globali.
+* **Incertezza Quantificata per Rischio Fulmini/Nubifragi:** Sfruttando i 64 membri ensemble, l'applicazione può mostrare un indice di rischio confidenziale (es. "Probabilità di pioggia battente $>15\text{ mm/h}$ nelle prossime 2 ore: 82% [Intervallo $p_{10}-p_{90}$: $8 \dots 26\text{ mm}$]").
+
+#### 8.4.4 Condizioni di Subordinazione e Prerequisiti di Sviluppo
+L'implementazione dell'integrazione con WeatherNext 3 (`FEAT-07`) è **espressamente subordinata** al rispetto della seguente sequenza di rilascio:
+1. **Completamento Integrale della Fase 3 (v2.0):** Nessuno sforzo di ricerca o sviluppo su WeatherNext 3 sarà avviato prima del rilascio stabile di Myco v2.0 per iOS (iPhone/iPad) e del consolidamento dell'architettura multi-modulo Kotlin Multiplatform (`:core`, `:app`, `:iosApp`).
+2. **Implementazione Preliminare della Baseline FEAT-06:** Deve essere prima implementato e collaudato l'overlay radar convenzionale in tempo reale su `MapView` (utilizzando API radar raster consolidate e leggere, quali RainViewer o feed radar aperti della Protezione Civile). WeatherNext 3 agirà come estensione predittiva *atop* del visualizzatore radar già funzionante.
+3. **Approvazione delle Quote e Accesso Google Cloud:** Attivazione e verifica delle quote operative sul progetto Google Cloud dell'utente (accesso BigQuery / Earth Engine per WeatherNext 3).
+
+#### 8.4.5 Architettura a Proxy Serverless Indispensabile
+I dataset di WeatherNext 3 (tabelle BigQuery da decine di terabyte o formati chunked Zarr v3) **non possono essere interrogati direttamente dai dispositivi mobili client** (Android o iOS) in ambiente boschivo per tre ragioni critiche:
+* **Consumo di Banda e Latenza Cellulare:** Un'interrogazione diretta Zarr/BigQuery richiederebbe decine di megabyte di scambio dati su reti 3G/EDGE montane.
+* **Sicurezza delle Credenziali Cloud:** Non è ammesso distribuire chiavi di servizio Google Cloud (Service Account Keys) all'interno degli APK o bundle IPA distribuiti agli utenti.
+* **Costo di Scansione BigQuery:** Ogni query geografica non ottimizzata su BigQuery comporterebbe scansioni massive a pagamento.
+
+*Disegno dell'Infrastruttura Proxy (GCP Cloud Run / Cloud Functions)*:
+Un microservizio serverless leggero (ospitato su Cloud Run con container Python/Go):
+1. Riceve dal client Myco una richiesta georeferenziata con bounding box locale (es. $\text{lat} \pm 0.15^\circ$, $\text{lon} \pm 0.15^\circ$) e timestamp.
+2. Esegue una slice spaziale pre-indicizzata su Zarr v3 / BigQuery.
+3. Aggrega i percentili ensemble ($p_{10}, p_{50}, p_{90}$) per la cella richiesta.
+4. Restituisce al client mobile un payload GeoJSON vettoriale ultra-compatto ($< 15\text{ KB}$) o un set di tile raster semi-trasparenti pronte per il layer OsmDroid/MapLibre.
+5. Mantiene una cache edge territoriale di 30 minuti per servire istantaneamente richieste provenienti dalla medesima vallata montano-forestale.
+

@@ -44,6 +44,7 @@
    - 6.4 Matrice TTL della Cache Multi-Livello (`CacheManager`)
    - 6.5 Gestione Luoghi Recenti e Prefetch Silenzioso dei Preferiti
    - 6.6 Resilienza Offline da Campo, Fallback su Cache Scaduta e Sincronizzazione Asincrona (`prefetchForOfflineUse`)
+   - 6.7 Prospettiva Evolutiva Fonti Dati: Nowcasting WeatherNext 3 (Post-Fase 3 / FEAT-06)
 7. [Motore AI On-Device (Google AI Edge AICore)](#7-motore-ai-on-device-google-ai-edge-aicore)
    - 7.1 Architettura e Requisiti di Sistema (Gemini Nano)
    - 7.2 Macchina a Stati del Ciclo di Vita del Modello
@@ -714,6 +715,12 @@ A partire dalla versione 1.2, Myco adotta una strategia di resilienza da campo a
    L'interfaccia utente notifica chiaramente lo stato di assenza di segnale tramite un banner ambrato con icona `Icons.Outlined.CloudOff`, segnalando che l'analisi è basata sull'ultimo snapshot meteorologico e cartografico archiviato.
 4. **Tool di Archiviazione Offline Preventiva (`prefetchForOfflineUse`):**
    Nella schermata `SettingsScreen`, l'utente può avviare la sincronizzazione manuale di tutti i punti preferiti e recenti prima di partire per l'escursione. Il metodo `prefetchCompleteLocation(lat, lon, species)` pre-popola la cache locale eseguendo query concorrenti per meteo, habitat, alberi simbionti e DEM. L'avanzamento è visualizzato con `CircularProgressIndicator` e confermato da una notifica con conteggio formattato via plurals (`settings_sync_completed`).
+
+### 6.7 Prospettiva Evolutiva Fonti Dati: Nowcasting WeatherNext 3 (Post-Fase 3 / FEAT-06)
+In prospettiva evolutiva successiva al completamento della Fase 3 (v2.0 Multiplatform iOS), è stata censita e valutata l'integrazione del modello globale ad altissima risoluzione **Google DeepMind WeatherNext 3** (rilasciato a settembre 2026):
+* **Ruolo Specifico:** Destinato unicamente al **nowcasting precipitativo a brevissimo termine (1–24h) e stima del rischio temporali orografici/grandine** all'interno dell'overlay radar su `MapView` (`FEAT-06`).
+* **Invarianza del Core Micologico:** Open-Meteo rimane il motore esclusivo e irrinunciabile per la stima di fruttificazione (`MushroomAlgorithms`), poiché i funghi dipendono dalle precipitazioni storiche cumulate a 10–14 giorni e dall'umidità volumetrica del suolo a doppio orizzonte ($0 \dots 7\text{ cm}$ e $7 \dots 28\text{ cm}$), parametri non presenti in WeatherNext 3.
+* **Subordinazione Architetturale e Sequenza di Rilascio:** L'iniziativa (`FEAT-07`) è **rigorosamente subordinata** al rilascio della versione v2.0 per iOS e alla realizzazione della baseline convenzionale di `FEAT-06`. L'accesso richiederà un proxy serverless cloud (Cloud Run / Cloud Functions) con ritaglio territoriale e caching di vallata per non esporre credenziali GCP né saturare la connessione mobile nei boschi.
 
 ---
 

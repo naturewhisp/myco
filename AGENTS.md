@@ -107,6 +107,22 @@ docs/
   $$P = 100 \times (W / 100)^{1.2} \times H \times A \times S \times T$$
   where $W$ is weather score, $H$ is habitat score, $A$ is altitude score, $S$ is seasonality score, and $T$ is the continuous terrain aspect modifier ($0.50 \dots 1.10$).
 
+### 4.8 Lifecycle, Hardware Sensors & Concurrency Invariants
+- **Lifecycle-Bound Hardware Sensors**: Do NOT use naked `DisposableEffect(Unit)` for battery-intensive hardware listeners (GPS updates, rotation vector compass, barometer). Sensors must be bound to `LocalLifecycleOwner.current` via `LifecycleEventObserver`, starting exclusively on `Lifecycle.Event.ON_RESUME` (or `ON_START`) and stopping immediately on `Lifecycle.Event.ON_PAUSE` (or `ON_STOP`).
+- **OsmDroid Lifecycle Hygiene**: All `MapView` instances hosted in `AndroidView` must explicitly receive `onResume()` on `ON_RESUME`, `onPause()` on `ON_PAUSE`, and `onRelease = { it.onDetach() }` to terminate background tile download workers and prevent Activity context leaks.
+- **Interactive ViewModel Concurrency (Anti-Stale Overrides)**: When user actions (e.g. map tapping, location search) trigger asynchronous data fetches, the ViewModel must maintain an explicit `Job?` reference (e.g. `dataFetchJob`). Any in-flight job must be deterministically cancelled (`dataFetchJob?.cancel()`) prior to launching a new request. All active coroutine jobs must be explicitly cancelled in `onCleared()`.
+
+### 4.9 Mycological Safety & Toxic Look-Alikes Standards
+- **Mandatory Safety Metadata**: Every entry in the species catalog (`MushroomSpecies`) must document potential toxic look-alikes (`toxicLookAlikes: List<String>`) and, where applicable, culinary/health precautions (`edibilityWarning: String?`).
+- **Visual Warning Visibility**: Whenever a selected species possesses toxic look-alikes, the UI must display a high-visibility warning badge (`Icons.Outlined.Warning` with warning tint) and list the confusion species.
+- **Persistent Safety Disclaimer**: A blocking legal/health disclaimer modal (`SafetyDisclaimerDialog`) must be presented on first launch, requiring explicit user acknowledgment before dashboard interaction. The preference must be stored in `KeyValueStorage`.
+
+### 4.10 Documentation & Storage Synchronization Protocol
+- **Documentation Co-Evolution**: Any modification that resolves, mitigates, or introduces a technical debt or roadmap milestone must immediately update:
+  1. The status column and release plan in `docs/FUTURE_DEVELOPMENTS_ANALYSIS.md`.
+  2. The package/component inventory in `docs/TECHNICAL_DOCUMENTATION.md`.
+- **Cache Isolation & Preference Protection**: When adding new user preferences to `KeyValueStorage`, verify that `CacheManager.clearCache()` preserves them and clears strictly ephemeral API response caches. Never invoke blanket `.clear()` without protecting user settings.
+
 ---
 
 ## 5. Verification Commands for Agents

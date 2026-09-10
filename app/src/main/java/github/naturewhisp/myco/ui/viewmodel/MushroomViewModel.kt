@@ -178,6 +178,8 @@ class MushroomViewModel(
         private set
     var targetSpeciesSheetOpen by mutableStateOf(false)
         private set
+    var showSafetyDisclaimer by mutableStateOf(false)
+        private set
     var currentScreenTab by mutableStateOf(0)
         private set
     var calculationMode by mutableStateOf("UNIFIED")
@@ -207,8 +209,22 @@ class MushroomViewModel(
             }
         }
 
+    private var dataFetchJob: Job? = null
     private var locationTrackingJob: Job? = null
     private var orientationTrackingJob: Job? = null
+
+    fun confirmSafetyDisclaimer() {
+        cacheManager.isSafetyDisclaimerAccepted = true
+        showSafetyDisclaimer = false
+    }
+
+    fun openSafetyDisclaimer() {
+        showSafetyDisclaimer = true
+    }
+
+    fun dismissSafetyDisclaimer() {
+        showSafetyDisclaimer = false
+    }
 
     fun startLocationAndOrientationTracking() {
         if (locationTrackingJob == null && locationProvider != null) {
@@ -406,6 +422,10 @@ class MushroomViewModel(
         favoriteLocations = cacheManager.getFavoriteLocations()
         // Prefetch silenzioso dei preferiti
         prefetchFavorites()
+        // Mostra il disclaimer di sicurezza se non ancora accettato
+        if (!cacheManager.isSafetyDisclaimerAccepted) {
+            showSafetyDisclaimer = true
+        }
     }
 
     private fun observeLocalAiStatus() {
@@ -688,6 +708,7 @@ class MushroomViewModel(
 
     fun selectLocation(lat: Double, lon: Double, displayName: String = "Punto selezionato", isGps: Boolean = false) {
         aiJob?.cancel()
+        dataFetchJob?.cancel()
         if (!isGps) {
             isMapCenteredOnUser = false
             mapOrientationMode = MapOrientationMode.NORTH_UP
@@ -728,7 +749,7 @@ class MushroomViewModel(
             )
         }
 
-        viewModelScope.launch {
+        dataFetchJob = viewModelScope.launch {
             isLoading = true
             loadingText = "Analisi micologica e ambientale in corso..."
             errorMessage = null
@@ -1000,9 +1021,17 @@ class MushroomViewModel(
                                 "- Esposizione versante consigliata: $slopeTextVal"
                             }
 
+                            val speciesPromptInfo = if (!selectedSpecies.isGeneralBaseline) {
+                                "- Specie cercata: ${selectedSpecies.vernacularName} (${selectedSpecies.binomialName}) [${selectedSpecies.category.label}]\n" +
+                                "- Esigenze ecologiche specie: Quota ideale ${selectedSpecies.idealElevationMin}-${selectedSpecies.idealElevationMax} m, Temperatura ottimale ${selectedSpecies.idealTempMin.toInt()}-${selectedSpecies.idealTempMax.toInt()}°C, Precipitazione min ${selectedSpecies.minRainAccumulation.toInt()} mm, Essenze arboree: ${selectedSpecies.preferredCanopyTypes.joinToString(", ")}"
+                            } else {
+                                "- Specie cercata: Modello polifito generale (Boletus edulis e funghi simbionti forestali)"
+                            }
+
                             val prompt = """
                                 Sei un esperto micologo. Genera un'analisi in parole semplici in lingua italiana basandoti su questi dati:
                                 - Località: $displayName
+                                $speciesPromptInfo
                                 - Habitat: $habitatBaseText (Punteggio: $finalHabitatScore/1.0)
                                 $spunPromptInfo
                                 - Altitudine: ${altitudeScore.text} (Punteggio: ${altitudeScore.score}/1.0)
@@ -1014,10 +1043,11 @@ class MushroomViewModel(
                                 - Tendenza futura: $futureTrend
 
                                 ISTRUZIONI CRITICHE DI FORMATTAZIONE:
-                                1. NON usare NESSUNA formattazione markdown. NON usare asterischi (* o **), trattini (-), hashtag (#), o elenchi puntati. Genera solo testo normale continuo.
-                                2. NON includere NESSUN preambolo, saluto o commento meta-testuale (come "Ecco l'analisi...", "Di seguito l'analisi completa", ecc.).
-                                3. Inizia DIRETTAMENTE con la prima frase dell'analisi micologica (es. "La località presenta condizioni...").
-                                4. Genera al massimo 4 frasi chiare, professionali e precise.
+                                1. Valuta in modo specifico e mirato le probabilità di comparsa di ${selectedSpecies.vernacularName}.
+                                2. NON usare NESSUNA formattazione markdown. NON usare asterischi (* o **), trattini (-), hashtag (#), o elenchi puntati. Genera solo testo normale continuo.
+                                3. NON includere NESSUN preambolo, saluto o commento meta-testuale (come "Ecco l'analisi...", "Di seguito l'analisi completa", ecc.).
+                                4. Inizia DIRETTAMENTE con la prima frase dell'analisi micologica (es. "La località presenta condizioni...").
+                                5. Genera al massimo 4 frasi chiare, professionali e precise.
                             """.trimIndent()
 
                             val localAiSummary = localAiService.generateAdvancedSummary(prompt)
@@ -1148,5 +1178,7 @@ class MushroomViewModel(
     override fun onCleared() {
         super.onCleared()
         stopLocationAndOrientationTracking()
+        dataFetchJob?.cancel()
+        aiJob?.cancel()
     }
 }

@@ -52,6 +52,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import java.util.Locale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import github.naturewhisp.myco.platform.MapOrientationMode
 import github.naturewhisp.myco.ui.components.CompassRoseDial
 import github.naturewhisp.myco.ui.components.MapViewContainer
@@ -71,11 +74,20 @@ fun MapScreen(
     val mycoColors = MycoTheme.colors
     val selected = viewModel.selectedLatLng
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Avvia il tracking continuo di bussola e geolocalizzazione quando la schermata è visibile, rilasciandolo all'uscita
-    DisposableEffect(Unit) {
-        viewModel.startLocationAndOrientationTracking()
+    // Aggancia il tracking continuo di bussola e GPS al ciclo di vita (attivo solo in ON_RESUME, spento in ON_PAUSE)
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> viewModel.startLocationAndOrientationTracking()
+                Lifecycle.Event.ON_PAUSE -> viewModel.stopLocationAndOrientationTracking()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
             viewModel.stopLocationAndOrientationTracking()
         }
     }

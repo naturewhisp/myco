@@ -150,4 +150,14 @@ class FavoriteLocationTest {
         assertEquals(1, recents.size)
         assertEquals("Garessio", recents[0].shortName)
     }
+
+    @Test
+    fun testSafetyDisclaimerPersistence() {
+        val storage = InMemoryKeyValueStorage()
+        val cacheManager = CacheManager(storage)
+
+        assertFalse(cacheManager.isSafetyDisclaimerAccepted)
+        cacheManager.isSafetyDisclaimerAccepted = true
+        assertTrue(cacheManager.isSafetyDisclaimerAccepted)
+    }
 }

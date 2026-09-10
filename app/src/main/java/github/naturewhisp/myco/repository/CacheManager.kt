@@ -24,6 +24,7 @@ class CacheManager(private val storage: KeyValueStorage) {
         private const val KEY_THRESHOLD = "settings_threshold"
         private const val KEY_CACHE_ENABLED = "settings_cache_enabled"
         private const val KEY_USE_LOCAL_AI = "settings_use_local_ai"
+        private const val KEY_SAFETY_DISCLAIMER_ACCEPTED = "safety_disclaimer_accepted"
         private const val KEY_RECENT_LOCATIONS = "recent_locations"
         private const val KEY_FAVORITE_LOCATIONS = "favorite_locations"
         private const val MAX_RECENT = 8
@@ -48,6 +49,10 @@ class CacheManager(private val storage: KeyValueStorage) {
     var useLocalAi: Boolean
         get() = storage.getBoolean(KEY_USE_LOCAL_AI, true)
         set(value) = storage.putBoolean(KEY_USE_LOCAL_AI, value)
+
+    var isSafetyDisclaimerAccepted: Boolean
+        get() = storage.getBoolean(KEY_SAFETY_DISCLAIMER_ACCEPTED, false)
+        set(value) = storage.putBoolean(KEY_SAFETY_DISCLAIMER_ACCEPTED, value)
 
     fun <T> getCachedData(key: String, classType: Class<T>, expiryMs: Long): T? {
         if (!cacheEnabled) return null

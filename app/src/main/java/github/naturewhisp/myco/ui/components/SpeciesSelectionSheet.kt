@@ -226,6 +226,16 @@ private fun SpeciesItemRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp
                 )
+
+                if (species.toxicLookAlikes.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Sosia a rischio: ${species.toxicLookAlikes.joinToString(", ")}",
+                        color = mycoColors.favorable,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
 
             // Selettore radio

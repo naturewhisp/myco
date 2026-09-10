@@ -259,6 +259,19 @@ fun SettingsScreen(
             isCaution = true
         )
 
+        Spacer(modifier = Modifier.height(10.dp))
+        OutlinedButton(
+            onClick = { viewModel.openSafetyDisclaimer() },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Text(
+                text = "Leggi il Disciplinare di Sicurezza & Rischi Tossici",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+
         Spacer(modifier = Modifier.height(32.dp))
     }
 }

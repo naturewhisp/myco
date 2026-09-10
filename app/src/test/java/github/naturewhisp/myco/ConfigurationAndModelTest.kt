@@ -3,12 +3,14 @@ package github.naturewhisp.myco
 import github.naturewhisp.myco.model.EcologicalWeightsConfig
 import github.naturewhisp.myco.model.HeatmapRenderConfig
 import github.naturewhisp.myco.model.ProbabilityTier
+import github.naturewhisp.myco.model.SPECIES_CATALOG
 import github.naturewhisp.myco.model.TerrainAspectConfig
 import github.naturewhisp.myco.utils.HeatmapGenerator
 import github.naturewhisp.myco.utils.MushroomAlgorithms
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -192,5 +194,26 @@ class ConfigurationAndModelTest {
 
         assertTrue("Default evaluation should contain Pian", defaultEval.formattedValue.contains("Pian"))
         assertFalse("Strict evaluation should not contain Pian", strictEval.formattedValue.contains("Pian"))
+    }
+
+    @Test
+    fun testMushroomSpeciesToxicLookAlikesAndWarnings() {
+        val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+        assertTrue(edulis.toxicLookAlikes.any { it.contains("Tylopilus") })
+        assertTrue(edulis.toxicLookAlikes.any { it.contains("satanas") })
+        assertNotNull(edulis.edibilityWarning)
+
+        val caesarea = SPECIES_CATALOG.first { it.id == "amanita_caesarea" }
+        assertTrue(caesarea.toxicLookAlikes.any { it.contains("phalloides") })
+        assertTrue(caesarea.edibilityWarning?.contains("376/1995") == true)
+
+        val cibarius = SPECIES_CATALOG.first { it.id == "cantharellus_cibarius" }
+        assertTrue(cibarius.toxicLookAlikes.any { it.contains("Omphalotus") })
+
+        val procera = SPECIES_CATALOG.first { it.id == "macrolepiota_procera" }
+        assertTrue(procera.toxicLookAlikes.any { it.contains("Lepiota") })
+
+        val mellea = SPECIES_CATALOG.first { it.id == "armillaria_mellea" }
+        assertTrue(mellea.toxicLookAlikes.any { it.contains("Galerina") })
     }
 }

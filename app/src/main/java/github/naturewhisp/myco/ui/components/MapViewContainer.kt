@@ -6,11 +6,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import github.naturewhisp.myco.platform.DeviceHeading
 import github.naturewhisp.myco.platform.UserLocation
 import github.naturewhisp.myco.platform.android.HeatmapData
@@ -59,10 +66,29 @@ fun MapViewContainer(
         }
     }
 
+    var mapViewInstance by remember { mutableStateOf<MapView?>(null) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner, mapViewInstance) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> mapViewInstance?.onResume()
+                Lifecycle.Event.ON_PAUSE -> mapViewInstance?.onPause()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     AndroidView(
         modifier = modifier,
+        onRelease = { it.onDetach() },
         factory = { context ->
             MapView(context).apply {
+                mapViewInstance = this
                 setMultiTouchControls(true)
                 isVerticalMapRepetitionEnabled = false
                 minZoomLevel = 4.0

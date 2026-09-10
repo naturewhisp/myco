@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import github.naturewhisp.myco.ui.components.RenameFavoriteDialog
+import github.naturewhisp.myco.ui.components.SafetyDisclaimerDialog
 import github.naturewhisp.myco.ui.components.SpeciesSelectionSheet
 import github.naturewhisp.myco.ui.theme.MycoTheme
 import github.naturewhisp.myco.ui.viewmodel.MushroomViewModel
@@ -157,6 +158,14 @@ fun MushroomApp(
             onDismiss = { viewModel.dismissEditingFavorite() },
             onSave = { newName -> viewModel.saveFavoriteCustomName(editingLoc, newName) },
             onRemove = { viewModel.removeFavoriteFromDialog(editingLoc) }
+        )
+    }
+
+    // Modale informativa di sicurezza micologica e responsabilità legale
+    if (viewModel.showSafetyDisclaimer) {
+        SafetyDisclaimerDialog(
+            onConfirm = { viewModel.confirmSafetyDisclaimer() },
+            onDismiss = { viewModel.dismissSafetyDisclaimer() }
         )
     }
 }

@@ -39,4 +39,29 @@ class SpunModelTest {
         // London, UK (Out of Italy bounding box)
         assertFalse(italy.contains(51.50, -0.12))
     }
+
+    @Test
+    fun testFindClosestCoveragePoint_CalculatesAccurateNearestStationAndDistance() {
+        val spunManager = github.naturewhisp.myco.repository.SpunDataManager {
+            java.io.ByteArrayInputStream(ByteArray(0))
+        }
+
+        // Ginevra, Svizzera (~46.20, 6.14) -> Val Veny / Courmayeur (AO) o Gran San Bernardo (~70-90 km)
+        val genevaClosest = spunManager.findClosestCoveragePoint(46.20, 6.14)
+        org.junit.Assert.assertNotNull(genevaClosest)
+        org.junit.Assert.assertTrue(
+            genevaClosest.name.contains("Courmayeur") || genevaClosest.name.contains("San Bernardo")
+        )
+        org.junit.Assert.assertTrue("Distanza da Ginevra a Courmayeur ~80 km", genevaClosest.distanceKm in 50..120)
+
+        // Monaco di Baviera, Germania (48.13, 11.58) -> Passo del Brennero (~120-150 km)
+        val munichClosest = spunManager.findClosestCoveragePoint(48.13, 11.58)
+        org.junit.Assert.assertNotNull(munichClosest)
+        org.junit.Assert.assertTrue(munichClosest.name.contains("Brennero"))
+        org.junit.Assert.assertTrue("Distanza da Monaco a Brennero ~125 km", munichClosest.distanceKm in 100..160)
+
+        // New York, USA (40.71, -74.00) -> Distanza transatlantica > 6000 km
+        val nyClosest = spunManager.findClosestCoveragePoint(40.71, -74.00)
+        org.junit.Assert.assertTrue(nyClosest.distanceKm > 6000)
+    }
 }

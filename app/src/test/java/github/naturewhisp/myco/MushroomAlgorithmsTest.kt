@@ -441,4 +441,19 @@ class MushroomAlgorithmsTest {
         assertTrue(soilFactor.detail.contains("Radici 0,28"))
         assertTrue(soilFactor.detail.contains("ET0 2,1 mm"))
     }
+
+    @Test
+    fun testHaversineDistanceKm_CalculatesAccurateDistance() {
+        // Roma (41.8902, 12.4922) a Milano (45.4642, 9.1900) ~ 477 km
+        val distanceRomeMilan = MushroomAlgorithms.haversineDistanceKm(41.8902, 12.4922, 45.4642, 9.1900)
+        assertEquals(477.0, distanceRomeMilan, 10.0)
+
+        // Distanza dal punto a se stesso = 0
+        val distanceSame = MushroomAlgorithms.haversineDistanceKm(45.0, 7.0, 45.0, 7.0)
+        assertEquals(0.0, distanceSame, 0.001)
+
+        // Courmayeur (45.7969, 6.9697) a Chamonix (45.9237, 6.8694) ~ 16 km
+        val distanceCourmCham = MushroomAlgorithms.haversineDistanceKm(45.7969, 6.9697, 45.9237, 6.8694)
+        assertEquals(16.0, distanceCourmCham, 3.0)
+    }
 }

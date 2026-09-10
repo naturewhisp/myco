@@ -20,8 +20,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -30,13 +32,19 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import github.naturewhisp.myco.R
 import github.naturewhisp.myco.ui.components.BotanicalBreak
 import github.naturewhisp.myco.ui.components.FieldNote
 import github.naturewhisp.myco.ui.components.MycoDivider
@@ -80,7 +88,7 @@ fun SettingsScreen(
             IconButton(onClick = onBackClick) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Indietro",
+                    contentDescription = stringResource(R.string.settings_back_desc),
                     tint = MaterialTheme.colorScheme.onSurface
                 )
             }
@@ -89,14 +97,14 @@ fun SettingsScreen(
 
             Column {
                 Text(
-                    text = "IMPOSTAZIONI",
+                    text = stringResource(R.string.settings_tag),
                     color = mycoColors.favorable,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.2.sp
                 )
                 Text(
-                    text = "Configurazione & Diagnostica",
+                    text = stringResource(R.string.settings_title),
                     fontFamily = NewsreaderFontFamily,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Medium,
@@ -109,7 +117,7 @@ fun SettingsScreen(
 
         // SEZIONE 1: TEMA GRAFICO
         Text(
-            text = "TEMA DELL'INTERFACCIA",
+            text = stringResource(R.string.settings_section_theme),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
@@ -122,24 +130,24 @@ fun SettingsScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             ThemeModeSelectorButton(
-                title = "Sistema",
-                subtitle = "Automatico",
+                title = stringResource(R.string.settings_theme_system),
+                subtitle = stringResource(R.string.settings_theme_system_desc),
                 isSelected = currentThemeMode == ThemeMode.SYSTEM,
                 onClick = { viewModel.setThemeMode(ThemeMode.SYSTEM) },
                 modifier = Modifier.weight(1f)
             )
 
             ThemeModeSelectorButton(
-                title = "Naturalist",
-                subtitle = "Pergamena",
+                title = stringResource(R.string.settings_theme_light),
+                subtitle = stringResource(R.string.settings_theme_light_desc),
                 isSelected = currentThemeMode == ThemeMode.LIGHT,
                 onClick = { viewModel.setThemeMode(ThemeMode.LIGHT) },
                 modifier = Modifier.weight(1f)
             )
 
             ThemeModeSelectorButton(
-                title = "Nocturne",
-                subtitle = "Terra d'ombra",
+                title = stringResource(R.string.settings_theme_dark),
+                subtitle = stringResource(R.string.settings_theme_dark_desc),
                 isSelected = currentThemeMode == ThemeMode.DARK,
                 onClick = { viewModel.setThemeMode(ThemeMode.DARK) },
                 modifier = Modifier.weight(1f)
@@ -152,7 +160,7 @@ fun SettingsScreen(
 
         // SEZIONE 2: MODALITÀ DI CALCOLO
         Text(
-            text = "MODELLO DI CALCOLO",
+            text = stringResource(R.string.settings_section_calculation),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
@@ -161,8 +169,8 @@ fun SettingsScreen(
         )
 
         CalculationModeRow(
-            title = "Modello Unificato (Raccomandato)",
-            description = "Aggrega meteo Open-Meteo, densità ifale SPUN, altimetria e copertura forestale OSM.",
+            title = stringResource(R.string.settings_calc_unified_title),
+            description = stringResource(R.string.settings_calc_unified_desc),
             isSelected = viewModel.calculationMode == "UNIFIED",
             onClick = { viewModel.updateCalculationMode("UNIFIED") }
         )
@@ -170,8 +178,8 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(10.dp))
 
         CalculationModeRow(
-            title = "Solo Dati Meteorologici",
-            description = "Valuta esclusivamente pioggia cumulata, temperatura e umidità atmosferica, escludendo i vincoli di habitat.",
+            title = stringResource(R.string.settings_calc_weather_title),
+            description = stringResource(R.string.settings_calc_weather_desc),
             isSelected = viewModel.calculationMode == "WEATHER_ONLY",
             onClick = { viewModel.updateCalculationMode("WEATHER_ONLY") }
         )
@@ -182,7 +190,7 @@ fun SettingsScreen(
 
         // SEZIONE 3: BASE CARTOGRAFICA PREDEFINITA
         Text(
-            text = "BASE CARTOGRAFICA PREDEFINITA",
+            text = stringResource(R.string.settings_section_map_style),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
@@ -191,8 +199,8 @@ fun SettingsScreen(
         )
 
         CalculationModeRow(
-            title = "Toponomastica & Sentieri (Consigliata)",
-            description = "Carta standard OpenStreetMap con nomi dei luoghi, borghi, frazioni, vette e sentieri chiaramente indicati.",
+            title = stringResource(R.string.settings_map_standard_title),
+            description = stringResource(R.string.settings_map_standard_desc),
             isSelected = viewModel.mapStyle == "standard",
             onClick = { viewModel.updateMapStyle("standard") }
         )
@@ -200,8 +208,8 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(10.dp))
 
         CalculationModeRow(
-            title = "Topografica (Rilievi & Isoipse)",
-            description = "OpenTopoMap con curve di livello e ombreggiatura orografica dei versanti. Ottimale per pendenze ed altimetria.",
+            title = stringResource(R.string.settings_map_topo_title),
+            description = stringResource(R.string.settings_map_topo_desc),
             isSelected = viewModel.mapStyle != "standard",
             onClick = { viewModel.updateMapStyle("topo") }
         )
@@ -212,7 +220,7 @@ fun SettingsScreen(
 
         // SEZIONE 4: DIAGNOSTICA ARCHIVIO E STORAGE
         Text(
-            text = "ARCHIVIO E DIAGNOSTICA LOCALE",
+            text = stringResource(R.string.settings_section_storage),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
@@ -228,12 +236,55 @@ fun SettingsScreen(
                 .padding(14.dp)
         ) {
             Column {
-                DiagnosticRow(label = "Dimensione cache locale", value = viewModel.cacheSize)
-                DiagnosticRow(label = "Archivio SPUN Italia", value = "spun_italy.bin (Verificato)")
-                DiagnosticRow(label = "Integrità SHA-256", value = "Conforme (Asset interno)")
-                DiagnosticRow(label = "Motore AI on-device", value = viewModel.aiStatusText)
+                DiagnosticRow(label = stringResource(R.string.settings_diag_cache_size), value = viewModel.cacheSize)
+                DiagnosticRow(label = stringResource(R.string.settings_diag_spun_archive), value = stringResource(R.string.settings_diag_spun_archive_val))
+                DiagnosticRow(label = stringResource(R.string.settings_diag_integrity), value = stringResource(R.string.settings_diag_integrity_val))
+                DiagnosticRow(label = stringResource(R.string.settings_diag_ai_engine), value = viewModel.aiStatusText)
 
                 Spacer(modifier = Modifier.height(12.dp))
+
+                var syncCount by remember { mutableStateOf<Int?>(null) }
+
+                Button(
+                    onClick = {
+                        viewModel.prefetchForOfflineUse { count ->
+                            syncCount = count
+                        }
+                    },
+                    shape = RoundedCornerShape(4.dp),
+                    enabled = !viewModel.isPrefetchingOffline,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = mycoColors.favorable,
+                        contentColor = MaterialTheme.colorScheme.surface
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (viewModel.isPrefetchingOffline) {
+                        CircularProgressIndicator(
+                            color = MaterialTheme.colorScheme.surface,
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = stringResource(R.string.settings_btn_syncing_offline), fontSize = 12.sp)
+                    } else {
+                        Icon(
+                            imageVector = Icons.Outlined.CloudDownload,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        val buttonText = syncCount?.let { count ->
+                            pluralStringResource(R.plurals.settings_sync_completed, count, count)
+                        } ?: stringResource(R.string.settings_btn_sync_offline)
+                        Text(
+                            text = buttonText,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedButton(
                     onClick = {
@@ -243,7 +294,7 @@ fun SettingsScreen(
                     shape = RoundedCornerShape(4.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(text = "Svuota Cache Cartografica e Previsioni", fontSize = 12.sp)
+                    Text(text = stringResource(R.string.settings_btn_clear_cache), fontSize = 12.sp)
                 }
             }
         }
@@ -254,8 +305,8 @@ fun SettingsScreen(
 
         // SEZIONE 4: AVVERTENZA SANITARIA E LEGALE ASL
         FieldNote(
-            text = "Questa applicazione fornisce esclusivamente stime probabilistiche teoriche a scopi escursionistici, scientifici e di studio ecologico. Non garantisce la reale presenza né la commestibilità dei funghi. Prima del consumo alimentare, è obbligatorio per legge sottoporre il raccolto al controllo gratuito di un Ispettorato Micologico dell'ASL.",
-            title = "AVVERTENZA SANITARIA OBBLIGATORIA (ASL)",
+            text = stringResource(R.string.settings_safety_note_body),
+            title = stringResource(R.string.settings_safety_note_title),
             isCaution = true
         )
 
@@ -266,7 +317,7 @@ fun SettingsScreen(
             shape = RoundedCornerShape(8.dp)
         ) {
             Text(
-                text = "Leggi il Disciplinare di Sicurezza & Rischi Tossici",
+                text = stringResource(R.string.settings_btn_read_safety),
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium
             )

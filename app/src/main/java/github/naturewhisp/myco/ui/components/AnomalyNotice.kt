@@ -23,6 +23,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import github.naturewhisp.myco.R
 import github.naturewhisp.myco.ui.theme.MycoTheme
 import github.naturewhisp.myco.ui.theme.NewsreaderFontFamily
 
@@ -46,7 +48,7 @@ fun HabitatAnomalyNotice(
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "AVVISO HABITAT",
+                    text = stringResource(R.string.notice_habitat_tag),
                     color = mycoColors.scale3,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
@@ -57,7 +59,7 @@ fun HabitatAnomalyNotice(
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "Area a prevalente insediamento urbano o agricolo",
+                text = stringResource(R.string.notice_habitat_title),
                 color = MaterialTheme.colorScheme.onSurface,
                 fontFamily = NewsreaderFontFamily,
                 fontSize = 16.sp,
@@ -67,7 +69,7 @@ fun HabitatAnomalyNotice(
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
-                text = "La copertura forestale rilevata è inferiore al 10%. La probabilità miceliare richiede la vicinanza a specie arboree ospiti (faggio, castagno, quercia o conifere).",
+                text = stringResource(R.string.notice_habitat_description),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 13.sp,
                 lineHeight = 18.sp
@@ -83,7 +85,7 @@ fun HabitatAnomalyNotice(
                     )
                 ) {
                     Text(
-                        text = "Sposta cursore verso il bosco vicino",
+                        text = stringResource(R.string.notice_habitat_action),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -114,7 +116,7 @@ fun OutsideCoverageNotice(
     ) {
         Column {
             Text(
-                text = "FUORI COPERTURA ATLANTE SPUN",
+                text = stringResource(R.string.notice_coverage_tag),
                 color = mycoColors.meteo,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
@@ -124,7 +126,7 @@ fun OutsideCoverageNotice(
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "Dati meteorologici attivi • Atlante micorrizico non disponibile",
+                text = stringResource(R.string.notice_coverage_title),
                 color = MaterialTheme.colorScheme.onSurface,
                 fontFamily = NewsreaderFontFamily,
                 fontSize = 16.sp,
@@ -134,7 +136,7 @@ fun OutsideCoverageNotice(
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
-                text = "Le coordinate selezionate si trovano al di fuori dei confini coperti dall'atlante SPUN Italia. Il calcolo climatico resta pienamente operativo.",
+                text = stringResource(R.string.notice_coverage_description),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 13.sp,
                 lineHeight = 18.sp
@@ -150,8 +152,13 @@ fun OutsideCoverageNotice(
                         contentColor = MaterialTheme.colorScheme.surface
                     )
                 ) {
+                    val label = if (distanceKm != null) {
+                        stringResource(R.string.notice_coverage_action_with_distance, closestLocationName, distanceKm)
+                    } else {
+                        stringResource(R.string.notice_coverage_action, closestLocationName)
+                    }
                     Text(
-                        text = "Centra su $closestLocationName ${if (distanceKm != null) "($distanceKm km)" else ""}",
+                        text = label,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -165,7 +172,8 @@ fun OutsideCoverageNotice(
 @Composable
 fun OfflineCacheNotice(
     cacheAgeText: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isFieldOffline: Boolean = false
 ) {
     val mycoColors = MycoTheme.colors
 
@@ -181,11 +189,15 @@ fun OfflineCacheNotice(
                 .width(6.dp)
                 .height(6.dp)
                 .clip(RoundedCornerShape(3.dp))
-                .background(mycoColors.scale2)
+                .background(if (isFieldOffline) mycoColors.meteo else mycoColors.scale2)
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = "Archivio locale attivo • Rilevamento salvato $cacheAgeText",
+            text = if (isFieldOffline) {
+                stringResource(R.string.notice_offline_field_mode, cacheAgeText)
+            } else {
+                stringResource(R.string.notice_offline_local_archive, cacheAgeText)
+            },
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium

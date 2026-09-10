@@ -14,6 +14,11 @@ import github.naturewhisp.myco.platform.KeyValueStorage
 import github.naturewhisp.myco.repository.CacheManager
 import github.naturewhisp.myco.repository.MushroomRepository
 import github.naturewhisp.myco.repository.SpunDataManager
+import github.naturewhisp.myco.model.OverpassCenter
+import github.naturewhisp.myco.model.OverpassElement
+import github.naturewhisp.myco.network.OverpassService
+import github.naturewhisp.myco.network.WeatherService
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
@@ -21,7 +26,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Before
 import org.junit.Test
-import java.io.InputStream
 
 class MushroomRepositoryTest {
 
@@ -128,5 +132,59 @@ class MushroomRepositoryTest {
         val macrolepiotaKey = "habitat_bonus_macrolepiota_procera_45.1000_7.2000"
         val cachedMacrolepiota = cacheManager.getCachedData(macrolepiotaKey, OverpassResponse::class.java, 24 * 60 * 60 * 1000)
         org.junit.Assert.assertNull("Macrolepiota non deve condividere la cache di Boletus edulis", cachedMacrolepiota)
+    }
+
+    @Test
+    fun testFetchWeatherOfflineFallback_ReturnsExpiredCacheWhenServiceFails() = runBlocking {
+        val weatherService = mockk<WeatherService>()
+        coEvery { weatherService.getForecast(any(), any(), any(), any(), any(), any(), any()) } throws java.io.IOException("Network unavailable")
+
+        val offlineRepo = MushroomRepository(
+            cacheManager = cacheManager,
+            spunDataManager = spunDataManager,
+            weatherService = weatherService
+        )
+
+        val dummyResponse = WeatherResponse(
+            elevation = 750f,
+            timezone = "Europe/Rome",
+            hourly = HourlyData(emptyList(), emptyList(), emptyList(), emptyList()),
+            daily = DailyData(emptyList(), emptyList())
+        )
+        val cacheKey = "weather_44.5000_8.0000"
+        cacheManager.saveCachedData(cacheKey, dummyResponse)
+
+        val result = offlineRepo.fetchWeather(44.5, 8.0)
+        assertNotNull("Deve restituire i dati meteo in cache anche se la rete fallisce", result)
+        assertEquals(750f, result.elevation, 0.01f)
+    }
+
+    @Test
+    fun testFindNearestForest_ReturnsClosestElementCoordinate() = runBlocking {
+        val overpassService = mockk<OverpassService>()
+        val elements = listOf(
+            OverpassElement(
+                type = "way",
+                id = 1L,
+                center = OverpassCenter(lat = 44.55, lon = 8.05)
+            ),
+            OverpassElement(
+                type = "way",
+                id = 2L,
+                center = OverpassCenter(lat = 44.51, lon = 8.01)
+            )
+        )
+        coEvery { overpassService.queryOverpass(any()) } returns OverpassResponse(elements = elements)
+
+        val repo = MushroomRepository(
+            cacheManager = cacheManager,
+            spunDataManager = spunDataManager,
+            overpassServices = listOf(overpassService)
+        )
+
+        val closest = repo.findNearestForest(44.50, 8.00)
+        assertNotNull(closest)
+        assertEquals(44.51, closest!!.first, 0.001)
+        assertEquals(8.01, closest.second, 0.001)
     }
 }

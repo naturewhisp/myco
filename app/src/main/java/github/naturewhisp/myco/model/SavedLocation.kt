@@ -22,7 +22,7 @@ data class SavedLocation(
     val lon: Double,
     val displayName: String,
     val shortName: String,
-    val savedAt: Long,
+    val savedAt: Long = System.currentTimeMillis(),
     val isFavorite: Boolean = false,
     val isGpsLocation: Boolean = false,
     val customName: String? = null

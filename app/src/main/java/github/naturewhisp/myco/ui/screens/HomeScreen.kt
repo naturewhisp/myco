@@ -293,25 +293,23 @@ fun HomeScreen(
 
         // Avvisi di stato anomalo (Habitat urbano, Fuori copertura, Cache offline)
         if (viewModel.isFromCache && viewModel.cacheAgeText != null) {
-            OfflineCacheNotice(cacheAgeText = viewModel.cacheAgeText ?: "")
+            OfflineCacheNotice(
+                cacheAgeText = viewModel.cacheAgeText ?: "",
+                isFieldOffline = viewModel.isOfflineFieldMode
+            )
             Spacer(modifier = Modifier.height(12.dp))
         }
 
         if (viewModel.isOutsideCoverage) {
             OutsideCoverageNotice(
-                closestLocationName = "Val Veny / Courmayeur",
-                distanceKm = 14,
-                onSnapClick = { viewModel.selectLocation(45.7969, 6.9697, "Val Veny, Courmayeur (AO)") }
+                closestLocationName = viewModel.closestCoverageName,
+                distanceKm = viewModel.closestCoverageDistanceKm,
+                onSnapClick = { viewModel.snapToClosestCoverage() }
             )
             Spacer(modifier = Modifier.height(12.dp))
         } else if (viewModel.isOutsideHabitat) {
             HabitatAnomalyNotice(
-                onMoveToForestClick = {
-                    val current = viewModel.selectedLatLng
-                    if (current != null) {
-                        viewModel.selectLocation(current.first + 0.015, current.second + 0.015, "Fascia boschiva adiacente")
-                    }
-                }
+                onMoveToForestClick = { viewModel.snapToNearestForest() }
             )
             Spacer(modifier = Modifier.height(12.dp))
         }

@@ -7,6 +7,7 @@ import github.naturewhisp.myco.model.SPECIES_CATALOG
 import github.naturewhisp.myco.model.WeatherResponse
 import github.naturewhisp.myco.platform.AiEngineStatus
 import github.naturewhisp.myco.platform.AssetProvider
+import github.naturewhisp.myco.model.SavedLocation
 import github.naturewhisp.myco.platform.InMemoryCacheStore
 import github.naturewhisp.myco.platform.KeyValueStorage
 import github.naturewhisp.myco.platform.PlatformAiEngine
@@ -15,6 +16,7 @@ import github.naturewhisp.myco.repository.MushroomRepository
 import github.naturewhisp.myco.repository.SpunDataManager
 import github.naturewhisp.myco.ui.viewmodel.MushroomViewModel
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
@@ -213,5 +215,45 @@ class MushroomViewModelTest {
         val habFactor = viewModel.factors.firstOrNull { it.id == FactorId.HABITAT }
         assertNotNull("Fattore HABITAT deve essere presente", habFactor)
         assertEquals("Idoneità suolo/margine", habFactor!!.label)
+    }
+
+    @Test
+    fun testSnapToClosestCoverage_SelectsCalculatedStation() = runTest(testDispatcher) {
+        viewModel.closestCoverageLatLng = Pair(45.7969, 6.9678)
+        viewModel.closestCoverageName = "Courmayeur / Val Veny"
+        viewModel.snapToClosestCoverage()
+        advanceUntilIdle()
+
+        assertEquals(Pair(45.7969, 6.9678), viewModel.selectedLatLng)
+        assertEquals("Courmayeur / Val Veny", viewModel.locationName)
+    }
+
+    @Test
+    fun testSnapToNearestForest_UpdatesSelectedLocationWhenForestFound() = runTest(testDispatcher) {
+        coEvery { repository.findNearestForest(44.2, 7.9) } returns Pair(44.21, 7.91)
+        viewModel.selectLocation(44.2, 7.9, "Pianura")
+        advanceUntilIdle()
+
+        viewModel.snapToNearestForest()
+        advanceUntilIdle()
+
+        assertEquals(Pair(44.21, 7.91), viewModel.selectedLatLng)
+    }
+
+    @Test
+    fun testPrefetchForOfflineUse_PreloadsFavorites() = runTest(testDispatcher) {
+        cacheManager.addFavorite(SavedLocation(lat = 44.5, lon = 8.0, displayName = "Bosco 1", shortName = "Bosco 1"))
+        cacheManager.addFavorite(SavedLocation(lat = 45.0, lon = 7.5, displayName = "Bosco 2", shortName = "Bosco 2"))
+
+        var prefetchResultCount = 0
+        viewModel.prefetchForOfflineUse { count ->
+            prefetchResultCount = count
+        }
+        advanceUntilIdle()
+
+        assertEquals(2, prefetchResultCount)
+        assertFalse(viewModel.isPrefetchingOffline)
+        coVerify(exactly = 1) { repository.prefetchCompleteLocation(44.5, 8.0, any()) }
+        coVerify(exactly = 1) { repository.prefetchCompleteLocation(45.0, 7.5, any()) }
     }
 }

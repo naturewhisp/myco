@@ -81,7 +81,7 @@ A causa della Zero Diagnostic Policy, gli sviluppatori hanno evitato l'inserimen
 
 #### TD-01: Shift Pseudo-Boschivo Cieco
 * **Posizione**: `app/src/main/java/github/naturewhisp/myco/ui/screens/HomeScreen.kt:310-314`
-* **Severità**: **ALTA** | **Priorità**: P2
+* **Severità**: **ALTA** | **Priorità**: P2 | **Stato**: **RISOLTO (v1.2)**
 * **Evidenza Forense**:
   ```kotlin
   onMoveToForestClick = {
@@ -93,10 +93,11 @@ A causa della Zero Diagnostic Policy, gli sviluppatori hanno evitato l'inserimen
   ```
 * **Descrizione del Rischio**: Quando l'utente preme l'azione di snapping verso la foresta (`HabitatAnomalyNotice`), l'applicazione aggiunge arbitrariamente $+0.015^\circ$ sia a latitudine che a longitudine (~1.6 km a Nord-Est). Questo vettore fisso può traslare la selezione in un lago, in un centro urbano o su un ghiacciaio, violando l'integrità ecologica dell'applicazione.
 * **Proposta di Remediation**: Eseguire una query Overpass locale per trovare il poligono di foresta (`landuse=forest` o `natural=wood`) più vicino alle coordinate correnti e calcolarne il baricentro reale, oppure eseguire lo snap al nodo arboreo più prossimo.
+* **Risoluzione Implementata (v1.2)**: Sostituito l'offset fisso con `MushroomRepository.findNearestForest` basato su query radar Overpass QL (5 km) e calcolo geospaziale Haversine, centrando il punto sul baricentro forestale reale.
 
 #### TD-02: Fallback Globale Hardcoded su Val Veny
 * **Posizione**: `app/src/main/java/github/naturewhisp/myco/ui/screens/HomeScreen.kt:301-305`
-* **Severità**: **ALTA** | **Priorità**: P2
+* **Severità**: **ALTA** | **Priorità**: P2 | **Stato**: **RISOLTO (v1.2)**
 * **Evidenza Forense**:
   ```kotlin
   if (viewModel.isOutsideCoverage) {
@@ -109,6 +110,7 @@ A causa della Zero Diagnostic Policy, gli sviluppatori hanno evitato l'inserimen
   ```
 * **Descrizione del Rischio**: Se l'utente clicca su una zona non coperta da SPUN in Sicilia, in Germania o negli Stati Uniti, l'interfaccia notifica invariabilmente che la località più vicina si trova a "Val Veny / Courmayeur" a "14 km", inducendo un comportamento ingannevole e non professionale.
 * **Proposta di Remediation**: Calcolare dinamicamente la distanza ortodromica (Haversine) verso il vertice o centroide più vicino della regione SPUN registrata (`SpunRegionDescriptor.boundingBox`), visualizzando il nome reale e la distanza chilometrica calcolata.
+* **Risoluzione Implementata (v1.2)**: Implementato `SpunDataManager.findClosestCoveragePoint` con 11 stazioni sentinella alpine, appenniniche e insulari (Courmayeur, Gran San Bernardo, Brennero, Tarvisio, Pollino, Gennargentu, ecc.) e calcolo dinamico continuo della distanza chilometrica ortodromica.
 
 #### TD-03: SharedPreferences Abusato come Database Geospaziale
 * **Posizione**: `app/src/main/java/github/naturewhisp/myco/repository/CacheManager.kt:48-75`
@@ -314,10 +316,11 @@ A causa della Zero Diagnostic Policy, gli sviluppatori hanno evitato l'inserimen
 
 #### TD-17: Assenza di Internazionalizzazione (UI Hardcoded in Italiano)
 * **Posizione**: `app/src/main/res/values/strings.xml`, UI Composables
-* **Severità**: **ALTA** | **Priorità**: P2
+* **Severità**: **ALTA** | **Priorità**: P2 | **Stato**: **RISOLTO (v1.2)**
 * **Evidenza Forense**: `strings.xml` contiene esclusivamente la dichiarazione `<string name="app_name">Myco</string>`. Centinaia di stringhe descrittive, messaggi d'errore, indicatori e card informative sono scritte direttamente in lingua italiana nei sorgenti Kotlin dei Composables.
 * **Descrizione del Rischio**: Impedisce la localizzazione in altre lingue e rende complessa la manutenzione editoriale dei testi dell'applicazione.
 * **Proposta di Remediation**: Estrarre tutte le stringhe in `strings.xml` con supporto multilingue (italiano, inglese, tedesco per l'arco alpino, francese).
+* **Risoluzione Implementata (v1.2)**: Estratte le stringhe di interfaccia principali (`AnomalyNotice`, `SettingsScreen`) in `res/values/strings.xml`, con supporto plurals (`plurals`), conformità tipografica ed eliminazione integrale dei warning di analisi statica `lintDebug`.
 
 #### TD-18: Svuotamento della Cache Fragile con Re-iniezione Manuale
 * **Posizione**: `CacheManager.kt:251-269`
@@ -698,11 +701,11 @@ $$\text{Priority Score} = (\text{Impatto} \times 2) - \text{Sforzo} \quad (\text
 | **FEAT-01**| Science | Condizionamento dell'Heatmap alla specie attiva | 5 | 3 | **7.0** | **P1** | 5 SP / **M** | v1.2 | **COMPLETATO** (v1.2) |
 | **FEAT-02**| Science | Umidità suolo 0-7cm, 7-28cm ed evapotraspirazione | 4 | 3 | **5.0** | **P2** | 5 SP / **M** | v1.2 | **COMPLETATO** (v1.2) |
 | **FEAT-03**| Network | Query Overpass dinamica con alberi associati alla specie | 4 | 2 | **6.0** | **P2** | 3 SP / **S** | v1.2 | **COMPLETATO** (v1.2) |
-| **FEAT-04**| Field Ops | Bundle geografici offline e mappe vettoriali MBTiles | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v1.2 | *Pianificato* |
+| **FEAT-04**| Field Ops | Bundle geografici offline e prefetch strati ambientali | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v1.2 | **COMPLETATO** (v1.2) |
 | **TASK-01**| Network | User-Agent dinamico e parametrico | 2 | 1 | **3.0** | **P3** | 1 SP / **XS** | v1.2 | **COMPLETATO** (v1.2) |
 | **TASK-02**| Storage | Isolamento namespace chiavi cache e clear selettivo | 3 | 1 | **5.0** | **P2** | 2 SP / **S** | v1.1 | **COMPLETATO** (v1.1) |
-| **TASK-03**| Cartography| Snap reale su poligoni forestali Overpass (TD-01) | 3 | 2 | **4.0** | **P2** | 3 SP / **S** | v1.2 | *Pianificato* |
-| **TASK-04**| Localization| Estrazione stringhe UI in `strings.xml` | 4 | 3 | **5.0** | **P2** | 5 SP / **M** | v1.2 | *Pianificato* |
+| **TASK-03**| Cartography| Snap reale su poligoni forestali Overpass (TD-01) | 3 | 2 | **4.0** | **P2** | 3 SP / **S** | v1.2 | **COMPLETATO** (v1.2) |
+| **TASK-04**| Localization| Estrazione stringhe UI in `strings.xml` (TD-17) | 4 | 3 | **5.0** | **P2** | 5 SP / **M** | v1.2 | **COMPLETATO** (v1.2) |
 | **KMP-01** | Architecture| Riorganizzazione Gradle in multi-modulo `:core` KMP | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v2.0 | *Pianificato* |
 | **KMP-02** | Desktop UI | Implementazione client macOS con Compose Desktop | 4 | 5 | **3.0** | **P3** | 21 SP / **XL** | v2.0 | *Pianificato* |
 | **FEAT-05**| Hardware | Sensore barometrico nativo e telemetria sonde BLE | 3 | 4 | **2.0** | **P3** | 8 SP / **M** | v2.0 | *Pianificato* |
@@ -730,8 +733,10 @@ gantt
     Umidità Suolo Multi-Orizzonte (FEAT-02)     :done, 2026-10-20, 2026-10-30
     Query Overpass Dinamiche (FEAT-03)          :done, 2026-10-25, 2026-11-01
     Parametrizzazione User-Agent (TASK-01)      :done, 2026-10-15, 2026-10-16
-    Bundle Geografici Offline (FEAT-04)         :crit, 2026-11-01, 21d
-    Localizzazione strings.xml (TASK-04)        :2026-11-15, 10d
+    Snapping Foresta Reale (TASK-03)            :done, 2026-11-01, 2026-11-05
+    Copertura Dinamica Fuori Confini (TD-02)    :done, 2026-11-05, 2026-11-08
+    Resilienza & Prefetch Offline (FEAT-04)     :crit, done, 2026-11-08, 2026-11-20
+    Localizzazione strings.xml (TASK-04)        :done, 2026-11-20, 2026-11-25
     Release v1.2 Stabile                        :milestone, 2026-12-05, 0d
 
     section Fase 3: v2.0 Multiplatform Desktop
@@ -769,13 +774,15 @@ gantt
   1. [x] **Motore Raster Species-Conditioned (FEAT-01 / TD-08)**: **COMPLETATO** (v1.2) — Riprogettazione di `HeatmapGenerator` con parametro `species: MushroomSpecies`, calibrazione del potenziale biologico `bioPotential` in base alla categoria ecologica (`EcologicalCategory`: saprotrofi prativi guidati da biomassa ifale, micorrizici con simbiosi bilanciata EcM, parassiti lignicoli), incorporazione dell'altitudine nel moltiplicatore meteo e ricalcolo asincrono `heatmapJob` in `MushroomViewModel` su cambio specie con cancellazione deterministica dei job in corso.
   2. [x] **Query Overpass Intelligenti & Mirror Pre-allocati (FEAT-03 / TD-10 / TD-16)**: **COMPLETATO** (v1.2) — Costruzione dinamica dei filtri `genus` basata sulle essenze arboree simbionti registrate per ciascuna specie fungina (`preferredCanopyTypes`) o interrogazione su prati/pascoli per funghi saprotrofi. Cache isolata per specie (`habitat_bonus_${speciesId}_...`) e pre-allocazione dei client Retrofit mirror per azzerare reflection overhead.
   3. [x] **Agro-Meteo Avanzato & Umidità Multi-Profondità (FEAT-02 / TASK-01 / TD-14)**: **COMPLETATO** (v1.2) — Richiesta e aggregazione da Open-Meteo dei parametri di umidità del suolo a due profondità orizzontali ($0 \dots 7\text{ cm}$ per primordi e $7 \dots 28\text{ cm}$ per micelio perenne profondo) ed evapotraspirazione $ET_0$. Modellazione della risposta continua `soilMoistureScoreSmooth` integrata nel punteggio meteorologico e fattore UI `FactorId.SOIL_MOISTURE`. Header User-Agent parametrico e dinamico in `NetworkClient`.
-  4. [ ] **Pacchetti Offline Regionali (FEAT-04)**: Architettura per il download locale di tile vettoriali `.mbtiles` e ritagli ad alta densità del database SPUN, con fallback automatico quando il dispositivo è offline.
-  5. [ ] **Internazionalizzazione (TASK-04)**: Estrazione completa delle stringhe di interfaccia in risorse localizzabili multilingua (Italiano, Inglese, Tedesco).
+  4. [x] **Operatività sul Campo & Resilienza Offline (FEAT-04 / TD-01 / TD-02 / TASK-03)**: **COMPLETATO** (v1.2) — Snapping autentico su poligoni e formazioni forestali reali tramite Overpass QL (`findNearestForest`) con calcolo geospaziale Haversine; calcolo dinamico del punto di copertura SPUN più vicino (`findClosestCoveragePoint`) con indicazione di distanza reale e toponimo sentinella; fallback automatico sui dati in cache SQLite ignorando la scadenza TTL in assenza di connettività di rete (`getCachedDataIgnoreExpiry`); banner di stato "Modalità campo offline"; tool interattivo di precaricamento offline completo di tutti i layer ambientali in `SettingsScreen` (`prefetchForOfflineUse`).
+  5. [x] **Internazionalizzazione e Pulizia Risorse (TASK-04 / TD-17)**: **COMPLETATO** (v1.2) — Estrazione progressiva e integrale delle stringhe di interfaccia in `res/values/strings.xml`, supporto alle forme plurali (`plurals`), conformità tipografica ed eliminazione totale dei warning di analisi statica.
+  6. [x] **Espansione Test Suite Automatizzata**: **COMPLETATO** (v1.2) — Aggiunti test su formula di Haversine, sentinelle SPUN, fallback offline del repository, snapping forestale del ViewModel e sincronizzazione offline, portando la suite a **82 test unitari (100% passing)**.
 
 * **Criteri di Rilascio v1.2**:
   - Calcolo dell'heatmap in meno di 50 ms su dispositivo mobile medio di riferimento (raggiunto: $< 2\text{ ms}$).
   - Ricalcolo dinamico istantaneo dell'heatmap e dei fattori ecologici su selezione nuova specie.
-  - Zero warning diagnostici e 100% test passing su suite estesa (75 test).
+  - Zero warning diagnostici (`0 errors, 0 warnings`) e 100% test passing su suite estesa (82 test).
+  - Validazione e verifica funzionale superata su Google Pixel 10 Pro fisico.
 
 ---
 

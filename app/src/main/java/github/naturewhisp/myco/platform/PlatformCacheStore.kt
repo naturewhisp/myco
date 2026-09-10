@@ -30,6 +30,15 @@ interface PlatformCacheStore {
     fun get(key: String, expiryMs: Long): String?
 
     /**
+     * Recupera il dato serializzato associato a [key] ignorando la scadenza del TTL.
+     * Utilizzato per il fallback di resilienza sul campo in assenza di connessione di rete.
+     *
+     * @param key Chiave univoca dell'elemento in cache.
+     * @return Stringa JSON o null se assente.
+     */
+    fun getIgnoreExpiry(key: String): String?
+
+    /**
      * Memorizza o aggiorna un dato serializzato in formato JSON.
      *
      * @param key Chiave univoca dell'elemento in cache.

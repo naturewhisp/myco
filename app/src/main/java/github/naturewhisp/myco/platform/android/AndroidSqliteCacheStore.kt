@@ -97,6 +97,25 @@ class AndroidSqliteCacheStore(context: Context) : SQLiteOpenHelper(
         }
     }
 
+    override fun getIgnoreExpiry(key: String): String? {
+        return try {
+            val db = readableDatabase
+            db.query(
+                TABLE_CACHE,
+                arrayOf(COL_DATA),
+                "$COL_KEY = ?",
+                arrayOf(key),
+                null,
+                null,
+                null
+            ).use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     override fun put(key: String, dataJson: String, lat: Double?, lon: Double?, ttlMs: Long) {
         try {
             val db = writableDatabase

@@ -1,9 +1,11 @@
 package github.naturewhisp.myco.repository
 
+import github.naturewhisp.myco.model.ClosestCoverageResult
 import github.naturewhisp.myco.model.SpunData
 import github.naturewhisp.myco.model.SpunRegionDescriptor
 import github.naturewhisp.myco.model.SpunRegionHeader
 import github.naturewhisp.myco.platform.AssetProvider
+import github.naturewhisp.myco.utils.MushroomAlgorithms
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -42,6 +44,20 @@ class SpunDataManager(private val assetProvider: AssetProvider) {
         )
     )
 
+    private val sentinelCoveragePoints = listOf(
+        ClosestCoverageResult("Val Veny / Courmayeur (AO)", 45.7969, 6.9697, 0),
+        ClosestCoverageResult("Passo del Gran San Bernardo (AO)", 45.8690, 7.1706, 0),
+        ClosestCoverageResult("Passo del Brennero (BZ)", 47.0061, 11.5058, 0),
+        ClosestCoverageResult("Foresta di Tarvisio (UD)", 46.5050, 13.5786, 0),
+        ClosestCoverageResult("Parco Alpi Marittime (CN)", 44.2000, 7.2667, 0),
+        ClosestCoverageResult("Foreste Casentinesi (FC)", 43.8500, 11.7500, 0),
+        ClosestCoverageResult("Parco Gran Sasso (AQ)", 42.4500, 13.5500, 0),
+        ClosestCoverageResult("Parco Nazionale del Pollino (PZ/CS)", 39.9167, 16.1833, 0),
+        ClosestCoverageResult("Parco Nazionale dell'Aspromonte (RC)", 38.1667, 15.9167, 0),
+        ClosestCoverageResult("Parco delle Madonie (PA)", 37.8800, 14.0200, 0),
+        ClosestCoverageResult("Parco del Gennargentu (NU)", 39.9833, 9.3167, 0)
+    )
+
     class LoadedRegion(
         val descriptor: SpunRegionDescriptor,
         val header: SpunRegionHeader,
@@ -51,6 +67,24 @@ class SpunDataManager(private val assetProvider: AssetProvider) {
 
     private var currentLoadedRegion: LoadedRegion? = null
     private val loadMutex = Mutex()
+
+    /**
+     * Calcola dinamicamente la stazione di confine SPUN più vicina alle coordinate fornite,
+     * determinando il toponimo e la distanza ortodromica in km tramite la formula di Haversine.
+     */
+    fun findClosestCoveragePoint(lat: Double, lon: Double): ClosestCoverageResult {
+        var closest = sentinelCoveragePoints[0]
+        var minDistance = Double.MAX_VALUE
+
+        for (point in sentinelCoveragePoints) {
+            val dist = MushroomAlgorithms.haversineDistanceKm(lat, lon, point.lat, point.lon)
+            if (dist < minDistance) {
+                minDistance = dist
+                closest = point
+            }
+        }
+        return closest.copy(distanceKm = max(1, minDistance.roundToInt()))
+    }
 
     /**
      * Restituisce i dati della regione attualmente caricata in memoria se contiene le coordinate.

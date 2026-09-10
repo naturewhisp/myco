@@ -85,3 +85,18 @@ data class SpunRegionDescriptor(
         return lat in minLat..maxLat && lon in minLon..maxLon
     }
 }
+
+/**
+ * Risultato del calcolo del punto di copertura SPUN più vicino per coordinate esterne al geodatabase.
+ *
+ * @property name Toponimo di riferimento della stazione forestale/alpina più vicina.
+ * @property lat Latitudine del punto di rientro consigliato.
+ * @property lon Longitudine del punto di rientro consigliato.
+ * @property distanceKm Distanza ortodromica in km dalle coordinate attuali.
+ */
+data class ClosestCoverageResult(
+    val name: String,
+    val lat: Double,
+    val lon: Double,
+    val distanceKm: Int
+)

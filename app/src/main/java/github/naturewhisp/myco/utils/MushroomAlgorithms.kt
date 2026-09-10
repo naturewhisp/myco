@@ -1333,4 +1333,25 @@ object MushroomAlgorithms {
         }
         return result
     }
+
+    /**
+     * Calcola la distanza ortodromica in chilometri tra due coordinate geografiche WGS84
+     * utilizzando la formula di Haversine.
+     *
+     * @param lat1 Latitudine del primo punto in gradi decimali.
+     * @param lon1 Longitudine del primo punto in gradi decimali.
+     * @param lat2 Latitudine del secondo punto in gradi decimali.
+     * @param lon2 Longitudine del secondo punto in gradi decimali.
+     * @return Distanza stimata lungo l'arco di cerchio massimo in chilometri.
+     */
+    fun haversineDistanceKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val r = 6371.0 // Raggio medio terrestre in km
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = kotlin.math.sin(dLat / 2).let { it * it } +
+                kotlin.math.cos(Math.toRadians(lat1)) * kotlin.math.cos(Math.toRadians(lat2)) *
+                kotlin.math.sin(dLon / 2).let { it * it }
+        val c = 2 * kotlin.math.atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1.0 - a))
+        return r * c
+    }
 }

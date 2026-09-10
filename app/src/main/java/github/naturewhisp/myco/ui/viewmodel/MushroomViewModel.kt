@@ -104,9 +104,9 @@ class MushroomViewModel(
     var showSettings by mutableStateOf(false)
 
     // Saved locations state
-    var recentLocations by mutableStateOf<List<SavedLocation>>(emptyList())
+    var recentLocations by mutableStateOf<List<SavedLocation>>(cacheManager.getRecentLocations())
         private set
-    var favoriteLocations by mutableStateOf<List<SavedLocation>>(emptyList())
+    var favoriteLocations by mutableStateOf<List<SavedLocation>>(cacheManager.getFavoriteLocations())
         private set
     var currentLocationIsFavorite by mutableStateOf(false)
         private set
@@ -175,6 +175,16 @@ class MushroomViewModel(
     var isOutsideHabitat by mutableStateOf(false)
         private set
     var isOutsideCoverage by mutableStateOf(false)
+        private set
+    var closestCoverageName by mutableStateOf("Val Veny / Courmayeur (AO)")
+        internal set
+    var closestCoverageDistanceKm by mutableStateOf(14)
+        internal set
+    var closestCoverageLatLng by mutableStateOf<Pair<Double, Double>?>(Pair(45.7969, 6.9697))
+        internal set
+    var isOfflineFieldMode by mutableStateOf(false)
+        private set
+    var isPrefetchingOffline by mutableStateOf(false)
         private set
     var targetSpeciesSheetOpen by mutableStateOf(false)
         private set
@@ -421,6 +431,12 @@ class MushroomViewModel(
 
         isOutsideHabitat = lastFinalHabitatScore < 0.1
         isOutsideCoverage = lastSpunData == null && spunDataManager.findRegionFor(lastLat, lastLon) == null
+        if (isOutsideCoverage) {
+            val closest = spunDataManager.findClosestCoveragePoint(lastLat, lastLon)
+            closestCoverageName = closest.name
+            closestCoverageDistanceKm = closest.distanceKm
+            closestCoverageLatLng = Pair(closest.lat, closest.lon)
+        }
 
         // Ricalcolo asincrono della nuvola di probabilità calibrata sulla nuova specie selezionata
         heatmapJob?.cancel()
@@ -732,6 +748,80 @@ class MushroomViewModel(
         }
     }
 
+    /**
+     * Esegue lo snap verso il centroide o stazione sentinella SPUN più vicina calcolata dinamicamente.
+     * Risolve TD-02 eliminando il toponimo fisso di Val Veny.
+     */
+    fun snapToClosestCoverage() {
+        val target = closestCoverageLatLng ?: return
+        selectLocation(target.first, target.second, closestCoverageName)
+    }
+
+    /**
+     * Esegue una scansione radar Overpass delle formazioni boschive e forestali reali nell'intorno
+     * del punto selezionato (5 km) e trasla il cursore sul baricentro del bosco più vicino.
+     * Risolve TD-01 eliminando l'offset fisso (+0.015, +0.015).
+     */
+    fun snapToNearestForest() {
+        val current = selectedLatLng ?: Pair(lastLat, lastLon)
+        viewModelScope.launch {
+            loadingText = "Scansione formazioni boschive OSM in corso..."
+            val forestCoord = repository.findNearestForest(current.first, current.second)
+            if (forestCoord != null) {
+                val dist = MushroomAlgorithms.haversineDistanceKm(
+                    current.first, current.second, forestCoord.first, forestCoord.second
+                )
+                val distFormatted = String.format(Locale.US, "%.1f", dist)
+                selectLocation(forestCoord.first, forestCoord.second, "Fascia boschiva vicina (~$distFormatted km)")
+            } else {
+                // Fallback di prossimità controllato
+                val fallbackLat = current.first + 0.012
+                val fallbackLon = current.second + 0.012
+                selectLocation(fallbackLat, fallbackLon, "Fascia boschiva adiacente")
+            }
+        }
+    }
+
+    /**
+     * Precarica in modo esaustivo tutti i layer ambientali (previsioni meteo orarie, orografia DEM,
+     * copertura forestale OSM e alberi simbionti guida) per tutti i luoghi preferiti e per la posizione attuale,
+     * garantendo piena operatività e consultazione in assenza di segnale telefonico (FEAT-04).
+     */
+    fun prefetchForOfflineUse(onCompleted: (Int) -> Unit = {}) {
+        if (isPrefetchingOffline) return
+        viewModelScope.launch {
+            isPrefetchingOffline = true
+            var count = 0
+            val targets = mutableListOf<SavedLocation>()
+            val favs = cacheManager.getFavoriteLocations()
+            favoriteLocations = favs
+            targets.addAll(favs)
+            selectedLatLng?.let { curr ->
+                targets.add(
+                    SavedLocation(
+                        lat = curr.first,
+                        lon = curr.second,
+                        displayName = locationName,
+                        shortName = locationName.split(",").firstOrNull()?.trim() ?: locationName,
+                        savedAt = System.currentTimeMillis()
+                    )
+                )
+            }
+            val distinctTargets = targets.distinctBy {
+                String.format(Locale.US, "%.3f_%.3f", it.lat, it.lon)
+            }
+            for (loc in distinctTargets) {
+                try {
+                    repository.prefetchCompleteLocation(loc.lat, loc.lon, selectedSpecies)
+                    count++
+                } catch (_: Exception) {}
+            }
+            updateCacheSize()
+            isPrefetchingOffline = false
+            onCompleted(count)
+        }
+    }
+
     fun selectLocation(lat: Double, lon: Double, displayName: String = "Punto selezionato", isGps: Boolean = false) {
         aiJob?.cancel()
         dataFetchJob?.cancel()
@@ -843,6 +933,15 @@ class MushroomViewModel(
                 val spunData = spunDeferred.await()
                 val terrainData = terrainDeferred.await()
                 val resolvedGeo = geocodeDeferred?.await() ?: cachedGeo
+
+                val finalAgeMs = cacheManager.getWeatherCacheAge(lat, lon)
+                if (finalAgeMs != null && finalAgeMs > 60_000L) {
+                    isFromCache = true
+                    isOfflineFieldMode = finalAgeMs > 60 * 60 * 1000L
+                    cacheAgeText = formatCacheAge(finalAgeMs)
+                } else {
+                    isOfflineFieldMode = false
+                }
 
                 val resolvedDisplayName = when {
                     resolvedGeo != null -> resolvedGeo.displayName

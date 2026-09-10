@@ -71,6 +71,23 @@ class CacheManager(
         }
     }
 
+    /**
+     * Recupera un elemento dalla cache ignorando la scadenza temporale (TTL),
+     * restituendo l'oggetto deserializzato unitamente all'età della rilevazione in millisecondi.
+     * Fondamentale per la resilienza offline sul campo in assenza di segnale cellulare.
+     */
+    fun <T> getCachedDataIgnoreExpiry(key: String, classType: Class<T>): Pair<T, Long>? {
+        if (!cacheEnabled) return null
+        val cachedStr = cacheStore.getIgnoreExpiry(key) ?: return null
+        val age = cacheStore.getCacheAge(key) ?: 0L
+        return try {
+            val data = gson.fromJson(cachedStr, classType)
+            Pair(data, age)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     fun <T> saveCachedData(key: String, data: T, lat: Double? = null, lon: Double? = null, ttlMs: Long = 0) {
         if (!cacheEnabled) return
         try {

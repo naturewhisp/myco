@@ -1,3 +1,55 @@
 <resources>
     <string name="app_name">Myco</string>
+
+    <!-- Banner Avvisi Geografici e Ambientali (AnomalyNotice) -->
+    <string name="notice_habitat_tag">AVVISO HABITAT</string>
+    <string name="notice_habitat_title">Area a prevalente insediamento urbano o agricolo</string>
+    <string name="notice_habitat_description">La copertura forestale rilevata è inferiore al 10%. La probabilità miceliare richiede la vicinanza a specie arboree ospiti (faggio, castagno, quercia o conifere).</string>
+    <string name="notice_habitat_action">Sposta cursore verso il bosco vicino</string>
+    <string name="notice_coverage_tag">FUORI COPERTURA ATLANTE SPUN</string>
+    <string name="notice_coverage_title">Dati meteorologici attivi • Atlante micorrizico non disponibile</string>
+    <string name="notice_coverage_description">Le coordinate selezionate si trovano al di fuori dei confini coperti dall&#8217;atlante SPUN Italia. Il calcolo climatico resta pienamente operativo.</string>
+    <string name="notice_coverage_action_with_distance">Centra su %1$s (%2$d km)</string>
+    <string name="notice_coverage_action">Centra su %1$s</string>
+    <string name="notice_offline_field_mode">Modalità campo offline • Rilevamento salvato %1$s</string>
+    <string name="notice_offline_local_archive">Archivio locale attivo • Rilevamento salvato %1$s</string>
+
+    <!-- Impostazioni e Diagnostica (SettingsScreen) -->
+    <string name="settings_back_desc">Indietro</string>
+    <string name="settings_tag">IMPOSTAZIONI</string>
+    <string name="settings_title">Configurazione &amp; Diagnostica</string>
+    <string name="settings_section_theme">TEMA DELL&#8217;INTERFACCIA</string>
+    <string name="settings_theme_system">Sistema</string>
+    <string name="settings_theme_system_desc">Automatico</string>
+    <string name="settings_theme_light">Naturalist</string>
+    <string name="settings_theme_light_desc">Pergamena</string>
+    <string name="settings_theme_dark">Nocturne</string>
+    <string name="settings_theme_dark_desc">Terra d&#8217;ombra</string>
+    <string name="settings_section_calculation">MODELLO DI CALCOLO</string>
+    <string name="settings_calc_unified_title">Modello Unificato (Raccomandato)</string>
+    <string name="settings_calc_unified_desc">Aggrega meteo Open-Meteo, densità ifale SPUN, altimetria e copertura forestale OSM.</string>
+    <string name="settings_calc_weather_title">Solo Dati Meteorologici</string>
+    <string name="settings_calc_weather_desc">Valuta esclusivamente pioggia cumulata, temperatura e umidità atmosferica, escludendo i vincoli di habitat.</string>
+    <string name="settings_section_map_style">BASE CARTOGRAFICA PREDEFINITA</string>
+    <string name="settings_map_standard_title">Toponomastica &amp; Sentieri (Consigliata)</string>
+    <string name="settings_map_standard_desc">Carta standard OpenStreetMap con nomi dei luoghi, borghi, frazioni, vette e sentieri chiaramente indicati.</string>
+    <string name="settings_map_topo_title">Topografica (Rilievi &amp; Isoipse)</string>
+    <string name="settings_map_topo_desc">OpenTopoMap con curve di livello e ombreggiatura orografica dei versanti. Ottimale per pendenze ed altimetria.</string>
+    <string name="settings_section_storage">ARCHIVIO E DIAGNOSTICA LOCALE</string>
+    <string name="settings_diag_cache_size">Dimensione cache locale</string>
+    <string name="settings_diag_spun_archive">Archivio SPUN Italia</string>
+    <string name="settings_diag_spun_archive_val">spun_italy.bin (Verificato)</string>
+    <string name="settings_diag_integrity">Integrità SHA-256</string>
+    <string name="settings_diag_integrity_val">Conforme (Asset interno)</string>
+    <string name="settings_diag_ai_engine">Motore AI on-device</string>
+    <string name="settings_btn_sync_offline">Sincronizza Luoghi Preferiti per Uso Offline</string>
+    <string name="settings_btn_syncing_offline">Sincronizzazione offline in corso&#8230;</string>
+    <plurals name="settings_sync_completed">
+        <item quantity="one">Archiviata %1$d località per uso offline</item>
+        <item quantity="other">Archiviate %1$d località per uso offline</item>
+    </plurals>
+    <string name="settings_btn_clear_cache">Svuota Cache Cartografica e Previsioni</string>
+    <string name="settings_safety_note_title">AVVERTENZA SANITARIA OBBLIGATORIA (ASL)</string>
+    <string name="settings_safety_note_body">Questa applicazione fornisce esclusivamente stime probabilistiche teoriche a scopi escursionistici, scientifici e di studio ecologico. Non garantisce la reale presenza né la commestibilità dei funghi. Prima del consumo alimentare, è obbligatorio per legge sottoporre il raccolto al controllo gratuito di un Ispettorato Micologico dell&#8217;ASL.</string>
+    <string name="settings_btn_read_safety">Leggi il Disciplinare di Sicurezza &amp; Rischi Tossici</string>
 </resources>

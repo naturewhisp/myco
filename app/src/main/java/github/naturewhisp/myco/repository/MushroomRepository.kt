@@ -30,25 +30,23 @@ import kotlin.math.max
  */
 class MushroomRepository(
     private val cacheManager: CacheManager,
-    val spunDataManager: SpunDataManager
-) {
-    private val geocodingService = NetworkClient.createService(
+    val spunDataManager: SpunDataManager,
+    private val geocodingService: GeocodingService = NetworkClient.createService(
         GeocodingService::class.java,
         "https://nominatim.openstreetmap.org/"
-    )
-    private val weatherService = NetworkClient.createService(
+    ),
+    private val weatherService: WeatherService = NetworkClient.createService(
         WeatherService::class.java,
         "https://api.open-meteo.com/"
-    )
-    private val overpassEndpoints = listOf(
+    ),
+    private val overpassServices: List<OverpassService> = listOf(
         "https://overpass-api.de/",
         "https://overpass.kumi.systems/",
         "https://overpass.openstreetmap.fr/"
-    )
-    private val overpassServices: List<OverpassService> = overpassEndpoints.map {
+    ).map {
         NetworkClient.createService(OverpassService::class.java, it)
     }
-
+) {
     private val gson = Gson()
 
     /**
@@ -104,16 +102,17 @@ class MushroomRepository(
             cacheManager.saveCachedData(cacheKey, result)
             result
         } catch (_: Exception) {
-            null
+            cacheManager.getCachedDataIgnoreExpiry(cacheKey, GeocodeResult::class.java)?.first
         }
     }
 
     /**
      * Recupera le previsioni e lo storico meteorologico orario e giornaliero da Open-Meteo.
+     * In caso di indisponibilità della connessione sul campo, degrada sul dato precedentemente archiviato in locale.
      *
      * @param latitude Latitudine in gradi decimali.
      * @param longitude Longitudine in gradi decimali.
-     * @return [WeatherResponse] con temperature, precipitazioni, umidità relativa e parametri orari, con cache di 1 ora.
+     * @return [WeatherResponse] con temperature, precipitazioni, umidità relativa e parametri orari.
      */
     suspend fun fetchWeather(latitude: Double, longitude: Double): WeatherResponse {
         val roundedLat = String.format(Locale.US, "%.4f", latitude)
@@ -125,9 +124,14 @@ class MushroomRepository(
             return cached
         }
 
-        val response = weatherService.getForecast(latitude, longitude)
-        cacheManager.saveCachedData(cacheKey, response)
-        return response
+        return try {
+            val response = weatherService.getForecast(latitude, longitude)
+            cacheManager.saveCachedData(cacheKey, response)
+            response
+        } catch (e: Exception) {
+            val fallback = cacheManager.getCachedDataIgnoreExpiry(cacheKey, WeatherResponse::class.java)
+            fallback?.first ?: throw e
+        }
     }
 
     /**
@@ -159,7 +163,7 @@ class MushroomRepository(
                 // Prova il mirror Overpass successivo
             }
         }
-        return null
+        return cacheManager.getCachedDataIgnoreExpiry(cacheKey, OverpassResponse::class.java)?.first
     }
 
     /**
@@ -224,7 +228,7 @@ class MushroomRepository(
                 // Prova il mirror Overpass successivo
             }
         }
-        return null
+        return cacheManager.getCachedDataIgnoreExpiry(cacheKey, OverpassResponse::class.java)?.first
     }
 
     /**
@@ -279,10 +283,57 @@ class MushroomRepository(
                 cacheManager.saveCachedData(cacheKey, terrainData)
                 terrainData
             } else {
-                null
+                cacheManager.getCachedDataIgnoreExpiry(cacheKey, TerrainAspectData::class.java)?.first
             }
         } catch (_: Exception) {
-            null
+            cacheManager.getCachedDataIgnoreExpiry(cacheKey, TerrainAspectData::class.java)?.first
         }
+    }
+
+    /**
+     * Interroga Overpass per individuare il poligono o nodo forestale reale più vicino alle coordinate fornite.
+     * Risolve il debito tecnico TD-01 sostituendo lo spostamento empirico statico con uno snap geospaziale autentico.
+     *
+     * @param latitude Latitudine del punto corrente in gradi decimali.
+     * @param longitude Longitudine del punto corrente in gradi decimali.
+     * @return Coppia (latitudine, longitudine) del baricentro del bosco più vicino, o null se non trovato o offline.
+     */
+    suspend fun findNearestForest(latitude: Double, longitude: Double): Pair<Double, Double>? {
+        val query = "[out:json][timeout:10];(nwr[\"natural\"=\"wood\"](around:5000,$latitude,$longitude);nwr[\"landuse\"=\"forest\"](around:5000,$latitude,$longitude););out center 20;"
+        for (service in overpassServices) {
+            try {
+                val response = service.queryOverpass(query)
+                val candidates = response.elements.mapNotNull { it.coordinate }
+                if (candidates.isNotEmpty()) {
+                    var closest = candidates[0]
+                    var minDistance = Double.MAX_VALUE
+                    for (coord in candidates) {
+                        val dist = MushroomAlgorithms.haversineDistanceKm(latitude, longitude, coord.first, coord.second)
+                        if (dist in 0.03..minDistance) {
+                            minDistance = dist
+                            closest = coord
+                        }
+                    }
+                    if (minDistance < 10.0) {
+                        return closest
+                    }
+                }
+            } catch (_: Exception) {
+                // Prova il mirror Overpass successivo
+            }
+        }
+        return null
+    }
+
+    /**
+     * Esegue il precaricamento sincrono e la persistenza offline in SQLite di tutti i layer ambientali
+     * (meteo, elevazione orografica DEM, habitat boschivo e alberi simbionti guida) per una località.
+     */
+    suspend fun prefetchCompleteLocation(latitude: Double, longitude: Double, species: MushroomSpecies? = null) {
+        try { fetchWeather(latitude, longitude) } catch (_: Exception) {}
+        try { fetchTerrainAspect(latitude, longitude) } catch (_: Exception) {}
+        try { fetchHabitat(latitude, longitude) } catch (_: Exception) {}
+        try { fetchSpecificHabitatBonus(latitude, longitude, species) } catch (_: Exception) {}
+        try { reverseGeocode(latitude, longitude) } catch (_: Exception) {}
     }
 }

@@ -31,6 +31,7 @@
    - 4.5 Modellazione Orografica DEM a 5 Punti & Insolazione
    - 4.6 Fasi Fenologiche e Ciclo Sinodico Lunare
    - 4.7 Motore Raster della Mappa di Calore (`HeatmapRaster`)
+   - 4.8 Calcolo Spaziale Haversine e Snapping Forestale Reale (`findNearestForest`)
 5. [Sottosistema Cartografico OsmDroid](#5-sottosistema-cartografico-osmdroid)
    - 5.1 Ciclo di Vita e Integrazione Jetpack Compose (`MapViewContainer`)
    - 5.2 Invarianti Cartografiche Obbligatorie
@@ -39,9 +40,10 @@
 6. [Data Management, Repository e Strategie di Caching](#6-data-management-repository-e-strategie-di-caching)
    - 6.1 Orchestrazione delle Query Parallele (`MushroomViewModel`)
    - 6.2 Ridondanza e Failover Overpass API
-   - 6.3 Atlante Miceliare SPUN (Formato Binario `spun_italy.bin`)
+   - 6.3 Atlante Miceliare SPUN, Sentinelle e Prossimità Dinamica (`findClosestCoveragePoint`)
    - 6.4 Matrice TTL della Cache Multi-Livello (`CacheManager`)
    - 6.5 Gestione Luoghi Recenti e Prefetch Silenzioso dei Preferiti
+   - 6.6 Resilienza Offline da Campo, Fallback su Cache Scaduta e Sincronizzazione Asincrona (`prefetchForOfflineUse`)
 7. [Motore AI On-Device (Google AI Edge AICore)](#7-motore-ai-on-device-google-ai-edge-aicore)
    - 7.1 Architettura e Requisiti di Sistema (Gemini Nano)
    - 7.2 Macchina a Stati del Ciclo di Vita del Modello
@@ -137,16 +139,16 @@ La base di codice è organizzata sotto il namespace principale `github.naturewhi
 | Package | File Principali | Responsabilità e Contratti |
 |---|---|---|
 | **Root** | `MainActivity.kt` | Single Activity (`ComponentActivity`), punto di ingresso dell'applicazione e configurazione della finestra a tutto schermo (*edge-to-edge*). |
-| `model` | `DailyOutlook.kt`<br>`EcologicalWeightsConfig.kt`<br>`Factor.kt`<br>`GeocodingModel.kt`<br>`HeatmapModel.kt`<br>`HeatmapRenderConfig.kt`<br>`MushroomSpecies.kt`<br>`OverpassModel.kt`<br>`PlaceName.kt`<br>`ProbabilityTier.kt`<br>`SavedLocation.kt`<br>`SpunModel.kt`<br>`TerrainAspectConfig.kt`<br>`TerrainModel.kt`<br>`WeatherModel.kt` | **Dominio Puro:** Data classes, DTO per le API remote, strutture dati immutabili. `HeatmapRaster` definisce il buffer 32-bit grezzo agnostico. `MushroomSpecies` racchiude il catalogo tassonomico delle 10 specie con avvisi sosia tossici (`toxicLookAlikes`). Configurazioni tipizzate (`EcologicalWeightsConfig`, `TerrainAspectConfig`, `HeatmapRenderConfig`, `ProbabilityTier`). Nessuna dipendenza dal framework Android. |
-| `platform` | `AssetProvider.kt`<br>`InMemoryCacheStore.kt`<br>`KeyValueStorage.kt`<br>`PlatformAiEngine.kt`<br>`PlatformCacheStore.kt`<br>`PlatformLocationProvider.kt`<br>`PlatformNavigator.kt`<br>`PlatformOrientationProvider.kt`<br>`UserLocation.kt` | **Porte Agnostiche:** Interfacce del pattern esagonale che disaccoppiano l'accesso all'hardware, allo storage persistente e al file system. I contratti (`PlatformCacheStore`, `KeyValueStorage`, `AssetProvider`, `PlatformAiEngine`, ecc.) e i modelli associati (`UserLocation`, `DeviceHeading`, `MapOrientationMode`, `CacheStats`) contengono 0 import di sistema. Include `InMemoryCacheStore` per test unitari e ambienti JVM. |
-| `platform.android` | `AndroidAssetProvider`<br>`AndroidLocationProvider.kt`<br>`AndroidPlatformNavigator`<br>`AndroidSensorOrientationProvider.kt`<br>`AndroidSharedPreferencesStorage`<br>`AndroidSqliteCacheStore.kt`<br>`HeatmapBitmapExtensions.kt` | **Adapter Android:** Implementazioni concrete collegate alle API di Google Play Services, Android `SensorManager`, `AssetManager`, `SharedPreferences` e database relazionale nativo `SQLiteOpenHelper` (`AndroidSqliteCacheStore`) per caching HTTP a bassissima latenza con indici geospaziali e temporali. Conversioni grafiche raster-to-bitmap. |
+| `model` | `DailyOutlook.kt`<br>`EcologicalWeightsConfig.kt`<br>`Factor.kt`<br>`GeocodingModel.kt`<br>`HeatmapModel.kt`<br>`HeatmapRenderConfig.kt`<br>`MushroomSpecies.kt`<br>`OverpassModel.kt`<br>`PlaceName.kt`<br>`ProbabilityTier.kt`<br>`SavedLocation.kt`<br>`SpunModel.kt`<br>`TerrainAspectConfig.kt`<br>`TerrainModel.kt`<br>`WeatherModel.kt` | **Dominio Puro:** Data classes, DTO per le API remote, strutture dati immutabili. `HeatmapRaster` definisce il buffer 32-bit grezzo agnostico. `MushroomSpecies` racchiude il catalogo tassonomico delle 10 specie con avvisi sosia tossici (`toxicLookAlikes`). DTO arricchiti: `OverpassCenter` e `OverpassElement.coordinate` (unificazione nodi/ways), `ClosestCoverageResult` (stazione SPUN più vicina e distanza in km), `SavedLocation.savedAt`. Nessuna dipendenza dal framework Android. |
+| `platform` | `AssetProvider.kt`<br>`InMemoryCacheStore.kt`<br>`KeyValueStorage.kt`<br>`PlatformAiEngine.kt`<br>`PlatformCacheStore.kt`<br>`PlatformLocationProvider.kt`<br>`PlatformNavigator.kt`<br>`PlatformOrientationProvider.kt`<br>`UserLocation.kt` | **Porte Agnostiche:** Interfacce del pattern esagonale che disaccoppiano l'accesso all'hardware, allo storage persistente e al file system. I contratti (`PlatformCacheStore` con `get` e `getIgnoreExpiry`, `KeyValueStorage`, `AssetProvider`, `PlatformAiEngine`, ecc.) e i modelli associati (`UserLocation`, `DeviceHeading`, `MapOrientationMode`, `CacheStats`) contengono 0 import di sistema. Include `InMemoryCacheStore` per test unitari e ambienti JVM. |
+| `platform.android` | `AndroidAssetProvider`<br>`AndroidLocationProvider.kt`<br>`AndroidPlatformNavigator`<br>`AndroidSensorOrientationProvider.kt`<br>`AndroidSharedPreferencesStorage`<br>`AndroidSqliteCacheStore.kt`<br>`HeatmapBitmapExtensions.kt` | **Adapter Android:** Implementazioni concrete collegate alle API di Google Play Services, Android `SensorManager`, `AssetManager`, `SharedPreferences` e database relazionale nativo `SQLiteOpenHelper` (`AndroidSqliteCacheStore` con supporto `getIgnoreExpiry`) per caching HTTP a bassissima latenza con indici geospaziali e temporali. Conversioni grafiche raster-to-bitmap. |
 | `network` | `ApiServices.kt`<br>`LocalAiService.kt`<br>`NetworkClient.kt` | Client HTTP Retrofit per Open-Meteo, Nominatim e Overpass API (con User-Agent parametrico e pre-allocazione dei client mirror); adapter locale Google AI Edge AICore per Gemini Nano. |
-| `repository` | `CacheManager.kt`<br>`MushroomRepository.kt`<br>`SpunDataManager.kt` | Aggregazione di fonti dati concorrenti, architettura di caching a doppio motore (preferenze utente su `KeyValueStorage`, risposte di rete su `PlatformCacheStore` indicizzato con TTL automatico e cancellazione isolata), lettura e decompressione zlib dell'atlante miceliare SPUN. |
-| `ui.components` | `AnomalyNotice.kt`<br>`CompassRoseDial.kt`<br>`DayRow.kt`<br>`EmptyState.kt`<br>`FactorRow.kt`<br>`FieldNote.kt`<br>`HeatmapOverlay.kt`<br>`MapViewContainer.kt`<br>`MushroomComponents.kt`<br>`MycoDivider.kt`<br>`ProbabilityBar.kt`<br>`ProbabilityHeadline.kt`<br>`RenameFavoriteDialog.kt`<br>`SafetyDisclaimerDialog.kt`<br>`SpeciesSelectionSheet.kt`<br>`TrendCurve.kt`<br>`UserBearingOverlay.kt` | Componenti Compose modulari, atomici e riutilizzabili. Layout tabulari con protezione da starvation orizzontale. Modale di sicurezza micologica (`SafetyDisclaimerDialog`). Bridge AndroidView per OsmDroid MapView con gestione ciclo di vita. |
-| `ui.screens` | `ForecastScreen.kt`<br>`HomeScreen.kt`<br>`MapScreen.kt`<br>`MushroomApp.kt`<br>`SettingsScreen.kt` | Schermate principali di navigazione: registro fenologico giornaliero, tavola cartografica interattiva, impostazioni e scaffold applicativo. |
+| `repository` | `CacheManager.kt`<br>`MushroomRepository.kt`<br>`SpunDataManager.kt` | Aggregazione di fonti dati concorrenti, architettura di caching a doppio motore con supporto `getIgnoreExpiry` per modalità da campo offline, sniffer di prossimità SPUN su 11 stazioni sentinella (`findClosestCoveragePoint`), snapping reale su poligoni forestali OSM (`findNearestForest`), prefetch completo per uso offline (`prefetchCompleteLocation`), decompressione zlib dell'atlante SPUN. Constructor injection con default parameters per testabilità. |
+| `ui.components` | `AnomalyNotice.kt`<br>`CompassRoseDial.kt`<br>`DayRow.kt`<br>`EmptyState.kt`<br>`FactorRow.kt`<br>`FieldNote.kt`<br>`HeatmapOverlay.kt`<br>`MapViewContainer.kt`<br>`MushroomComponents.kt`<br>`MycoDivider.kt`<br>`ProbabilityBar.kt`<br>`ProbabilityHeadline.kt`<br>`RenameFavoriteDialog.kt`<br>`SafetyDisclaimerDialog.kt`<br>`SpeciesSelectionSheet.kt`<br>`TrendCurve.kt`<br>`UserBearingOverlay.kt` | Componenti Compose modulari, atomici e riutilizzabili. Layout tabulari con protezione da starvation orizzontale. Modale di sicurezza micologica (`SafetyDisclaimerDialog`). Banner diagnostici (`HabitatAnomalyNotice`, `OutsideCoverageNotice` dinamico con distanza/stazione, `OfflineCacheNotice` da campo). Bridge AndroidView per OsmDroid MapView con gestione ciclo di vita. |
+| `ui.screens` | `ForecastScreen.kt`<br>`HomeScreen.kt`<br>`MapScreen.kt`<br>`MushroomApp.kt`<br>`SettingsScreen.kt` | Schermate principali di navigazione: registro fenologico giornaliero, tavola cartografica interattiva, impostazioni (con diagnostica storage e tool di prefetch offline asincrono con progress spinner) e scaffold applicativo. |
 | `ui.theme` | `Color.kt`<br>`MycoColors.kt`<br>`Shape.kt`<br>`Theme.kt`<br>`ThemePreference.kt`<br>`Type.kt` | Design System *Herbarium*: token cromatici botanici, tipografia editoriale (Newsreader, Inter, CodeTech) e persistenza del tema chiaro/scuro via DataStore. |
-| `ui.viewmodel` | `MushroomViewModel.kt` | State Holder centrale dell'applicazione: orchestrazione coroutine su `viewModelScope`, calcoli paralleli, gestione preferiti, cronologia e sanitizzazione AI. |
-| `utils` | `HeatmapGenerator.kt`<br>`MushroomAlgorithms.kt`<br>`NavigationHelper.kt` | Motori matematici puri: calcolo curve di crescita biologica, orografia DEM a 5 punti, fasi lunari e generatore raster $96 \times 96$ a pixel ARGB. |
+| `ui.viewmodel` | `MushroomViewModel.kt` | State Holder centrale dell'applicazione: orchestrazione coroutine su `viewModelScope`, calcoli paralleli, gestione preferiti, cronologia, snap to nearest forest / closest station, modalità offline da campo (`isOfflineFieldMode`), prefetch offline asincrono e sanitizzazione AI. |
+| `utils` | `HeatmapGenerator.kt`<br>`MushroomAlgorithms.kt`<br>`NavigationHelper.kt` | Motori matematici puri: calcolo curve di crescita biologica, orografia DEM a 5 punti, formula geodetica ortodromica Haversine (`haversineDistanceKm`), fasi lunari e generatore raster $96 \times 96$ a pixel ARGB. |
 
 ### 2.3 Diagramma Architetturale Mermaid (Core & Ports)
 
@@ -507,6 +509,33 @@ La distribuzione geografica della probabilità su scala territoriale è calcolat
 * **Sfumatura Morbida (Feathering Radiale):** Sull'ultimo 25% del raggio esterno ($r \in [26.25, 35.0]\text{ km}$), l'opacità viene gradualmente azzerata tramite la funzione di transizione $C^1$ smoothstep $S(t) = 3t^2 - 2t^3$.
 * **Finestra di Opacità Dinamica Bilanciata:** L'opacità scala tra $115$ e $180$ ($\sim 45\% \dots 70\%$) garantendo leggibilità sia delle curve di livello topografiche sottostanti sia delle zone a massima probabilità.
 
+### 4.8 Calcolo Spaziale Haversine e Snapping Forestale Reale (`findNearestForest`)
+In precedenza, quando un utente selezionava un punto al di fuori della copertura arborea o miceliare, l'applicazione applicava un offset empirico fittizio e arbitrario $(\Delta\text{lat} = +0.015^\circ, \Delta\text{lon} = +0.015^\circ)$, rischiando di riposizionare l'utente su aree urbane, autostrade o laghi anziché in un bosco reale (debito tecnico **TD-01** / **TASK-03**).
+
+A partire dalla versione 1.2, il riposizionamento si basa su una scansione geospaziale autentica basata su Overpass QL e geometria sferica:
+
+#### 1. Formula Geodetica Ortodromica di Haversine (`MushroomAlgorithms.kt:457`)
+La distanza superficiale tra due coordinate geografiche $(\phi_1, \lambda_1)$ e $(\phi_2, \lambda_2)$ sulla Terra (raggio medio volumetrico $R = 6371.0\text{ km}$) è calcolata in Kotlin puro senza dipendenze `android.location.Location`:
+$$\Delta\phi = \phi_2 - \phi_1, \qquad \Delta\lambda = \lambda_2 - \lambda_1$$
+$$a = \sin^2\left(\frac{\Delta\phi}{2}\right) + \cos(\phi_1)\cos(\phi_2)\sin^2\left(\frac{\Delta\lambda}{2}\right)$$
+$$c = 2 \cdot \text{atan2}\left(\sqrt{a}, \sqrt{1 - a}\right), \qquad d = R \cdot c$$
+
+#### 2. Query Geospaziale Bounded Box OSM Overpass (`MushroomRepository.kt:335`)
+Alla richiesta di "Aggancia al bosco più vicino" (`snapToNearestForest` in `MushroomViewModel`), il repository esegue una query Overpass circoscritta a un raggio di $\pm 0.18^\circ$ ($\sim 20\text{ km}$ attorno alle coordinate selezionate):
+```overpassql
+[out:json][timeout:15];
+(
+  nwr["landuse"="forest"](south,west,north,east);
+  nwr["natural"="wood"](south,west,north,east);
+);
+out center;
+```
+
+#### 3. Unificazione Poligonale e Minimo Geodetico (`OverpassElement.coordinate`)
+Grazie alla direttiva `out center;`, il parser Retrofit memorizza sia le coordinate dirette dei nodi sia il baricentro calcolato dal server per way e relation poligonali (`OverpassCenter`). L'algoritmo filtra tutti gli elementi dotati di coordinate valide e identifica l'elemento con distanza geodetica minima:
+$$\text{nearestElement} = \arg\min_{e \in \text{elements}} \text{haversineDistanceKm}(\text{lat}, \text{lon}, e.\text{lat}, e.\text{lon})$$
+Se individuato un bosco entro la soglia di ricerca, le coordinate selezionate vengono aggiornate esattamente sul baricentro del poligono forestale, ricalcolando istantaneamente il bollettino micologico su suolo idoneo.
+
 ---
 
 ## 5. Sottosistema Cartografico OsmDroid
@@ -633,6 +662,22 @@ I dati scientifici sulla biomassa e ricchezza ectomicorrizica sono codificati ne
 * **Matrice `hyphalData`:** $\text{gridSize}$ byte contenenti la biomassa fungina sotterranea. Il valore uint8 diviso per $20.0$ esprime la densità di ife in metri lineari per centimetro cubo di suolo ($\text{m/cm}^3$).
 * **Smoothing Spaziale ad Area Circolare:** Per prevenire artefatti dovuti a celle isolate, la funzione `getSpunData(lat, lon, radiusMeters)` campiona le celle nel raggio prescelto e calcola l'**80° percentile ponderato**, restituendo una stima robusta della macchia forestale circostante.
 
+#### Rete di Sentinelle e Prossimità Dinamica (`findClosestCoveragePoint`, TD-02)
+Per i punti situati oltre i confini della griglia SPUN (o in aree alpine/marittime marginali), `SpunDataManager` include una rete di **11 stazioni sentinella** dislocate lungo i principali archi montuosi e confini d'Italia:
+1. *Valico di Courmayeur* ($45.796^\circ\text{N}, 6.968^\circ\text{E}$)
+2. *Gran San Bernardo* ($45.869^\circ\text{N}, 7.170^\circ\text{E}$)
+3. *Passo del Brennero* ($47.006^\circ\text{N}, 11.506^\circ\text{E}$)
+4. *Tarvisio Confine* ($46.504^\circ\text{N}, 13.578^\circ\text{E}$)
+5. *Parco Alpi Marittime* ($44.200^\circ\text{N}, 7.300^\circ\text{E}$)
+6. *Foreste Casentinesi* ($43.850^\circ\text{N}, 11.750^\circ\text{E}$)
+7. *Parco Gran Sasso* ($42.450^\circ\text{N}, 13.550^\circ\text{E}$)
+8. *Parco Nazionale del Pollino* ($39.900^\circ\text{N}, 16.200^\circ\text{E}$)
+9. *Parco Nazionale dell'Aspromonte* ($38.150^\circ\text{N}, 15.900^\circ\text{E}$)
+10. *Parco delle Madonie* ($37.880^\circ\text{N}, 14.020^\circ\text{E}$)
+11. *Massiccio del Gennargentu* ($40.020^\circ\text{N}, 9.320^\circ\text{E}$)
+
+La funzione `findClosestCoveragePoint(lat, lon): ClosestCoverageResult` valuta le distanze ortodromiche Haversine verso tutte le sentinelle e restituisce il punto di copertura più prossimo con la distanza esatta in km. Il componente `OutsideCoverageNotice` visualizza il toponimo del landmark e la distanza calcolata, offrendo il riposizionamento immediato tramite `snapToClosestCoverage()`.
+
 ### 6.4 Architettura Dual-Engine e Matrice TTL della Cache (`CacheManager`)
 In conformità a `AGENTS.md` (Sezione 4.10) e per risolvere definitivamente il debito tecnico **TD-18**, `CacheManager` adotta un'architettura di persistenza a doppio motore rigorosamente isolato:
 1. **Motore Preferenze Utente (`KeyValueStorage`):** Persiste preferenze operative (stile mappa, raggio di ricerca, soglia di evidenziazione, attivazione AI locale, flag accettazione disclaimer di sicurezza), elenco dei luoghi preferiti con soprannomi personalizzati e cronologia dei punti recenti. Questo archivio non viene **mai** intaccato dalle operazioni di svuotamento cache.
@@ -655,6 +700,20 @@ Ogni tipologia di dato possiede un periodo di validità (Time-To-Live) commisura
 * **Deduplicazione Spaziale:** Le coordinate salvate vengono deduplicate a una precisione di 3 cifre decimali ($\sim 111\text{ metri}$), evitando registrazioni ridondanti dello stesso versante boschivo.
 * **Cronologia Recenti (LRU):** Mantiene fino a un massimo di 8 elementi, con esclusione automatica dei toponimi generici ("Punto selezionato", "Posizione GPS").
 * **Prefetch Silenzioso:** All'avvio dell'applicazione, `prefetchFavorites()` verifica l'età della cache meteo dei luoghi salvati tra i preferiti: se il dato ha un'età superiore a $45\text{ minuti}$, viene aggiornato in background in modo che la consultazione successiva sia istantanea e fruibile anche in assenza di copertura cellulare nel bosco.
+
+### 6.6 Resilienza Offline da Campo, Fallback su Cache Scaduta e Sincronizzazione Asincrona (`prefetchForOfflineUse`, FEAT-04)
+Durante le escursioni micologiche in valli isolate e foreste dense, la copertura cellulare è sovente assente o instabile. In un'architettura standard, la scadenza del TTL eliminerebbe il dato dalla cache, provocando eccezioni di rete e schermate vuote.
+
+A partire dalla versione 1.2, Myco adotta una strategia di resilienza da campo a triplo livello:
+
+1. **Bypass Conservativo del TTL (`getIgnoreExpiry`):**
+   `PlatformCacheStore.getIgnoreExpiry(key)` consente di interrogare il record memorizzato nel database SQLite senza verificare la scadenza temporale e senza invocare la cancellazione automatica della riga.
+2. **Fallback Trasparente del Repository (`MushroomRepository.kt`):**
+   In caso di fallimento della chiamata remota (`fetchWeather`, `reverseGeocode`, `fetchHabitat`, `fetchSpecificHabitatBonus`, `fetchTerrainAspect`), il repository intercetta l'eccezione di rete e tenta il recupero del dato tramite `cacheManager.getCachedDataIgnoreExpiry()`. Se presente un payload memorizzato in passato, il dato viene restituito contrassegnando la sessione come attiva in modalità campo (`isOfflineFieldMode = true`).
+3. **Banner Informativo di Campo (`OfflineCacheNotice`):**
+   L'interfaccia utente notifica chiaramente lo stato di assenza di segnale tramite un banner ambrato con icona `Icons.Outlined.CloudOff`, segnalando che l'analisi è basata sull'ultimo snapshot meteorologico e cartografico archiviato.
+4. **Tool di Archiviazione Offline Preventiva (`prefetchForOfflineUse`):**
+   Nella schermata `SettingsScreen`, l'utente può avviare la sincronizzazione manuale di tutti i punti preferiti e recenti prima di partire per l'escursione. Il metodo `prefetchCompleteLocation(lat, lon, species)` pre-popola la cache locale eseguendo query concorrenti per meteo, habitat, alberi simbionti e DEM. L'avanzamento è visualizzato con `CircularProgressIndicator` e confermato da una notifica con conteggio formattato via plurals (`settings_sync_completed`).
 
 ---
 

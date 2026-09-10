@@ -32,6 +32,10 @@ class InMemoryCacheStore : PlatformCacheStore {
         }
     }
 
+    override fun getIgnoreExpiry(key: String): String? {
+        return entries[key]?.data
+    }
+
     override fun put(key: String, dataJson: String, lat: Double?, lon: Double?, ttlMs: Long) {
         entries[key] = Entry(
             data = dataJson,

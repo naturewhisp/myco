@@ -26,6 +26,10 @@ local.properties
 captures/
 .cxx/
 
+# Dataset geospaziali raw (GeoTIFF pesanti non versionati)
+*.tif
+*.tiff
+
 # ===================================================================
 # File di firma (MOLTO IMPORTANTE)
 # ===================================================================

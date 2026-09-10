@@ -679,6 +679,10 @@ Per i punti situati oltre i confini della griglia SPUN (o in aree alpine/maritti
 
 La funzione `findClosestCoveragePoint(lat, lon): ClosestCoverageResult` valuta le distanze ortodromiche Haversine verso tutte le sentinelle e restituisce il punto di copertura più prossimo con la distanza esatta in km. Il componente `OutsideCoverageNotice` visualizza il toponimo del landmark e la distanza calcolata, offrendo il riposizionamento immediato tramite `snapToClosestCoverage()`.
 
+> [!TIP]
+> **Guida Operativa alle Nuove Regioni:**  
+> Per la procedura dettagliata di generazione dei file binari `.bin`, le specifiche dell'header a 32 byte e la pipeline di aggiunta di nuove macro-regioni (es. Penisola Iberica, Scandinavia), consultare la guida dedicata: [`docs/ADDING_NEW_REGIONS.md`](ADDING_NEW_REGIONS.md).
+
 ### 6.4 Architettura Dual-Engine e Matrice TTL della Cache (`CacheManager`)
 In conformità a `AGENTS.md` (Sezione 4.10) e per risolvere definitivamente il debito tecnico **TD-18**, `CacheManager` adotta un'architettura di persistenza a doppio motore rigorosamente isolato:
 1. **Motore Preferenze Utente (`KeyValueStorage`):** Persiste preferenze operative (stile mappa, raggio di ricerca, soglia di evidenziazione, attivazione AI locale, flag accettazione disclaimer di sicurezza), elenco dei luoghi preferiti con soprannomi personalizzati e cronologia dei punti recenti. Questo archivio non viene **mai** intaccato dalle operazioni di svuotamento cache.

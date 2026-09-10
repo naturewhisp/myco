@@ -598,6 +598,9 @@ Nelle valli alpine e appenniniche la connettività cellulare è spesso assente.
 * **Degradazione Elegante della UI**:
   Transizione automatica a banner "Modalità Campo Offline", calcolo dei modelli basato sulle tendenze salvate e disattivazione delle query Overpass senza blocchi o errori di rete.
 
+* **Pipeline di Espansione Regionale**:
+  Le specifiche complete per la generazione dei dataset binari `.bin`, le stazioni sentinella e l'allineamento dell'header a 32 byte per l'espansione a nuove macro-regioni (es. Penisola Iberica, Europa Centrale, Scandinavia) sono documentate in [`docs/ADDING_NEW_REGIONS.md`](ADDING_NEW_REGIONS.md).
+
 ### 5.5 Vettore 5: Sicurezza Micologica, Allarmi Sosia Tossici e Rete ASL
 La sicurezza del raccoglitore è prioritaria. L'applicazione deve fornire salvaguardie legali e sanitarie:
 * **Disclaimer di Responsabilità al Primo Avvio**:

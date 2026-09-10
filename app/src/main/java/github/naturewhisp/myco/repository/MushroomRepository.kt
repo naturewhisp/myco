@@ -1,7 +1,9 @@
 package github.naturewhisp.myco.repository
 
 import com.google.gson.Gson
+import github.naturewhisp.myco.model.EcologicalCategory
 import github.naturewhisp.myco.model.GeocodeResult
+import github.naturewhisp.myco.model.MushroomSpecies
 import github.naturewhisp.myco.model.OverpassResponse
 import github.naturewhisp.myco.model.SpunData
 import github.naturewhisp.myco.model.TerrainAspectConfig
@@ -43,6 +45,9 @@ class MushroomRepository(
         "https://overpass.kumi.systems/",
         "https://overpass.openstreetmap.fr/"
     )
+    private val overpassServices: List<OverpassService> = overpassEndpoints.map {
+        NetworkClient.createService(OverpassService::class.java, it)
+    }
 
     private val gson = Gson()
 
@@ -58,51 +63,57 @@ class MushroomRepository(
         if (cached != null) {
             try {
                 return gson.fromJson(cached, GeocodeResult::class.java)
-            } catch (e: Exception) {
-                e.printStackTrace()
+            } catch (_: Exception) {
+                // Procedi con la query di rete
             }
         }
 
-        val results = geocodingService.searchLocation(query)
-        if (results.isNotEmpty()) {
-            val result = results[0]
-            cacheManager.saveGeocodeCache(cacheKey, gson.toJson(result))
-            return result
-        }
-        return null
-    }
-
-    /**
-     * Esegue il reverse geocoding per risalire al toponimo a partire da latitudine e longitudine WGS84.
-     *
-     * @param latitude Latitudine in gradi decimali.
-     * @param longitude Longitudine in gradi decimali.
-     * @return [GeocodeResult] strutturato, con cache di 7 giorni.
-     */
-    suspend fun reverseGeocode(latitude: Double, longitude: Double): GeocodeResult? {
-        val roundedLat = String.format(Locale.US, "%.3f", latitude)
-        val roundedLon = String.format(Locale.US, "%.3f", longitude)
-        val cacheKey = "reverse_${roundedLat}_${roundedLon}"
-
-        val cached = cacheManager.getCachedData(cacheKey, GeocodeResult::class.java, 7 * 24 * 60 * 60 * 1000L)
-        if (cached != null) return cached
-
         return try {
-            val result = geocodingService.reverseGeocode(latitude, longitude)
-            cacheManager.saveCachedData(cacheKey, result)
-            result
-        } catch (e: Exception) {
-            e.printStackTrace()
+            val results = geocodingService.searchLocation(query)
+            if (results.isNotEmpty()) {
+                val first = results[0]
+                cacheManager.saveGeocodeCache(cacheKey, gson.toJson(first))
+                first
+            } else {
+                null
+            }
+        } catch (_: Exception) {
             null
         }
     }
 
     /**
-     * Recupera le serie temporali meteorologiche (passato 14gg + previsione 7gg) da Open-Meteo.
+     * Esegue il reverse geocoding per ottenere il toponimo dalle coordinate geografiche.
      *
      * @param latitude Latitudine in gradi decimali.
      * @param longitude Longitudine in gradi decimali.
-     * @return [WeatherResponse] con dati orari e giornalieri, con cache di 1 ora.
+     * @return [GeocodeResult] con l'indirizzo risolto, o null se non disponibile.
+     */
+    suspend fun reverseGeocode(latitude: Double, longitude: Double): GeocodeResult? {
+        val roundedLat = String.format(Locale.US, "%.4f", latitude)
+        val roundedLon = String.format(Locale.US, "%.4f", longitude)
+        val cacheKey = "rev_${roundedLat}_${roundedLon}"
+
+        val cached = cacheManager.getCachedData(cacheKey, GeocodeResult::class.java, 7 * 24 * 60 * 60 * 1000) // 7 days
+        if (cached != null) {
+            return cached
+        }
+
+        return try {
+            val result = geocodingService.reverseGeocode(latitude, longitude)
+            cacheManager.saveCachedData(cacheKey, result)
+            result
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Recupera le previsioni e lo storico meteorologico orario e giornaliero da Open-Meteo.
+     *
+     * @param latitude Latitudine in gradi decimali.
+     * @param longitude Longitudine in gradi decimali.
+     * @return [WeatherResponse] con temperature, precipitazioni, umidità relativa e parametri orari, con cache di 1 ora.
      */
     suspend fun fetchWeather(latitude: Double, longitude: Double): WeatherResponse {
         val roundedLat = String.format(Locale.US, "%.4f", latitude)
@@ -120,9 +131,7 @@ class MushroomRepository(
     }
 
     /**
-     * Interroga l'API Overpass di OpenStreetMap per quantificare i poligoni boschivi nell'area.
-     *
-     * Implementa il failover automatico su endpoint mirror europei in caso di timeout.
+     * Interroga le API Overpass OSM per stimare la copertura boschiva e forestale attorno al punto.
      *
      * @param latitude Latitudine in gradi decimali.
      * @param longitude Longitudine in gradi decimali.
@@ -141,30 +150,36 @@ class MushroomRepository(
         val radius = cacheManager.radius
         val query = "[out:json];(nwr[\"natural\"=\"wood\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"=\"forest\"](around:$radius,$latitude,$longitude););out body;"
 
-        for (baseUrl in overpassEndpoints) {
+        for (service in overpassServices) {
             try {
-                val service = NetworkClient.createService(OverpassService::class.java, baseUrl)
                 val response = service.queryOverpass(query)
                 cacheManager.saveCachedData(cacheKey, response)
                 return response
-            } catch (e: Exception) {
-                e.printStackTrace()
+            } catch (_: Exception) {
+                // Prova il mirror Overpass successivo
             }
         }
         return null
     }
 
     /**
-     * Interroga Overpass per rilevare la presenza di generi arborei forestali specifici e simbionti.
+     * Interroga Overpass per rilevare la presenza di generi arborei forestali specifici e simbionti
+     * parametrati sulle preferenze ecologiche della specie micologica selezionata.
      *
      * @param latitude Latitudine in gradi decimali.
      * @param longitude Longitudine in gradi decimali.
-     * @return [OverpassResponse] con essenze arboree rilevate, con cache di 24 ore.
+     * @param species Specie micologica target per filtrare i generi arborei simbionti (OSM genus).
+     * @return [OverpassResponse] con essenze arboree rilevate, con cache di 24 ore isolata per specie.
      */
-    suspend fun fetchSpecificHabitatBonus(latitude: Double, longitude: Double): OverpassResponse? {
+    suspend fun fetchSpecificHabitatBonus(
+        latitude: Double,
+        longitude: Double,
+        species: MushroomSpecies? = null
+    ): OverpassResponse? {
         val roundedLat = String.format(Locale.US, "%.4f", latitude)
         val roundedLon = String.format(Locale.US, "%.4f", longitude)
-        val cacheKey = "habitat_bonus_${roundedLat}_${roundedLon}"
+        val speciesKey = species?.id ?: "general"
+        val cacheKey = "habitat_bonus_${speciesKey}_${roundedLat}_${roundedLon}"
 
         val cached = cacheManager.getCachedData(cacheKey, OverpassResponse::class.java, 24 * 60 * 60 * 1000) // 24 hours
         if (cached != null) {
@@ -172,16 +187,41 @@ class MushroomRepository(
         }
 
         val radius = cacheManager.radius
-        val query = "[out:json];(nwr[\"leaf_type\"~\"broadleaved|needleleaved\"](around:$radius,$latitude,$longitude);nwr[\"genus\"~\"Fagus|Quercus|Castanea|Pinus|Picea|Abies\"](around:$radius,$latitude,$longitude););out body;"
+        val knownGeneraMap = mapOf(
+            "fagus" to "Fagus",
+            "quercus" to "Quercus",
+            "castanea" to "Castanea",
+            "pinus" to "Pinus",
+            "picea" to "Picea",
+            "abies" to "Abies",
+            "betula" to "Betula",
+            "larix" to "Larix",
+            "populus" to "Populus",
+            "salix" to "Salix",
+            "ostrya" to "Ostrya",
+            "carpinus" to "Carpinus",
+            "corylus" to "Corylus"
+        )
+        val targetGenera = species?.preferredCanopyTypes?.mapNotNull { knownGeneraMap[it.lowercase()] } ?: emptyList()
+        val genusRegex = if (targetGenera.isNotEmpty()) {
+            targetGenera.distinct().joinToString("|")
+        } else {
+            "Fagus|Quercus|Castanea|Pinus|Picea|Abies"
+        }
 
-        for (baseUrl in overpassEndpoints) {
+        val query = if (species?.category == EcologicalCategory.SAPROTROPHIC) {
+            "[out:json];(nwr[\"landuse\"~\"meadow|grass|pasture\"](around:$radius,$latitude,$longitude);nwr[\"natural\"~\"grassland|heath\"](around:$radius,$latitude,$longitude);nwr[\"leaf_type\"~\"broadleaved|needleleaved\"](around:$radius,$latitude,$longitude););out body;"
+        } else {
+            "[out:json];(nwr[\"leaf_type\"~\"broadleaved|needleleaved\"](around:$radius,$latitude,$longitude);nwr[\"genus\"~\"$genusRegex\"](around:$radius,$latitude,$longitude););out body;"
+        }
+
+        for (service in overpassServices) {
             try {
-                val service = NetworkClient.createService(OverpassService::class.java, baseUrl)
                 val response = service.queryOverpass(query)
                 cacheManager.saveCachedData(cacheKey, response)
                 return response
-            } catch (e: Exception) {
-                e.printStackTrace()
+            } catch (_: Exception) {
+                // Prova il mirror Overpass successivo
             }
         }
         return null

@@ -1,11 +1,15 @@
 package github.naturewhisp.myco
 
+import github.naturewhisp.myco.model.DailyData
 import github.naturewhisp.myco.model.FactorId
 import github.naturewhisp.myco.model.FactorLevel
+import github.naturewhisp.myco.model.HourlyData
 import github.naturewhisp.myco.model.SPECIES_CATALOG
+import github.naturewhisp.myco.model.WeatherResponse
 import github.naturewhisp.myco.utils.MushroomAlgorithms
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Calendar
@@ -346,5 +350,95 @@ class MushroomAlgorithmsTest {
         assertTrue("Propizio deve avere R nettamente superiore a G", r68 > g68)
         // Culmine (85) è cremisi profondo: R dominante, G basso
         assertTrue("Culmine deve essere rosso granato con G basso", r85 > g85 && g85 < 50)
+    }
+
+    @Test
+    fun testSoilMoistureScoreSmooth_NullInputs() {
+        val score = MushroomAlgorithms.soilMoistureScoreSmooth(null, null, null)
+        assertEquals(1.0, score, 0.001)
+    }
+
+    @Test
+    fun testSoilMoistureScoreSmooth_OptimalConditions() {
+        val score = MushroomAlgorithms.soilMoistureScoreSmooth(0.30, 0.28, 1.5)
+        assertEquals(1.0, score, 0.001)
+    }
+
+    @Test
+    fun testSoilMoistureScoreSmooth_DesiccatedConditions() {
+        val score = MushroomAlgorithms.soilMoistureScoreSmooth(0.08, 0.10, 2.0)
+        assertTrue("Suolo disidratato deve produrre punteggio basso", score <= 0.25)
+    }
+
+    @Test
+    fun testSoilMoistureScoreSmooth_WaterloggedPenalty() {
+        val score = MushroomAlgorithms.soilMoistureScoreSmooth(0.50, 0.46, 1.0)
+        assertTrue("Suolo saturo/asfittico deve essere penalizzato", score < 0.70)
+    }
+
+    @Test
+    fun testSoilMoistureScoreSmooth_EvapotranspirationImpact() {
+        val scoreLowET0 = MushroomAlgorithms.soilMoistureScoreSmooth(0.20, 0.22, 1.0)
+        val scoreHighET0 = MushroomAlgorithms.soilMoistureScoreSmooth(0.20, 0.22, 5.0)
+        assertTrue("Forte evapotraspirazione deve ridurre l'idratazione efficace", scoreHighET0 < scoreLowET0)
+    }
+
+    @Test
+    fun testProcessWeatherData_AggregatesSoilMoistureAndET0() {
+        val hours = listOf("2026-09-10T00:00", "2026-09-10T12:00")
+        val hourly = HourlyData(
+            time = hours,
+            temperature2m = listOf(16.0f, 20.0f),
+            relativeHumidity2m = listOf(80.0f, 60.0f),
+            precipitation = listOf(1.0f, 3.0f),
+            soilMoisture0To7cm = listOf(0.28f, 0.32f),
+            soilMoisture7To28cm = listOf(0.24f, 0.26f),
+            evapotranspiration = listOf(0.8f, 1.4f)
+        )
+        val daily = DailyData(time = listOf("2026-09-10"), weatherCode = listOf(2))
+        val response = WeatherResponse(elevation = 800f, timezone = "Europe/Rome", hourly = hourly, daily = daily)
+
+        val processed = MushroomAlgorithms.processWeatherData(response)
+        assertEquals(1, processed.size)
+        val day = processed[0]
+        assertEquals("2026-09-10", day.date)
+        assertEquals(18.0f, day.avgTemp, 0.01f)
+        assertEquals(4.0f, day.totalPrecip, 0.01f)
+        assertEquals(70.0f, day.avgHumidity, 0.01f)
+        assertNotNull(day.avgSoilMoisture0To7cm)
+        assertEquals(0.30f, day.avgSoilMoisture0To7cm!!, 0.01f)
+        assertNotNull(day.avgSoilMoisture7To28cm)
+        assertEquals(0.25f, day.avgSoilMoisture7To28cm!!, 0.01f)
+        assertNotNull(day.totalEvapotranspiration)
+        assertEquals(2.2f, day.totalEvapotranspiration!!, 0.01f)
+    }
+
+    @Test
+    fun testCalculateFactors_IncludesSoilMoistureFactor() {
+        val moon = MushroomAlgorithms.getMoonPhase()
+        val factors = MushroomAlgorithms.calculateFactors(
+            avgTemp = 18.0,
+            totalRain = 45.0,
+            avgHumidity = 80.0,
+            habitatScore = 1.0,
+            habitatText = "Bosco misto",
+            elevation = 900f,
+            month = 9,
+            growthPhaseText = "Buttata attiva",
+            moon = moon,
+            slopeText = "Solatìo",
+            avgSoilMoisture0To7 = 0.32f,
+            avgSoilMoisture7To28 = 0.28f,
+            totalEvapotranspiration = 2.1f
+        )
+
+        val soilFactor = factors.firstOrNull { it.id == FactorId.SOIL_MOISTURE }
+        assertNotNull("Deve includere il fattore SOIL_MOISTURE", soilFactor)
+        assertEquals("Idratazione suolo", soilFactor!!.label)
+        assertEquals("0,32 m³/m³", soilFactor.formattedValue)
+        assertEquals(FactorLevel.FAVORABLE, soilFactor.level)
+        assertTrue(soilFactor.detail.contains("Orizzonte primordi 0-7 cm"))
+        assertTrue(soilFactor.detail.contains("Radici 0,28"))
+        assertTrue(soilFactor.detail.contains("ET0 2,1 mm"))
     }
 }

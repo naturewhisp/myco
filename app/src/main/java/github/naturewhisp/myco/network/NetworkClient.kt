@@ -13,6 +13,9 @@ import java.util.concurrent.TimeUnit
  * i termini di servizio di Nominatim e Overpass, gestendo il parsing JSON tramite [GsonConverterFactory].
  */
 object NetworkClient {
+    /** Header identificativo inviato con ogni richiesta HTTP conforme alle policy OSM. */
+    var userAgent: String = "Myco/1.2 (github.naturewhisp.myco; Android)"
+
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.NONE
     }
@@ -20,7 +23,7 @@ object NetworkClient {
     private val httpClient = OkHttpClient.Builder()
         .addInterceptor { chain ->
             val request = chain.request().newBuilder()
-                .header("User-Agent", "MycoPorciniAndroid/1.0 (github.naturewhisp.myco)")
+                .header("User-Agent", userAgent)
                 .header("Accept", "application/json")
                 .build()
             chain.proceed(request)

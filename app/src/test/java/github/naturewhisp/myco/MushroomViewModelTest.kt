@@ -1,6 +1,7 @@
 package github.naturewhisp.myco
 
 import github.naturewhisp.myco.model.DailyData
+import github.naturewhisp.myco.model.FactorId
 import github.naturewhisp.myco.model.HourlyData
 import github.naturewhisp.myco.model.SPECIES_CATALOG
 import github.naturewhisp.myco.model.WeatherResponse
@@ -27,6 +28,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -49,9 +51,10 @@ class MushroomViewModelTest {
     }
 
     private val testDispatcher = StandardTestDispatcher()
+
     private lateinit var cacheManager: CacheManager
-    private lateinit var repository: MushroomRepository
     private lateinit var spunDataManager: SpunDataManager
+    private lateinit var repository: MushroomRepository
     private lateinit var localAiService: PlatformAiEngine
     private lateinit var viewModel: MushroomViewModel
 
@@ -103,7 +106,7 @@ class MushroomViewModelTest {
 
         coEvery { repository.fetchWeather(any(), any()) } returns createRealisticWeatherResponse()
         coEvery { repository.fetchHabitat(any(), any()) } returns null
-        coEvery { repository.fetchSpecificHabitatBonus(any(), any()) } returns null
+        coEvery { repository.fetchSpecificHabitatBonus(any(), any(), any()) } returns null
         coEvery { repository.fetchSpunData(any(), any(), any()) } returns null
         coEvery { repository.fetchTerrainAspect(any(), any()) } returns null
         coEvery { repository.reverseGeocode(any(), any()) } returns null
@@ -187,5 +190,28 @@ class MushroomViewModelTest {
         assertEquals(3000, viewModel.searchRadius)
         assertEquals(80, viewModel.highlightThreshold)
         assertEquals("Vuota", viewModel.cacheSize)
+    }
+
+    @Test
+    fun testSelectSpecies_RecalculatesFactorsAndLaunchesHeatmapJob() = runTest(testDispatcher) {
+        viewModel.selectLocation(44.2, 7.9, "Garessio")
+        viewModel.dataFetchJob?.join()
+        assertFalse(viewModel.isLoading)
+
+        val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+        viewModel.selectSpecies(edulis)
+        assertEquals("boletus_edulis", viewModel.selectedSpecies.id)
+        viewModel.heatmapJob?.join()
+
+        // Switch a Macrolepiota procera (saprofita da prato)
+        val macrolepiota = SPECIES_CATALOG.first { it.id == "macrolepiota_procera" }
+        viewModel.selectSpecies(macrolepiota)
+        assertEquals("macrolepiota_procera", viewModel.selectedSpecies.id)
+        viewModel.heatmapJob?.join()
+
+        // Verifica che i fattori e le descrizioni siano aggiornati per la specie saprofita
+        val habFactor = viewModel.factors.firstOrNull { it.id == FactorId.HABITAT }
+        assertNotNull("Fattore HABITAT deve essere presente", habFactor)
+        assertEquals("Idoneità suolo/margine", habFactor!!.label)
     }
 }

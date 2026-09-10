@@ -10,6 +10,8 @@ enum class FactorId {
     PRECIPITATION,
     /** Umidità relativa aria/suolo recente (ultimi 3 giorni). */
     HUMIDITY,
+    /** Contenuto idrico volumetrico del suolo (orizzonti 0-7 cm e 7-28 cm) ed evapotraspirazione ET0. */
+    SOIL_MOISTURE,
     /** Copertura vegetazionale e presenza di essenze arboree simbionti (OSM). */
     HABITAT,
     /** Compatibilità della fascia altimetrica con il profilo della specie. */

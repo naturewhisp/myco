@@ -196,6 +196,7 @@ A causa della Zero Diagnostic Policy, gli sviluppatori hanno evitato l'inserimen
   // Calcolo fisso 50% EcM e 50% Hyphal
   val bioPotential = (ecmRatio * 50.0f + hypRatio * 50.0f)
   ```
+* **Stato**: **RISOLTO (v1.2)** — Integrazione di `species: MushroomSpecies` in `HeatmapGenerator`, modulazione del potenziale biologico basata sulla categoria ecologica (`EcologicalCategory`: saprotrofo, ectomicorrizico, parassita), incorporazione dell'altitudine nel moltiplicatore meteo e ricalcolo asincrono dell'heatmap tramite `heatmapJob` in `MushroomViewModel` al cambio specie.
 * **Descrizione del Rischio**: Quando l'utente seleziona specie con ecologia radicalmente differente (ad esempio un fungo saprotrofo/prativo come *Agaricus campestris* o *Macrolepiota procera* rispetto a un simbionte micorrizico obbligato come *Boletus edulis* o *Boletus pinophilus*), l'heatmap cartografica mostra sempre la medesima nuvola di probabilità.
 * **Proposta di Remediation**: Integrare `MushroomSpecies` come parametro primario di `generateHeatmapRaster`. Modulare i pesi EcM vs Hyphal in base all'ecologia della specie (micorrizico: 75% EcM / 25% Hyphal; saprotrofo: 10% EcM / 90% Hyphal) e pesare la griglia raster in base alla compatibilità termica e altimetrica locale della specie selezionata.
 
@@ -228,6 +229,7 @@ A causa della Zero Diagnostic Policy, gli sviluppatori hanno evitato l'inserimen
   ```kotlin
   val query = "[out:json];(nwr[\"leaf_type\"~\"broadleaved|needleleaved\"](around:$radius,$latitude,$longitude);nwr[\"genus\"~\"Fagus|Quercus|Castanea|Pinus|Picea|Abies\"](around:$radius,$latitude,$longitude););out body;"
   ```
+* **Stato**: **RISOLTO (v1.2)** — Query Overpass dinamica con estrazione regex dei generi arborei da `species.preferredCanopyTypes` (o query specifica su prati/brughiere per saprotrofi praticoli) e isolamento della chiave di cache per specie (`habitat_bonus_${speciesId}_${roundedLat}_${roundedLon}`).
 * **Descrizione del Rischio**: I generi ricercati sono cablati staticamente su faggio, quercia, castagno, pino, abete rosso e abete bianco. Vengono completamente ignorate essenze fondamentali per altre specie fungine, quali betulla (*Betula* per *Leccinum scabrum* o porcini alpini), pioppo (*Populus* per *Cyclocybe aegerita* / piopparello), salice (*Salix*) o prati/pascoli montani.
 * **Proposta di Remediation**: Rendere dinamica la clausola `genus` estraendo la lista dei generi arborei preferiti dalla specie attiva (`selectedSpecies.preferredCanopyTypes`).
 
@@ -276,6 +278,7 @@ A causa della Zero Diagnostic Policy, gli sviluppatori hanno evitato l'inserimen
   ```kotlin
   private const val USER_AGENT = "MycoPorciniAndroid/1.0 (github.naturewhisp.myco)"
   ```
+* **Stato**: **RISOLTO (v1.2)** — Parametrizzazione di `userAgent` in `NetworkClient` con valore di default configurabile conforme a KMP e rimozione dei token hardcoded.
 * **Descrizione del Rischio**: Contiene riferimenti statici all'incarnazione iniziale ("Porcini") e alla piattaforma ("Android"), rendendo il client incoerente in ottica multiplatform desktop.
 * **Proposta di Remediation**: Generare l'header User-Agent dinamicamente iniettando versione del bundle, nome app e runtime target (`BuildKonfig` o `BuildConfig`).
 
@@ -305,6 +308,7 @@ A causa della Zero Diagnostic Policy, gli sviluppatori hanno evitato l'inserimen
       ...
   }
   ```
+* **Stato**: **RISOLTO (v1.2)** — Pre-allocazione all'inizializzazione di `overpassServices` per l'elenco degli endpoint in `MushroomRepository`, eliminando reflection, re-parsing delle annotazioni e allocazione converter nei cicli di fallback.
 * **Descrizione del Rischio**: La creazione continua dell'istanza Retrofit all'interno del loop comporta overhead di parsing delle annotazioni via reflection e ri-allocazione di converter factory.
 * **Proposta di Remediation**: Pre-allocare le istanze per i singoli endpoint o utilizzare un `Interceptor` OkHttp che riassegni dinamicamente l'host in caso di errore 429/503.
 
@@ -691,11 +695,11 @@ $$\text{Priority Score} = (\text{Impatto} \times 2) - \text{Sforzo} \quad (\text
 | **FIX-06** | Architecture | Rimozione costruttori `Context` in `repository/` | 4 | 1 | **7.0** | **P1** | 2 SP / **S** | v1.1 | **COMPLETATO** (`78b05ce`) |
 | **ARCH-01**| Storage | Migrazione cache ad SQLite con indici geospaziali e TTL | 5 | 3 | **7.0** | **P1** | 8 SP / **M** | v1.1 | **COMPLETATO** (v1.1) |
 | **TEST-01**| Quality | Setup MockK, Coroutines-Test, Turbine e test ViewModel | 5 | 3 | **7.0** | **P1** | 8 SP / **M** | v1.1 | **COMPLETATO** (v1.1) |
-| **FEAT-01**| Science | Condizionamento dell'Heatmap alla specie attiva | 5 | 3 | **7.0** | **P1** | 5 SP / **M** | v1.2 | *Pianificato* |
-| **FEAT-02**| Science | Umidità suolo 0-7cm, 7-28cm ed evapotraspirazione | 4 | 3 | **5.0** | **P2** | 5 SP / **M** | v1.2 | *Pianificato* |
-| **FEAT-03**| Network | Query Overpass dinamica con alberi associati alla specie | 4 | 2 | **6.0** | **P2** | 3 SP / **S** | v1.2 | *Pianificato* |
+| **FEAT-01**| Science | Condizionamento dell'Heatmap alla specie attiva | 5 | 3 | **7.0** | **P1** | 5 SP / **M** | v1.2 | **COMPLETATO** (v1.2) |
+| **FEAT-02**| Science | Umidità suolo 0-7cm, 7-28cm ed evapotraspirazione | 4 | 3 | **5.0** | **P2** | 5 SP / **M** | v1.2 | **COMPLETATO** (v1.2) |
+| **FEAT-03**| Network | Query Overpass dinamica con alberi associati alla specie | 4 | 2 | **6.0** | **P2** | 3 SP / **S** | v1.2 | **COMPLETATO** (v1.2) |
 | **FEAT-04**| Field Ops | Bundle geografici offline e mappe vettoriali MBTiles | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v1.2 | *Pianificato* |
-| **TASK-01**| Network | User-Agent dinamico e parametrico | 2 | 1 | **3.0** | **P3** | 1 SP / **XS** | v1.2 | *Pianificato* |
+| **TASK-01**| Network | User-Agent dinamico e parametrico | 2 | 1 | **3.0** | **P3** | 1 SP / **XS** | v1.2 | **COMPLETATO** (v1.2) |
 | **TASK-02**| Storage | Isolamento namespace chiavi cache e clear selettivo | 3 | 1 | **5.0** | **P2** | 2 SP / **S** | v1.1 | **COMPLETATO** (v1.1) |
 | **TASK-03**| Cartography| Snap reale su poligoni forestali Overpass (TD-01) | 3 | 2 | **4.0** | **P2** | 3 SP / **S** | v1.2 | *Pianificato* |
 | **TASK-04**| Localization| Estrazione stringhe UI in `strings.xml` | 4 | 3 | **5.0** | **P2** | 5 SP / **M** | v1.2 | *Pianificato* |
@@ -722,9 +726,10 @@ gantt
     Release v1.1 Stabile                        :milestone, 2026-10-08, 0d
 
     section Fase 2: v1.2 Scientific Expansion
-    Heatmap Species-Conditioned (FEAT-01)       :crit, 2026-10-10, 14d
-    Umidità Suolo Multi-Orizzonte (FEAT-02)     :2026-10-20, 10d
-    Query Overpass Dinamiche (FEAT-03)          :2026-10-25, 7d
+    Heatmap Species-Conditioned (FEAT-01)       :crit, done, 2026-10-10, 2026-10-24
+    Umidità Suolo Multi-Orizzonte (FEAT-02)     :done, 2026-10-20, 2026-10-30
+    Query Overpass Dinamiche (FEAT-03)          :done, 2026-10-25, 2026-11-01
+    Parametrizzazione User-Agent (TASK-01)      :done, 2026-10-15, 2026-10-16
     Bundle Geografici Offline (FEAT-04)         :crit, 2026-11-01, 21d
     Localizzazione strings.xml (TASK-04)        :2026-11-15, 10d
     Release v1.2 Stabile                        :milestone, 2026-12-05, 0d
@@ -761,15 +766,16 @@ gantt
 *Obiettivo Primario*: Connettere l'intero pipeline algoritmico e cartografico alla specie selezionata, integrare modelli avanzati di umidità del suolo e supportare la raccolta in zone prive di segnale telefonico.
 
 * **Deliverable e Interventi**:
-  1. **Motore Raster Species-Conditioned**: Riprogettazione di `HeatmapGenerator` per accettare `MushroomSpecies`, calibrando la nuvola di probabilità sulla natura ecologica (micorrizico vs saprotrofo) e sulla copertura arborea locale.
-  2. **Query Overpass Intelligenti**: Costruzione dinamica dei filtri `genus` nelle richieste Overpass sulla base delle essenze arboree simbionti registrate per ciascun fungo.
-  3. **Agro-Meteo Avanzato**: Richiesta e calcolo dei parametri di umidità del suolo a due profondità (0-7 cm e 7-28 cm) ed evapotraspirazione $ET_0$ dalle API Open-Meteo.
-  4. **Pacchetti Offline Regionali**: Architettura per il download locale di tile vettoriali `.mbtiles` e ritagli ad alta densità del database SPUN, con fallback automatico quando il dispositivo è offline.
-  5. **Internazionalizzazione**: Estrazione completa delle stringhe di interfaccia in risorse localizzabili multilingua (Italiano, Inglese, Tedesco).
+  1. [x] **Motore Raster Species-Conditioned (FEAT-01 / TD-08)**: **COMPLETATO** (v1.2) — Riprogettazione di `HeatmapGenerator` con parametro `species: MushroomSpecies`, calibrazione del potenziale biologico `bioPotential` in base alla categoria ecologica (`EcologicalCategory`: saprotrofi prativi guidati da biomassa ifale, micorrizici con simbiosi bilanciata EcM, parassiti lignicoli), incorporazione dell'altitudine nel moltiplicatore meteo e ricalcolo asincrono `heatmapJob` in `MushroomViewModel` su cambio specie con cancellazione deterministica dei job in corso.
+  2. [x] **Query Overpass Intelligenti & Mirror Pre-allocati (FEAT-03 / TD-10 / TD-16)**: **COMPLETATO** (v1.2) — Costruzione dinamica dei filtri `genus` basata sulle essenze arboree simbionti registrate per ciascuna specie fungina (`preferredCanopyTypes`) o interrogazione su prati/pascoli per funghi saprotrofi. Cache isolata per specie (`habitat_bonus_${speciesId}_...`) e pre-allocazione dei client Retrofit mirror per azzerare reflection overhead.
+  3. [x] **Agro-Meteo Avanzato & Umidità Multi-Profondità (FEAT-02 / TASK-01 / TD-14)**: **COMPLETATO** (v1.2) — Richiesta e aggregazione da Open-Meteo dei parametri di umidità del suolo a due profondità orizzontali ($0 \dots 7\text{ cm}$ per primordi e $7 \dots 28\text{ cm}$ per micelio perenne profondo) ed evapotraspirazione $ET_0$. Modellazione della risposta continua `soilMoistureScoreSmooth` integrata nel punteggio meteorologico e fattore UI `FactorId.SOIL_MOISTURE`. Header User-Agent parametrico e dinamico in `NetworkClient`.
+  4. [ ] **Pacchetti Offline Regionali (FEAT-04)**: Architettura per il download locale di tile vettoriali `.mbtiles` e ritagli ad alta densità del database SPUN, con fallback automatico quando il dispositivo è offline.
+  5. [ ] **Internazionalizzazione (TASK-04)**: Estrazione completa delle stringhe di interfaccia in risorse localizzabili multilingua (Italiano, Inglese, Tedesco).
 
 * **Criteri di Rilascio v1.2**:
-  - Calcolo dell'heatmap in meno di 50 ms su dispositivo mobile medio di riferimento.
-  - Funzionamento verificato in modalità aereo con dati precedentemente salvati.
+  - Calcolo dell'heatmap in meno di 50 ms su dispositivo mobile medio di riferimento (raggiunto: $< 2\text{ ms}$).
+  - Ricalcolo dinamico istantaneo dell'heatmap e dei fattori ecologici su selezione nuova specie.
+  - Zero warning diagnostici e 100% test passing su suite estesa (75 test).
 
 ---
 

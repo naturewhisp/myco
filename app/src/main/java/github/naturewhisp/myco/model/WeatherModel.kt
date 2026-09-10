@@ -29,7 +29,10 @@ data class HourlyData(
     @SerializedName("time") val time: List<String>,
     @SerializedName("temperature_2m") val temperature2m: List<Float>,
     @SerializedName("relativehumidity_2m") val relativeHumidity2m: List<Float>,
-    @SerializedName("precipitation") val precipitation: List<Float>
+    @SerializedName("precipitation") val precipitation: List<Float>,
+    @SerializedName("soil_moisture_0_to_7cm") val soilMoisture0To7cm: List<Float>? = null,
+    @SerializedName("soil_moisture_7_to_28cm") val soilMoisture7To28cm: List<Float>? = null,
+    @SerializedName("et0_fao_evapotranspiration") val evapotranspiration: List<Float>? = null
 )
 
 /**
@@ -51,11 +54,17 @@ data class DailyData(
  * @property totalPrecip Precipitazione cumulata nelle 24 ore in millimetri.
  * @property avgHumidity Umidità relativa media nelle 24 ore in percentuale.
  * @property weatherCode Codice meteorologico WMO prevalente o nullo.
+ * @property avgSoilMoisture0To7cm Umidità media volumetrica del suolo nell'orizzonte superficiale 0-7 cm (m³/m³).
+ * @property avgSoilMoisture7To28cm Umidità media volumetrica del suolo nell'orizzonte radicale 7-28 cm (m³/m³).
+ * @property totalEvapotranspiration Evapotraspirazione giornaliera cumulata di riferimento FAO ET0 in millimetri.
  */
 data class ProcessedDay(
     val date: String,
     val avgTemp: Float,
     val totalPrecip: Float,
     val avgHumidity: Float,
-    val weatherCode: Int?
+    val weatherCode: Int?,
+    val avgSoilMoisture0To7cm: Float? = null,
+    val avgSoilMoisture7To28cm: Float? = null,
+    val totalEvapotranspiration: Float? = null
 )

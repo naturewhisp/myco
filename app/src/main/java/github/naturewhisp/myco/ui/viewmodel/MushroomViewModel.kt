@@ -210,6 +210,7 @@ class MushroomViewModel(
         }
 
     internal var dataFetchJob: Job? = null
+    internal var heatmapJob: Job? = null
     private var locationTrackingJob: Job? = null
     private var orientationTrackingJob: Job? = null
 
@@ -368,6 +369,11 @@ class MushroomViewModel(
         )
         todayProbability = prob
 
+        val todayData = days.getOrNull(todayIndex)
+        val soil0To7 = todayData?.avgSoilMoisture0To7cm
+        val soil7To28 = todayData?.avgSoilMoisture7To28cm
+        val et0 = todayData?.totalEvapotranspiration
+
         factors = MushroomAlgorithms.calculateFactors(
             avgTemp = avgTemp,
             totalRain = totalRain,
@@ -382,7 +388,10 @@ class MushroomViewModel(
             species = species,
             spunEcmText = lastSpunData?.ecmText,
             spunHyphalText = lastSpunData?.hyphalText,
-            terrainEvaluation = terrainEval
+            terrainEvaluation = terrainEval,
+            avgSoilMoisture0To7 = soil0To7,
+            avgSoilMoisture7To28 = soil7To28,
+            totalEvapotranspiration = et0
         )
 
         dailyOutlooks = MushroomAlgorithms.calculateDailyOutlooks(
@@ -412,6 +421,23 @@ class MushroomViewModel(
 
         isOutsideHabitat = lastFinalHabitatScore < 0.1
         isOutsideCoverage = lastSpunData == null && spunDataManager.findRegionFor(lastLat, lastLon) == null
+
+        // Ricalcolo asincrono della nuvola di probabilità calibrata sulla nuova specie selezionata
+        heatmapJob?.cancel()
+        heatmapJob = viewModelScope.launch(Dispatchers.Default) {
+            val h = HeatmapGenerator.generateHeatmap(
+                centerLat = lastLat,
+                centerLon = lastLon,
+                spunDataManager = spunDataManager,
+                baseWeatherScore = rawWeatherScore.toDouble(),
+                seasonalityScore = seasonMult,
+                altitudeScore = altMult,
+                species = species
+            )
+            if (h != null) {
+                heatmapData = h
+            }
+        }
     }
 
     init {
@@ -807,7 +833,7 @@ class MushroomViewModel(
                 // Fetch weather, habitat, SPUN micorrize, and terrain aspect in parallel
                 val weatherDeferred = async { repository.fetchWeather(lat, lon) }
                 val habitatDeferred = async { repository.fetchHabitat(lat, lon) }
-                val habitatBonusDeferred = async { repository.fetchSpecificHabitatBonus(lat, lon) }
+                val habitatBonusDeferred = async { repository.fetchSpecificHabitatBonus(lat, lon, selectedSpecies) }
                 val spunDeferred = async { repository.fetchSpunData(lat, lon, searchRadius) }
                 val terrainDeferred = async { repository.fetchTerrainAspect(lat, lon) }
 
@@ -963,16 +989,6 @@ class MushroomViewModel(
                 recalculateForSpecies()
 
                 val futureTrend = MushroomAlgorithms.analyzeFutureTrend(processedDays)
-
-                // Generazione asincrona della nuvola termica di probabilità (Heatmap)
-                heatmapData = HeatmapGenerator.generateHeatmap(
-                    centerLat = lat,
-                    centerLon = lon,
-                    spunDataManager = spunDataManager,
-                    baseWeatherScore = rawWeatherScore.toDouble(),
-                    seasonalityScore = seasonalityScore.score,
-                    altitudeScore = altitudeScore.score
-                )
 
                 // Salva nella cronologia recenti (solo se toponimo reale e non segnaposto)
                 if (!SavedLocation.isPlaceholderName(resolvedDisplayName)) {
@@ -1179,6 +1195,7 @@ class MushroomViewModel(
         super.onCleared()
         stopLocationAndOrientationTracking()
         dataFetchJob?.cancel()
+        heatmapJob?.cancel()
         aiJob?.cancel()
     }
 }

@@ -140,7 +140,7 @@ La base di codice è organizzata sotto il namespace principale `github.naturewhi
 | `model` | `DailyOutlook.kt`<br>`EcologicalWeightsConfig.kt`<br>`Factor.kt`<br>`GeocodingModel.kt`<br>`HeatmapModel.kt`<br>`HeatmapRenderConfig.kt`<br>`MushroomSpecies.kt`<br>`OverpassModel.kt`<br>`PlaceName.kt`<br>`ProbabilityTier.kt`<br>`SavedLocation.kt`<br>`SpunModel.kt`<br>`TerrainAspectConfig.kt`<br>`TerrainModel.kt`<br>`WeatherModel.kt` | **Dominio Puro:** Data classes, DTO per le API remote, strutture dati immutabili. `HeatmapRaster` definisce il buffer 32-bit grezzo agnostico. `MushroomSpecies` racchiude il catalogo tassonomico delle 10 specie con avvisi sosia tossici (`toxicLookAlikes`). Configurazioni tipizzate (`EcologicalWeightsConfig`, `TerrainAspectConfig`, `HeatmapRenderConfig`, `ProbabilityTier`). Nessuna dipendenza dal framework Android. |
 | `platform` | `AssetProvider.kt`<br>`InMemoryCacheStore.kt`<br>`KeyValueStorage.kt`<br>`PlatformAiEngine.kt`<br>`PlatformCacheStore.kt`<br>`PlatformLocationProvider.kt`<br>`PlatformNavigator.kt`<br>`PlatformOrientationProvider.kt`<br>`UserLocation.kt` | **Porte Agnostiche:** Interfacce del pattern esagonale che disaccoppiano l'accesso all'hardware, allo storage persistente e al file system. I contratti (`PlatformCacheStore`, `KeyValueStorage`, `AssetProvider`, `PlatformAiEngine`, ecc.) e i modelli associati (`UserLocation`, `DeviceHeading`, `MapOrientationMode`, `CacheStats`) contengono 0 import di sistema. Include `InMemoryCacheStore` per test unitari e ambienti JVM. |
 | `platform.android` | `AndroidAssetProvider`<br>`AndroidLocationProvider.kt`<br>`AndroidPlatformNavigator`<br>`AndroidSensorOrientationProvider.kt`<br>`AndroidSharedPreferencesStorage`<br>`AndroidSqliteCacheStore.kt`<br>`HeatmapBitmapExtensions.kt` | **Adapter Android:** Implementazioni concrete collegate alle API di Google Play Services, Android `SensorManager`, `AssetManager`, `SharedPreferences` e database relazionale nativo `SQLiteOpenHelper` (`AndroidSqliteCacheStore`) per caching HTTP a bassissima latenza con indici geospaziali e temporali. Conversioni grafiche raster-to-bitmap. |
-| `network` | `ApiServices.kt`<br>`LocalAiService.kt`<br>`NetworkClient.kt` | Client HTTP Retrofit per Open-Meteo, Nominatim e Overpass API; adapter locale Google AI Edge AICore per Gemini Nano. |
+| `network` | `ApiServices.kt`<br>`LocalAiService.kt`<br>`NetworkClient.kt` | Client HTTP Retrofit per Open-Meteo, Nominatim e Overpass API (con User-Agent parametrico e pre-allocazione dei client mirror); adapter locale Google AI Edge AICore per Gemini Nano. |
 | `repository` | `CacheManager.kt`<br>`MushroomRepository.kt`<br>`SpunDataManager.kt` | Aggregazione di fonti dati concorrenti, architettura di caching a doppio motore (preferenze utente su `KeyValueStorage`, risposte di rete su `PlatformCacheStore` indicizzato con TTL automatico e cancellazione isolata), lettura e decompressione zlib dell'atlante miceliare SPUN. |
 | `ui.components` | `AnomalyNotice.kt`<br>`CompassRoseDial.kt`<br>`DayRow.kt`<br>`EmptyState.kt`<br>`FactorRow.kt`<br>`FieldNote.kt`<br>`HeatmapOverlay.kt`<br>`MapViewContainer.kt`<br>`MushroomComponents.kt`<br>`MycoDivider.kt`<br>`ProbabilityBar.kt`<br>`ProbabilityHeadline.kt`<br>`RenameFavoriteDialog.kt`<br>`SafetyDisclaimerDialog.kt`<br>`SpeciesSelectionSheet.kt`<br>`TrendCurve.kt`<br>`UserBearingOverlay.kt` | Componenti Compose modulari, atomici e riutilizzabili. Layout tabulari con protezione da starvation orizzontale. Modale di sicurezza micologica (`SafetyDisclaimerDialog`). Bridge AndroidView per OsmDroid MapView con gestione ciclo di vita. |
 | `ui.screens` | `ForecastScreen.kt`<br>`HomeScreen.kt`<br>`MapScreen.kt`<br>`MushroomApp.kt`<br>`SettingsScreen.kt` | Schermate principali di navigazione: registro fenologico giornaliero, tavola cartografica interattiva, impostazioni e scaffold applicativo. |
@@ -404,6 +404,18 @@ $$S_H(H) = \begin{cases}
 1.0 & \text{se } H \ge 85\%
 \end{cases}$$
 
+#### D. Umidità del Suolo Multi-Profondità ed Evapotraspirazione ($S_M$, `soilMoistureScoreSmooth`, `MushroomAlgorithms.kt:701`)
+Modella l'idratazione pedologica a due orizzonti strategici unitamente al tasso di evaporazione superficiale $ET_0$ da Open-Meteo:
+* **Orizzonte Superficiale ($0 \dots 7\text{ cm}$, $M_{0-7}$):** Lettiera e strato organico dei primordi.
+  * Range ottimale: $0.22 \dots 0.38\text{ m}^3/\text{m}^3$ ($S = 1.0$).
+  * Secco / disidratazione: $M_{0-7} < 0.10 \implies S = 0.15$ (disseccamento dei primordi).
+  * Asfissia / anossia da ristagno: $M_{0-7} > 0.48 \implies S = 0.30$.
+* **Orizzonte Radicale Miceliare ($7 \dots 28\text{ cm}$, $M_{7-28}$):** Riserva d'acqua del micelio perenne profondo.
+  * Range ottimale: $0.20 \dots 0.35\text{ m}^3/\text{m}^3$.
+  * Mancanza idrica profonda: $M_{7-28} < 0.10 \implies$ malus fino a $0.20$.
+* **Stress da Evapotraspirazione ($ET_0$):** Valori $> 3.0\text{ mm/giorno}$ accelerano la perdita d'acqua dello strato superficiale, applicando una penalizzazione progressiva smoothstep fino al $25\%$.
+* In assenza di dati pedologici, la funzione restituisce il valore neutro di fallback $1.0$.
+
 ### 4.4 Shock Termico Induttivo dei Primordi
 I carpofori della maggior parte dei funghi micorrizici necessitano di uno shock induttivo (*cold shock*) per avviare la fruttificazione, consistente in un brusco abbassamento delle temperature a seguito di temporali estivi o autunnali (`MushroomAlgorithms.kt:280`):
 * Si verifica la presenza di pioggia cumulativa a 10 giorni $R_{10} \ge 12\text{ mm}$.
@@ -413,8 +425,13 @@ I carpofori della maggior parte dei funghi micorrizici necessitano di uno shock 
   $$\text{shockScore} = 15.0 \times \text{clamp}\left(\frac{\Delta T - \Delta T_{\min}}{3.0},\; 0,\; 1\right) \times \text{clamp}\left(\frac{R_{10}}{25.0},\; 0,\; 1\right)$$
 
 #### Punteggio Meteo Composito Pesato ($W$, `calculateWeatherScore`, `MushroomAlgorithms.kt:225`)
-$$W = \text{clamp}\left(40 \cdot S_R + 30 \cdot S_T + 15 \cdot S_H + \text{shockScore} + \text{SPUN}_{\text{mod}},\; 0,\; 100\right)$$
+La componente idrica combina le precipitazioni cumulate $S_R$ con il moltiplicatore pedologico $S_M$:
+$$S_{\text{hydric}} = \text{clamp}\left(0.70 \cdot S_R + 0.30 \cdot S_R \cdot S_M,\; 0.0,\; 1.0\right)$$
+
+Il punteggio meteorologico complessivo vale:
+$$W = \text{clamp}\left(40 \cdot S_{\text{hydric}} + 30 \cdot S_T + 15 \cdot S_H + \text{shockScore} + \text{SPUN}_{\text{mod}},\; 0,\; 100\right)$$
 dove $\text{SPUN}_{\text{mod}} = +6$ se densità ifale $\ge 5.0\text{ m/cm}^3$ e pioggia $\ge 12\text{ mm}$; $-4$ se densità ifale $< 2.5\text{ m/cm}^3$.
+Il fattore calcolato viene esposto all'utente nella dashboard dei fattori come `FactorId.SOIL_MOISTURE` con dettaglio volumetrico dei due orizzonti.
 
 ### 4.5 Modellazione Orografica DEM a 5 Punti & Insolazione
 Per valutare il microclima e l'insolazione del versante boschivo, il sistema campiona 5 quote altimetriche digitali distanziate di $\Delta = 75\text{ metri}$ rispetto al punto di interesse:
@@ -470,6 +487,17 @@ La distribuzione geografica della probabilità su scala territoriale è calcolat
   val argb = (alpha shl 24) or (r shl 16) or (g shl 8) or b
   ```
   Nessun oggetto grafico Android (`android.graphics.Bitmap`, `Canvas`, `Color`) viene allocato durante il calcolo.
+* **Motore Condizionato dalla Specie Target (`species: MushroomSpecies`):**
+  Il potenziale biologico della cella raster viene modulato in funzione dell'inquadramento ecologico (`EcologicalCategory`):
+  * **Saprotrofi (`SAPROTROPHIC`, es. *Macrolepiota procera*):** Non dipendono da simbiosi ectomicorrizica arborea; il potenziale biologico è trainato dalla biomassa fungina sotterranea e da una base humus/lettiera:
+    $$\text{bioPotential} = 20.0 + \text{hypRatio} \times 80.0$$
+  * **Ectomicorrizici Simbionti (`ECTOMYCORRHIZAL`, es. *Boletus edulis*, *Cantharellus cibarius*):** Bilanciamento 50-50 tra ricchezza ectomicorrizica della stazione arborea e densità miceliare:
+    $$\text{bioPotential} = \text{ecmRatio} \times 50.0 + \text{hypRatio} \times 50.0$$
+  * **Parassiti Lignicoli (`PARASITIC`, es. *Armillaria mellea*):**
+    $$\text{bioPotential} = 30.0 + \text{ecmRatio} \times 35.0 + \text{hypRatio} \times 35.0$$
+  Inoltre, il moltiplicatore meteorologico territoriale include l'idoneità altitudinale specifica della specie ($A \in [0.40, 1.00]$):
+  $$\text{weatherMultiplier} = \left(\frac{W}{100}\right) \times S \times A$$
+* **Ricalcolo Asincrono & Anti-Stale (`heatmapJob`):** Quando l'utente seleziona una nuova specie target nel selettore inferiore, `MushroomViewModel` cancella istantaneamente qualsiasi calcolo raster in-flight (`heatmapJob?.cancel()`), lancia una coroutine asincrona su `Dispatchers.Default` e aggiorna in tempo reale la nuvola di calore della mappa senza freeze dell'interfaccia grafica.
 * **Palette Minerale Botanica Herbarium:**
   * $0\% \dots 16\%$: Trasparenza totale (nessuna attività biologica rilevata).
   * $16\% \dots 40\%$: Salvia Viva / Lichene Luminoso (`#4E9648` / `#62B058`).
@@ -571,11 +599,15 @@ graph TD
     CALC --> AI["LocalAiService / Fallback<br>(Sintesi Bollettino Naturale)"]
 ```
 
-### 6.2 Ridondanza e Failover Overpass API
+### 6.2 Ridondanza, Mirror Pre-Allocati e Query Specie-Specifiche Overpass API
 Per garantire continuità di servizio durante i frequenti blocchi per manutenzione o rate-limit dei server OpenStreetMap, `MushroomRepository.kt` implementa una rotazione con failover automatico su tre endpoint geograficamente indipendenti:
 1. `https://overpass-api.de/` (Server centrale tedesco)
 2. `https://overpass.kumi.systems/` (Mirror europeo ad alta capacità)
 3. `https://overpass.openstreetmap.fr/` (Mirror francese ad alta affidabilità)
+
+* **Pre-Allocazione dei Client Retrofit (TD-16):** Le istanze `OverpassService` vengono pre-allocate una sola volta all'inizializzazione del repository (`overpassServices = overpassEndpoints.map { ... }`), azzerando l'overhead di parsing via reflection e riallocazione di converter factory nei tentativi di failover.
+* **Query Dinamica per Canopia Specie-Specifica (FEAT-03 / TD-10):** Se viene specificata una specie micorrizica, la clausola Overpass estrae e concatena i generi botanici presenti in `species.preferredCanopyTypes` (es. `Fagus|Quercus|Castanea|Pinus|Picea|Abies|Betula`); per i funghi saprotrofi (es. *Macrolepiota procera*), interroga invece prati, pascoli e brughiere (`meadow|grassland|heath|scrub`).
+* **Isolamento della Cache per Specie:** Il risultato della query viene salvato nella cache con chiave parametrizzata sulla specie: `habitat_bonus_${species?.id ?: "general"}_${roundedLat}_${roundedLon}`, evitando collisioni o letture errate quando l'utente alterna funghi con differenti associazioni arboree.
 
 ### 6.3 Atlante Miceliare SPUN (Formato Binario `spun_italy.bin`)
 I dati scientifici sulla biomassa e ricchezza ectomicorrizica sono codificati nel file `spun/spun_italy.bin` memorizzato negli asset applicativi (`SpunDataManager.kt`).
@@ -614,7 +646,7 @@ Ogni tipologia di dato possiede un periodo di validità (Time-To-Live) commisura
 |---|---|---|---|
 | **Previsioni Meteo** | **1 Ora** ($3600\text{ s}$) | `weather_lat_lon` (arrotondato 2 decimali) | Dinamicità rapida delle precipitazioni e temperature. |
 | **Habitat Boschivo OSM** | **24 Ore** ($86400\text{ s}$) | `habitat_lat_lon` | Variazioni catastali forestali quasi nulle nel breve periodo. |
-| **Alberi Simbionti OSM** | **24 Ore** ($86400\text{ s}$) | `habitat_trees_lat_lon` | Tassonomia arborea stabile. |
+| **Alberi Simbionti OSM** | **24 Ore** ($86400\text{ s}$) | `habitat_bonus_${speciesId}_lat_lon` | Tassonomia arborea specifica per specie. |
 | **Geocodifica Inversa** | **7 Giorni** | `geocoding_lat_lon` (arrotondato 3 decimali) | Toponomastica WGS84 invariante. |
 | **Orografia Altimetrica DEM** | **30 Giorni** | `dem_lat_lon` | Morfologia orografica e quota immutabili nel tempo umano. |
 | **Dati Miceliali SPUN** | **Permanente (Offline)** | File binario decompresso in memoria RAM | Asset scientifico fisso di riferimento. |

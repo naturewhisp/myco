@@ -81,6 +81,9 @@ object MushroomAlgorithms {
             acc.temps.add(data.hourly.temperature2m.getOrElse(i) { 0.0f })
             acc.precips.add(data.hourly.precipitation.getOrElse(i) { 0.0f })
             acc.humidities.add(data.hourly.relativeHumidity2m.getOrElse(i) { 0.0f })
+            data.hourly.soilMoisture0To7cm?.getOrNull(i)?.let { acc.soilMoisture0To7.add(it) }
+            data.hourly.soilMoisture7To28cm?.getOrNull(i)?.let { acc.soilMoisture7To28.add(it) }
+            data.hourly.evapotranspiration?.getOrNull(i)?.let { acc.evapotranspirations.add(it) }
         }
 
         val dailyTimes = data.daily.time
@@ -96,12 +99,18 @@ object MushroomAlgorithms {
             val avgTemp = if (acc.temps.isNotEmpty()) acc.temps.sum() / acc.temps.size else 0.0f
             val totalPrecip = acc.precips.sum()
             val avgHumidity = if (acc.humidities.isNotEmpty()) acc.humidities.sum() / acc.humidities.size else 0.0f
+            val avgSoil0To7 = if (acc.soilMoisture0To7.isNotEmpty()) acc.soilMoisture0To7.sum() / acc.soilMoisture0To7.size else null
+            val avgSoil7To28 = if (acc.soilMoisture7To28.isNotEmpty()) acc.soilMoisture7To28.sum() / acc.soilMoisture7To28.size else null
+            val totalET0 = if (acc.evapotranspirations.isNotEmpty()) acc.evapotranspirations.sum() else null
             ProcessedDay(
                 date = date,
                 avgTemp = avgTemp,
                 totalPrecip = totalPrecip,
                 avgHumidity = avgHumidity,
-                weatherCode = acc.weatherCode
+                weatherCode = acc.weatherCode,
+                avgSoilMoisture0To7cm = avgSoil0To7,
+                avgSoilMoisture7To28cm = avgSoil7To28,
+                totalEvapotranspiration = totalET0
             )
         }.sortedBy { it.date }
     }
@@ -110,6 +119,9 @@ object MushroomAlgorithms {
         val temps = mutableListOf<Float>()
         val precips = mutableListOf<Float>()
         val humidities = mutableListOf<Float>()
+        val soilMoisture0To7 = mutableListOf<Float>()
+        val soilMoisture7To28 = mutableListOf<Float>()
+        val evapotranspirations = mutableListOf<Float>()
         var weatherCode: Int? = null
     }
 
@@ -359,7 +371,7 @@ object MushroomAlgorithms {
         }
         val tempScore = tempScoreSmooth(avgTempLast5Days, species) * config.tempWeight
 
-        // Calcolo continuo dell'umidità relativa (finestra humidityWindowDays giorni fino a oggi)
+        // Calcolo continuo dell'umidità relativa e idratazione suolo (finestra humidityWindowDays giorni fino a oggi)
         val humStart = max(0, dayIndex - config.humidityWindowDays)
         val humEnd = min(allData.size, dayIndex + 1)
         val humWindow = if (humStart < humEnd) {
@@ -372,7 +384,23 @@ object MushroomAlgorithms {
         } else {
             0.0
         }
-        val humScore = humidityScoreSmooth(avgHumidityRecent) * config.humidityWeight
+
+        // Integrazione pedologica: contenuto idrico volumetrico del suolo multi-orizzonte ed ET0
+        val soil0To7Vals = humWindow.mapNotNull { it.avgSoilMoisture0To7cm?.toDouble() }
+        val soil7To28Vals = humWindow.mapNotNull { it.avgSoilMoisture7To28cm?.toDouble() }
+        val et0Vals = humWindow.mapNotNull { it.totalEvapotranspiration?.toDouble() }
+        val hasSoilMoisture = soil0To7Vals.isNotEmpty() || soil7To28Vals.isNotEmpty()
+
+        val humScore = if (hasSoilMoisture) {
+            val avgSoil0To7 = if (soil0To7Vals.isNotEmpty()) soil0To7Vals.average() else null
+            val avgSoil7To28 = if (soil7To28Vals.isNotEmpty()) soil7To28Vals.average() else null
+            val avgET0 = if (et0Vals.isNotEmpty()) et0Vals.average() else null
+            val soilNorm = soilMoistureScoreSmooth(avgSoil0To7, avgSoil7To28, avgET0)
+            val airHumNorm = humidityScoreSmooth(avgHumidityRecent)
+            (0.40 * airHumNorm + 0.60 * soilNorm) * config.humidityWeight
+        } else {
+            humidityScoreSmooth(avgHumidityRecent) * config.humidityWeight
+        }
 
         // Calcolo continuo dello shock termico induttivo dei primordi
         var shockScore = 0.0
@@ -864,6 +892,66 @@ object MushroomAlgorithms {
     }
 
     /**
+     * Interpolazione ermitiana cubica smoothstep continua tra [edge0] ed [edge1].
+     */
+    private fun smoothstep(edge0: Double, edge1: Double, x: Double): Double {
+        val t = ((x - edge0) / (edge1 - edge0)).coerceIn(0.0, 1.0)
+        return t * t * (3.0 - 2.0 * t)
+    }
+
+    /**
+     * Valuta in modo continuo il contenuto idrico del suolo [0.0, 1.0] combinando l'orizzonte superficiale (0-7 cm)
+     * e l'orizzonte radicale profondo (7-28 cm), modulati dall'evapotraspirazione di riferimento FAO ET0.
+     *
+     * @param m0To7 Umidità volumetrica superficiale in m³/m³ (orizzonte primordi/lettiera). Range ottimale: 0.22..0.38.
+     * @param m7To28 Umidità volumetrica profonda in m³/m³ (orizzonte miceliare perenne). Range ottimale: 0.20..0.35.
+     * @param et0 Evapotraspirazione cumulata giornaliera di riferimento FAO ET0 in mm/giorno.
+     * @return Punteggio continuo normalizzato [0.0, 1.0]. Se entrambi gli orizzonti sono nulli, restituisce 1.0 (neutro).
+     */
+    fun soilMoistureScoreSmooth(m0To7: Double?, m7To28: Double?, et0: Double? = null): Double {
+        if (m0To7 == null && m7To28 == null) return 1.0
+
+        // Calcolo continuo orizzonte superficiale 0-7 cm (induzione e idratazione primordiale)
+        val s0To7 = if (m0To7 != null) {
+            when {
+                m0To7 < 0.10 -> 0.10
+                m0To7 in 0.10..0.22 -> 0.10 + 0.90 * smoothstep(0.10, 0.22, m0To7)
+                m0To7 in 0.22..0.38 -> 1.0
+                m0To7 in 0.38..0.48 -> 1.0 - 0.50 * smoothstep(0.38, 0.48, m0To7)
+                else -> 0.50
+            }
+        } else null
+
+        // Calcolo continuo orizzonte profondo 7-28 cm (rete ifale perenne e assorbimento)
+        val s7To28 = if (m7To28 != null) {
+            when {
+                m7To28 < 0.12 -> 0.20
+                m7To28 in 0.12..0.20 -> 0.20 + 0.80 * smoothstep(0.12, 0.20, m7To28)
+                m7To28 in 0.20..0.35 -> 1.0
+                m7To28 in 0.35..0.45 -> 1.0 - 0.40 * smoothstep(0.35, 0.45, m7To28)
+                else -> 0.60
+            }
+        } else null
+
+        val baseSoilScore = when {
+            s0To7 != null && s7To28 != null -> 0.55 * s0To7 + 0.45 * s7To28
+            s0To7 != null -> s0To7
+            s7To28 != null -> s7To28
+            else -> 1.0
+        }
+
+        // Modulazione evapotraspirativa: vento secco e forte insolazione (ET0 > 3.0 mm/die) accentuano il disseccamento
+        val etMod = if (et0 != null && et0 > 3.0) {
+            val excess = (et0 - 3.0).coerceIn(0.0, 3.0) / 3.0
+            1.0 - (0.15 * excess)
+        } else {
+            1.0
+        }
+
+        return (baseSoilScore * etMod).coerceIn(0.0, 1.0)
+    }
+
+    /**
      * Valuta la risposta altimetrica continua specifica per la specie selezionata.
      *
      * @param elevation Quota sul livello del mare in metri.
@@ -982,7 +1070,10 @@ object MushroomAlgorithms {
         species: MushroomSpecies = SPECIES_CATALOG[0],
         spunEcmText: String? = null,
         spunHyphalText: String? = null,
-        terrainEvaluation: TerrainAspectEvaluation? = null
+        terrainEvaluation: TerrainAspectEvaluation? = null,
+        avgSoilMoisture0To7: Float? = null,
+        avgSoilMoisture7To28: Float? = null,
+        totalEvapotranspiration: Float? = null
     ): List<Factor> {
         val factors = mutableListOf<Factor>()
 
@@ -1036,6 +1127,42 @@ object MushroomAlgorithms {
                 detail = "Sensori suolo e aria"
             )
         )
+
+        // 3b. Idratazione suolo multi-orizzonte & Evapotraspirazione
+        if (avgSoilMoisture0To7 != null || avgSoilMoisture7To28 != null) {
+            val soilNorm = soilMoistureScoreSmooth(
+                avgSoilMoisture0To7?.toDouble(),
+                avgSoilMoisture7To28?.toDouble(),
+                totalEvapotranspiration?.toDouble()
+            )
+            val soilLevel = when {
+                soilNorm >= 0.80 -> FactorLevel.FAVORABLE
+                soilNorm >= 0.45 -> FactorLevel.NEUTRAL
+                else -> FactorLevel.ADVERSE
+            }
+            val primaryVal = avgSoilMoisture0To7 ?: avgSoilMoisture7To28 ?: 0f
+            val formattedVal = String.format(Locale.ITALIAN, "%.2f m³/m³", primaryVal)
+
+            val detailStr = buildString {
+                append("Orizzonte primordi 0-7 cm")
+                if (avgSoilMoisture7To28 != null) {
+                    append(String.format(Locale.ITALIAN, " • Radici %.2f", avgSoilMoisture7To28))
+                }
+                if (totalEvapotranspiration != null) {
+                    append(String.format(Locale.ITALIAN, " • ET0 %.1f mm", totalEvapotranspiration))
+                }
+            }
+
+            factors.add(
+                Factor(
+                    id = FactorId.SOIL_MOISTURE,
+                    label = "Idratazione suolo",
+                    formattedValue = formattedVal,
+                    level = soilLevel,
+                    detail = detailStr
+                )
+            )
+        }
 
         // 4. Habitat & Adattamento ecologico per specie saprofite da prato
         val isSaprotrophic = species.category == github.naturewhisp.myco.model.EcologicalCategory.SAPROTROPHIC

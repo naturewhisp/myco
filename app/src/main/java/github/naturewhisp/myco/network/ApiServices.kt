@@ -74,7 +74,7 @@ interface WeatherService {
         @Query("longitude") longitude: Double,
         @Query("past_days") pastDays: Int = 14,
         @Query("forecast_days") forecastDays: Int = 11,
-        @Query("hourly") hourly: String = "temperature_2m,relativehumidity_2m,precipitation",
+        @Query("hourly") hourly: String = "temperature_2m,relativehumidity_2m,precipitation,soil_moisture_0_to_7cm,soil_moisture_7_to_28cm,et0_fao_evapotranspiration",
         @Query("daily") daily: String = "weathercode",
         @Query("timezone") timezone: String = "auto"
     ): WeatherResponse

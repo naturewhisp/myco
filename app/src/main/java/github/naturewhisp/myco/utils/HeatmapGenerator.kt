@@ -1,7 +1,10 @@
 package github.naturewhisp.myco.utils
 
+import github.naturewhisp.myco.model.EcologicalCategory
 import github.naturewhisp.myco.model.HeatmapRaster
 import github.naturewhisp.myco.model.HeatmapRenderConfig
+import github.naturewhisp.myco.model.MushroomSpecies
+import github.naturewhisp.myco.model.SPECIES_CATALOG
 import github.naturewhisp.myco.platform.android.HeatmapData
 import github.naturewhisp.myco.platform.android.toHeatmapData
 import github.naturewhisp.myco.repository.SpunDataManager
@@ -44,7 +47,8 @@ object HeatmapGenerator {
         seasonalityScore: Double,
         altitudeScore: Double,
         isDark: Boolean = false,
-        config: HeatmapRenderConfig = HeatmapRenderConfig.DEFAULT
+        config: HeatmapRenderConfig = HeatmapRenderConfig.DEFAULT,
+        species: MushroomSpecies = SPECIES_CATALOG[0]
     ): HeatmapRaster? = withContext(Dispatchers.Default) {
         val region = spunDataManager.getCurrentRegionData(centerLat, centerLon) ?: return@withContext null
         val header = region.header
@@ -102,15 +106,28 @@ object HeatmapGenerator {
                         val hyp = hypRaw.toFloat() / 20.0f
 
                         // Calcolo scientifico dell'indice di potenziale micologico (0..100)
-                        // Combina la biodiversità simbionte EcM (50%) e la biomassa fungina ifale (50%)
+                        // Modulato in base alla nicchia trofica ed ecologica della specie bersaglio
                         val ecmRatio = (ecm / 65.0f).coerceIn(0f, 1f)
                         val hypRatio = (hyp / 7.0f).coerceIn(0f, 1f)
-                        val bioPotential = (ecmRatio * 50.0f + hypRatio * 50.0f)
+                        val bioPotential = when (species.category) {
+                            EcologicalCategory.SAPROTROPHIC -> {
+                                // I funghi saprofiti praticoli/da lettiera (es. Macrolepiota) dipendono dalla biomassa ifale
+                                // sotterranea senza vincolo di ectomicorrize arboree
+                                (hypRatio * 80.0f + 20.0f)
+                            }
+                            EcologicalCategory.PARASITIC -> {
+                                (hypRatio * 70.0f + ecmRatio * 30.0f)
+                            }
+                            EcologicalCategory.ECTOMYCORRHIZAL -> {
+                                (ecmRatio * 55.0f + hypRatio * 45.0f)
+                            }
+                        }
 
-                        // Modulatore meteo/stagionale: fa da volano di attivazione fruttificazione
+                        // Modulatore meteo, stagionale e altimetrico: volano di attivazione fruttificazione
                         val weatherFactor = (baseWeatherScore / 100.0).coerceIn(0.2, 1.0)
                         val seasonFactor = seasonalityScore.coerceIn(0.3, 1.0)
-                        val weatherMultiplier = (0.70 + (weatherFactor * seasonFactor) * 0.50).toFloat()
+                        val altFactor = altitudeScore.coerceIn(0.4, 1.0)
+                        val weatherMultiplier = (0.60 + (weatherFactor * seasonFactor * altFactor) * 0.60).toFloat()
 
                         val prob = (bioPotential * weatherMultiplier).toInt().coerceIn(0, 100)
                         val baseColor = getHeatmapColor(prob, isDark, config)
@@ -158,6 +175,7 @@ object HeatmapGenerator {
      * @param altitudeScore Risposta altimetrica.
      * @param isDark Flag modalità scura.
      * @param config Configurazione cartografica [HeatmapRenderConfig].
+     * @param species Specie micologica target per la calibrazione trofica della nuvola termica.
      * @return [HeatmapData] pronto per il binding con OsmDroid, o null se non disponibile.
      */
     suspend fun generateHeatmap(
@@ -168,7 +186,8 @@ object HeatmapGenerator {
         seasonalityScore: Double,
         altitudeScore: Double,
         isDark: Boolean = false,
-        config: HeatmapRenderConfig = HeatmapRenderConfig.DEFAULT
+        config: HeatmapRenderConfig = HeatmapRenderConfig.DEFAULT,
+        species: MushroomSpecies = SPECIES_CATALOG[0]
     ): HeatmapData? {
         val raster = generateHeatmapRaster(
             centerLat = centerLat,
@@ -178,7 +197,8 @@ object HeatmapGenerator {
             seasonalityScore = seasonalityScore,
             altitudeScore = altitudeScore,
             isDark = isDark,
-            config = config
+            config = config,
+            species = species
         ) ?: return null
 
         return raster.toHeatmapData()

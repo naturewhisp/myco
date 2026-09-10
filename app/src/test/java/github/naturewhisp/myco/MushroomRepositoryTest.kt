@@ -3,6 +3,8 @@ package github.naturewhisp.myco
 import github.naturewhisp.myco.model.DailyData
 import github.naturewhisp.myco.model.GeocodeResult
 import github.naturewhisp.myco.model.HourlyData
+import github.naturewhisp.myco.model.OverpassResponse
+import github.naturewhisp.myco.model.SPECIES_CATALOG
 import github.naturewhisp.myco.model.SpunData
 import github.naturewhisp.myco.model.TerrainAspectData
 import github.naturewhisp.myco.model.WeatherResponse
@@ -107,5 +109,24 @@ class MushroomRepositoryTest {
         assertEquals(12.5f, result?.slopePercent ?: 0f, 0.01f)
         assertEquals(180f, result?.aspectDegrees ?: 0f, 0.01f)
         assertEquals(850f, result?.centerElevation ?: 0f, 0.01f)
+    }
+
+    @Test
+    fun testFetchSpecificHabitatBonus_CacheIsolationBySpecies() = runBlocking {
+        val boletusEdulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+        val macrolepiota = SPECIES_CATALOG.first { it.id == "macrolepiota_procera" }
+
+        val dummyResponse = OverpassResponse(elements = emptyList())
+        val boletusKey = "habitat_bonus_boletus_edulis_45.1000_7.2000"
+        cacheManager.saveCachedData(boletusKey, dummyResponse)
+
+        // Cache hit per Boletus edulis
+        val boletusHit = repository.fetchSpecificHabitatBonus(45.1, 7.2, boletusEdulis)
+        assertNotNull("Boletus edulis deve leggere la cache isolata", boletusHit)
+
+        // Cache miss per Macrolepiota procera (chiave diversa, isolamento rigoroso della cache per specie)
+        val macrolepiotaKey = "habitat_bonus_macrolepiota_procera_45.1000_7.2000"
+        val cachedMacrolepiota = cacheManager.getCachedData(macrolepiotaKey, OverpassResponse::class.java, 24 * 60 * 60 * 1000)
+        org.junit.Assert.assertNull("Macrolepiota non deve condividere la cache di Boletus edulis", cachedMacrolepiota)
     }
 }

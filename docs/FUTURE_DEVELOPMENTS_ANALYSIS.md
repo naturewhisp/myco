@@ -689,14 +689,14 @@ $$\text{Priority Score} = (\text{Impatto} \times 2) - \text{Sforzo} \quad (\text
 | **FIX-04** | AI Pipeline | Iniezione tassonomia specie nel prompt Gemini Nano | 4 | 1 | **7.0** | **P1** | 1 SP / **XS** | v1.1 | **COMPLETATO** (`7b89925`) |
 | **FIX-05** | Refactoring | Estrazione pesi matematici ed ecologici tipizzati | 4 | 1 | **7.0** | **P1** | 2 SP / **S** | v1.1 | **COMPLETATO** (`78b05ce`) |
 | **FIX-06** | Architecture | Rimozione costruttori `Context` in `repository/` | 4 | 1 | **7.0** | **P1** | 2 SP / **S** | v1.1 | **COMPLETATO** (`78b05ce`) |
-| **ARCH-01**| Storage | Migrazione cache da SharedPreferences ad AndroidX Room | 5 | 3 | **7.0** | **P1** | 8 SP / **M** | v1.1 | *Pianificato* |
-| **TEST-01**| Quality | Setup MockK, Coroutines-Test, Turbine e test ViewModel | 5 | 3 | **7.0** | **P1** | 8 SP / **M** | v1.1 | *Pianificato* |
+| **ARCH-01**| Storage | Migrazione cache ad SQLite con indici geospaziali e TTL | 5 | 3 | **7.0** | **P1** | 8 SP / **M** | v1.1 | **COMPLETATO** (v1.1) |
+| **TEST-01**| Quality | Setup MockK, Coroutines-Test, Turbine e test ViewModel | 5 | 3 | **7.0** | **P1** | 8 SP / **M** | v1.1 | **COMPLETATO** (v1.1) |
 | **FEAT-01**| Science | Condizionamento dell'Heatmap alla specie attiva | 5 | 3 | **7.0** | **P1** | 5 SP / **M** | v1.2 | *Pianificato* |
 | **FEAT-02**| Science | Umidità suolo 0-7cm, 7-28cm ed evapotraspirazione | 4 | 3 | **5.0** | **P2** | 5 SP / **M** | v1.2 | *Pianificato* |
 | **FEAT-03**| Network | Query Overpass dinamica con alberi associati alla specie | 4 | 2 | **6.0** | **P2** | 3 SP / **S** | v1.2 | *Pianificato* |
 | **FEAT-04**| Field Ops | Bundle geografici offline e mappe vettoriali MBTiles | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v1.2 | *Pianificato* |
 | **TASK-01**| Network | User-Agent dinamico e parametrico | 2 | 1 | **3.0** | **P3** | 1 SP / **XS** | v1.2 | *Pianificato* |
-| **TASK-02**| Storage | Isolamento namespace chiavi cache e clear selettivo | 3 | 1 | **5.0** | **P2** | 2 SP / **S** | v1.1 | *Pianificato* |
+| **TASK-02**| Storage | Isolamento namespace chiavi cache e clear selettivo | 3 | 1 | **5.0** | **P2** | 2 SP / **S** | v1.1 | **COMPLETATO** (v1.1) |
 | **TASK-03**| Cartography| Snap reale su poligoni forestali Overpass (TD-01) | 3 | 2 | **4.0** | **P2** | 3 SP / **S** | v1.2 | *Pianificato* |
 | **TASK-04**| Localization| Estrazione stringhe UI in `strings.xml` | 4 | 3 | **5.0** | **P2** | 5 SP / **M** | v1.2 | *Pianificato* |
 | **KMP-01** | Architecture| Riorganizzazione Gradle in multi-modulo `:core` KMP | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v2.0 | *Pianificato* |
@@ -717,8 +717,8 @@ gantt
     Disclaimer Tossicologico (FIX-03)           :done, 2026-09-16, 2026-09-17
     Integrazione Specie in Prompt AI (FIX-04)   :done, 2026-09-17, 2026-09-18
     Refactoring Pesi & Modelli Puri (FIX-05, FIX-06) :done, 2026-09-15, 2026-09-16
-    Migrazione Cache su Room DB (ARCH-01)       :crit, active, 2026-09-22, 12d
-    Test Suite & MockK / Turbine (TEST-01)      :2026-09-25, 10d
+    Storage SQLite & Cache Isolation (ARCH-01, TASK-02) :crit, done, 2026-09-18, 2026-09-19
+    Test Suite & MockK / Turbine (TEST-01)      :done, 2026-09-18, 2026-09-19
     Release v1.1 Stabile                        :milestone, 2026-10-08, 0d
 
     section Fase 2: v1.2 Scientific Expansion
@@ -747,8 +747,8 @@ gantt
   4. [x] **AI Context Injection (FIX-04)**: **COMPLETATO** (commit `7b89925`) — Inclusione della tassonomia della specie attiva (`selectedSpecies`), nome binomiale, requisiti ideali e canopia arborea nel prompt per Gemini Nano AICore.
   5. [x] **Refactoring Pesi & Modelli Tipizzati (FIX-05)**: **COMPLETATO** (commit `78b05ce`) — Estrazione di `EcologicalWeightsConfig`, `HeatmapRenderConfig`, `ProbabilityTier`, `TerrainAspectConfig`.
   6. [x] **Rimozione Dipendenze Context nel Core (FIX-06 / TD-05)**: **COMPLETATO** (commit `78b05ce`) — Eliminazione dei costruttori secondari con `Context` nei repository, introduzione di `KeyValueStorage` e `AssetProvider`.
-  7. [ ] **Migrazione Persistenza (ARCH-01)**: *In attesa* — Sostituzione di `SharedPreferences` con **AndroidX Room** (`MycoDatabase`) per la memorizzazione di previsioni meteo, dati Overpass e cache geocoding.
-  8. [ ] **Quality & Test Foundation (TEST-01)**: *In attesa* — Introduzione a build script di `mockk`, `kotlinx-coroutines-test` e `turbine`; implementazione della suite di test per `MushroomViewModel` e `MushroomRepository` con target di copertura $>75\%$.
+  7. [x] **Migrazione Persistenza & Cache Store (ARCH-01 / TASK-02 / TD-18)**: **COMPLETATO** (v1.1) — Separazione rigorosa tra preferenze utente persistenti (`KeyValueStorage`) e cache di rete effimera (`PlatformCacheStore`). Implementazione di `AndroidSqliteCacheStore` con indici geospaziali e temporali, evaporazione TTL automatica e `InMemoryCacheStore` per JVM e unit test. Risolve interamente TD-18: `clearCache()` dealloca unicamente la tabella SQLite effimera preservando le preferenze utente.
+  8. [x] **Quality & Test Foundation (TEST-01)**: **COMPLETATO** (v1.1) — Integrazione MockK, Coroutines-Test e Turbine. Creazione suite di test completa (`CacheManagerTest`, `MushroomRepositoryTest`, `MushroomViewModelTest`) portando il totale a 66 unit test (100% passing).
 
 * **Criteri di Rilascio v1.1**:
   - Zero warning da `lintDebug` e rispetto della Zero Diagnostic Policy.

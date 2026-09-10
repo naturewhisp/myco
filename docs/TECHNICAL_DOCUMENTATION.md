@@ -138,10 +138,10 @@ La base di codice è organizzata sotto il namespace principale `github.naturewhi
 |---|---|---|
 | **Root** | `MainActivity.kt` | Single Activity (`ComponentActivity`), punto di ingresso dell'applicazione e configurazione della finestra a tutto schermo (*edge-to-edge*). |
 | `model` | `DailyOutlook.kt`<br>`EcologicalWeightsConfig.kt`<br>`Factor.kt`<br>`GeocodingModel.kt`<br>`HeatmapModel.kt`<br>`HeatmapRenderConfig.kt`<br>`MushroomSpecies.kt`<br>`OverpassModel.kt`<br>`PlaceName.kt`<br>`ProbabilityTier.kt`<br>`SavedLocation.kt`<br>`SpunModel.kt`<br>`TerrainAspectConfig.kt`<br>`TerrainModel.kt`<br>`WeatherModel.kt` | **Dominio Puro:** Data classes, DTO per le API remote, strutture dati immutabili. `HeatmapRaster` definisce il buffer 32-bit grezzo agnostico. `MushroomSpecies` racchiude il catalogo tassonomico delle 10 specie con avvisi sosia tossici (`toxicLookAlikes`). Configurazioni tipizzate (`EcologicalWeightsConfig`, `TerrainAspectConfig`, `HeatmapRenderConfig`, `ProbabilityTier`). Nessuna dipendenza dal framework Android. |
-| `platform` | `AssetProvider.kt`<br>`KeyValueStorage.kt`<br>`PlatformAiEngine.kt`<br>`PlatformLocationProvider.kt`<br>`PlatformNavigator.kt`<br>`PlatformOrientationProvider.kt`<br>`UserLocation.kt` | **Porte Agnostiche:** Interfacce del pattern esagonale che disaccoppiano l'accesso all'hardware e al file system. I modelli associati (`UserLocation`, `DeviceHeading`, `MapOrientationMode`) contengono 0 import di sistema. |
-| `platform.android` | `AndroidAssetProvider`<br>`AndroidSharedPreferencesStorage`<br>`AndroidLocationProvider.kt`<br>`AndroidSensorOrientationProvider.kt`<br>`AndroidPlatformNavigator`<br>`HeatmapBitmapExtensions.kt` | **Adapter Android:** Implementazioni concrete collegate alle API di Google Play Services, Android `SensorManager`, `AssetManager` e `SharedPreferences`. Conversioni grafiche raster-to-bitmap. |
+| `platform` | `AssetProvider.kt`<br>`InMemoryCacheStore.kt`<br>`KeyValueStorage.kt`<br>`PlatformAiEngine.kt`<br>`PlatformCacheStore.kt`<br>`PlatformLocationProvider.kt`<br>`PlatformNavigator.kt`<br>`PlatformOrientationProvider.kt`<br>`UserLocation.kt` | **Porte Agnostiche:** Interfacce del pattern esagonale che disaccoppiano l'accesso all'hardware, allo storage persistente e al file system. I contratti (`PlatformCacheStore`, `KeyValueStorage`, `AssetProvider`, `PlatformAiEngine`, ecc.) e i modelli associati (`UserLocation`, `DeviceHeading`, `MapOrientationMode`, `CacheStats`) contengono 0 import di sistema. Include `InMemoryCacheStore` per test unitari e ambienti JVM. |
+| `platform.android` | `AndroidAssetProvider`<br>`AndroidLocationProvider.kt`<br>`AndroidPlatformNavigator`<br>`AndroidSensorOrientationProvider.kt`<br>`AndroidSharedPreferencesStorage`<br>`AndroidSqliteCacheStore.kt`<br>`HeatmapBitmapExtensions.kt` | **Adapter Android:** Implementazioni concrete collegate alle API di Google Play Services, Android `SensorManager`, `AssetManager`, `SharedPreferences` e database relazionale nativo `SQLiteOpenHelper` (`AndroidSqliteCacheStore`) per caching HTTP a bassissima latenza con indici geospaziali e temporali. Conversioni grafiche raster-to-bitmap. |
 | `network` | `ApiServices.kt`<br>`LocalAiService.kt`<br>`NetworkClient.kt` | Client HTTP Retrofit per Open-Meteo, Nominatim e Overpass API; adapter locale Google AI Edge AICore per Gemini Nano. |
-| `repository` | `CacheManager.kt`<br>`MushroomRepository.kt`<br>`SpunDataManager.kt` | Aggregazione di fonti dati concorrenti, caching multi-livello indicizzato per coordinate e tempo, lettura e decompressione zlib dell'atlante miceliare SPUN. |
+| `repository` | `CacheManager.kt`<br>`MushroomRepository.kt`<br>`SpunDataManager.kt` | Aggregazione di fonti dati concorrenti, architettura di caching a doppio motore (preferenze utente su `KeyValueStorage`, risposte di rete su `PlatformCacheStore` indicizzato con TTL automatico e cancellazione isolata), lettura e decompressione zlib dell'atlante miceliare SPUN. |
 | `ui.components` | `AnomalyNotice.kt`<br>`CompassRoseDial.kt`<br>`DayRow.kt`<br>`EmptyState.kt`<br>`FactorRow.kt`<br>`FieldNote.kt`<br>`HeatmapOverlay.kt`<br>`MapViewContainer.kt`<br>`MushroomComponents.kt`<br>`MycoDivider.kt`<br>`ProbabilityBar.kt`<br>`ProbabilityHeadline.kt`<br>`RenameFavoriteDialog.kt`<br>`SafetyDisclaimerDialog.kt`<br>`SpeciesSelectionSheet.kt`<br>`TrendCurve.kt`<br>`UserBearingOverlay.kt` | Componenti Compose modulari, atomici e riutilizzabili. Layout tabulari con protezione da starvation orizzontale. Modale di sicurezza micologica (`SafetyDisclaimerDialog`). Bridge AndroidView per OsmDroid MapView con gestione ciclo di vita. |
 | `ui.screens` | `ForecastScreen.kt`<br>`HomeScreen.kt`<br>`MapScreen.kt`<br>`MushroomApp.kt`<br>`SettingsScreen.kt` | Schermate principali di navigazione: registro fenologico giornaliero, tavola cartografica interattiva, impostazioni e scaffold applicativo. |
 | `ui.theme` | `Color.kt`<br>`MycoColors.kt`<br>`Shape.kt`<br>`Theme.kt`<br>`ThemePreference.kt`<br>`Type.kt` | Design System *Herbarium*: token cromatici botanici, tipografia editoriale (Newsreader, Inter, CodeTech) e persistenza del tema chiaro/scuro via DataStore. |
@@ -305,10 +305,27 @@ interface PlatformNavigator {
 }
 ```
 
+#### 7. `PlatformCacheStore` (`platform/PlatformCacheStore.kt`)
+Incapsula lo store per i payload di risposta di rete effimeri (meteo, OSM, geocodifica), garantendo separazione assoluta dalle preferenze utente, indicizzazione geospaziale e temporale, e controllo deterministico del Time-To-Live (TTL):
+```kotlin
+data class CacheStats(val entryCount: Int, val totalSizeBytes: Long)
+
+interface PlatformCacheStore {
+    fun get(key: String, ttlMs: Long): String?
+    fun put(key: String, value: String, ttlMs: Long, lat: Double? = null, lon: Double? = null)
+    fun remove(key: String)
+    fun clear()
+    fun getCacheAge(key: String): Long?
+    fun getCacheStats(): CacheStats
+}
+```
+
 ### 3.3 Implementazioni Android Esistenti
 Le classi nel package `github.naturewhisp.myco.platform.android` collegano le porte astratte alle API native Android:
 * `AndroidAssetProvider`: Delega ad `android.content.res.AssetManager.open(path)`.
 * `AndroidSharedPreferencesStorage`: Incapsula `SharedPreferences` con estensioni `androidx.core.content.edit`.
+* `AndroidSqliteCacheStore`: Database SQLite nativo (`SQLiteOpenHelper`) con tabella `api_cache` indicizzata su `key`, `(lat, lon)` e `timestamp`. Esegue query ad alta efficienza e isola completamente le risposte di rete dalle preferenze utente.
+* `InMemoryCacheStore`: Implementazione thread-safe basata su `ConcurrentHashMap` utilizzata nella suite di test unitari e pronta per desktop/CLI.
 * `AndroidLocationProvider`: Sfrutta `com.google.android.gms.location.FusedLocationProviderClient` con gestione automatica delle autorizzazioni a runtime (`ACCESS_FINE_LOCATION`).
 * `AndroidSensorOrientationProvider`: Sfrutta `SensorManager` con sensore hardware `Sensor.TYPE_ROTATION_VECTOR` (o fallback su `TYPE_GEOMAGNETIC_ROTATION_VECTOR`), applicando un filtro passa-basso EMA sull'angolo.
 * `AndroidPlatformNavigator`: Costruisce e avvia un Intent nativo con schema URI `geo:lat,lon?q=lat,lon(label)`.
@@ -321,6 +338,7 @@ In conformità a `docs/MACOS_ARCHITECTURE.md`, Myco è predisposta per il riutil
 |---|---|---|
 | `AssetProvider` | `context.assets.open(path)` | `Bundle.main.resourceURL` / FileSystem locale |
 | `KeyValueStorage` | `SharedPreferences` via KTX | `NSUserDefaults` o file `.properties` / JSON |
+| `PlatformCacheStore` | `AndroidSqliteCacheStore` (SQLite nativo) | SQLite nativo C / JVM SQLite / File Cache |
 | `PlatformAiEngine` | Google AICore (Gemini Nano) | Apple Intelligence / CoreML / MLX / Ollama |
 | `PlatformLocationProvider` | Google Play Services Fused Location | Apple `CoreLocation` (`CLLocationManager`) |
 | `PlatformOrientationProvider`| Android `SensorManager` | Bearing calcolato da GPS / Bussola Mac (se presente) |
@@ -583,7 +601,13 @@ I dati scientifici sulla biomassa e ricchezza ectomicorrizica sono codificati ne
 * **Matrice `hyphalData`:** $\text{gridSize}$ byte contenenti la biomassa fungina sotterranea. Il valore uint8 diviso per $20.0$ esprime la densità di ife in metri lineari per centimetro cubo di suolo ($\text{m/cm}^3$).
 * **Smoothing Spaziale ad Area Circolare:** Per prevenire artefatti dovuti a celle isolate, la funzione `getSpunData(lat, lon, radiusMeters)` campiona le celle nel raggio prescelto e calcola l'**80° percentile ponderato**, restituendo una stima robusta della macchia forestale circostante.
 
-### 6.4 Matrice TTL della Cache Multi-Livello (`CacheManager`)
+### 6.4 Architettura Dual-Engine e Matrice TTL della Cache (`CacheManager`)
+In conformità a `AGENTS.md` (Sezione 4.10) e per risolvere definitivamente il debito tecnico **TD-18**, `CacheManager` adotta un'architettura di persistenza a doppio motore rigorosamente isolato:
+1. **Motore Preferenze Utente (`KeyValueStorage`):** Persiste preferenze operative (stile mappa, raggio di ricerca, soglia di evidenziazione, attivazione AI locale, flag accettazione disclaimer di sicurezza), elenco dei luoghi preferiti con soprannomi personalizzati e cronologia dei punti recenti. Questo archivio non viene **mai** intaccato dalle operazioni di svuotamento cache.
+2. **Motore Cache di Rete Effimera (`PlatformCacheStore`):** Basato sull'adapter nativo `AndroidSqliteCacheStore` (su Android) o `InMemoryCacheStore` (su JVM/test unitari), memorizza le risposte HTTP grezze delle API esterne con indicizzazione geospaziale `(lat, lon)` e temporale (`timestamp`, `ttl_ms`).
+
+L'invocazione di `clearCache()` dealloca esclusivamente i record effimeri della tabella SQLite `api_cache`, eliminando alla radice il rischio di azzerare inavvertitamente impostazioni utente o waypoint salvati.
+
 Ogni tipologia di dato possiede un periodo di validità (Time-To-Live) commisurato alla frequenza di mutamento naturale della sorgente:
 
 | Tipologia di Dato | Durata di Validità (TTL) | Chiave di Indicizzazione | Razionale Scientifico |

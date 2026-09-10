@@ -22,6 +22,7 @@ import github.naturewhisp.myco.platform.android.AndroidAssetProvider
 import github.naturewhisp.myco.platform.android.AndroidLocationProvider
 import github.naturewhisp.myco.platform.android.AndroidSensorOrientationProvider
 import github.naturewhisp.myco.platform.android.AndroidSharedPreferencesStorage
+import github.naturewhisp.myco.platform.android.AndroidSqliteCacheStore
 import github.naturewhisp.myco.repository.CacheManager
 import github.naturewhisp.myco.repository.MushroomRepository
 import github.naturewhisp.myco.repository.SpunDataManager
@@ -59,7 +60,8 @@ class MainActivity : ComponentActivity() {
         Configuration.getInstance().userAgentValue = packageName
 
         val storage = AndroidSharedPreferencesStorage(applicationContext)
-        val cacheManager = CacheManager(storage)
+        val cacheStore = AndroidSqliteCacheStore(applicationContext)
+        val cacheManager = CacheManager(storage, cacheStore)
         val assetProvider = AndroidAssetProvider(applicationContext)
         val spunDataManager = SpunDataManager(assetProvider)
         val repository = MushroomRepository(cacheManager, spunDataManager)

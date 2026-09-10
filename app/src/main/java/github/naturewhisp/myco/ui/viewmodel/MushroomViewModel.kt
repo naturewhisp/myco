@@ -209,7 +209,7 @@ class MushroomViewModel(
             }
         }
 
-    private var dataFetchJob: Job? = null
+    internal var dataFetchJob: Job? = null
     private var locationTrackingJob: Job? = null
     private var orientationTrackingJob: Job? = null
 

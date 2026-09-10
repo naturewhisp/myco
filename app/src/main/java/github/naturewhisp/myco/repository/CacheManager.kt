@@ -3,18 +3,25 @@ package github.naturewhisp.myco.repository
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import github.naturewhisp.myco.model.SavedLocation
+import github.naturewhisp.myco.platform.InMemoryCacheStore
 import github.naturewhisp.myco.platform.KeyValueStorage
+import github.naturewhisp.myco.platform.PlatformCacheStore
 import java.util.Locale
 
 /**
  * Gestore centralizzato della persistenza su disco e della cache multi-livello di Myco.
  *
- * Totalmente disaccoppiato da Android, opera esclusivamente tramite l'astrazione [KeyValueStorage],
- * gestendo preferenze utente, cronologia toponomastica, località preferite e cache con TTL di risposte API.
+ * Disaccoppiato dalle piattaforme native secondo l'architettura esagonale:
+ * - Preferenze utente stabili, cronologia e preferiti sono memorizzati su [KeyValueStorage].
+ * - Risposte di rete pesanti e geospaziali (meteo 14gg, Overpass OSM, DEM) su [PlatformCacheStore].
  *
  * @param storage Astrazione di persistenza chiave-valore [KeyValueStorage].
+ * @param cacheStore Astrazione per lo storage strutturato e indicizzato della cache [PlatformCacheStore].
  */
-class CacheManager(private val storage: KeyValueStorage) {
+class CacheManager(
+    private val storage: KeyValueStorage,
+    val cacheStore: PlatformCacheStore = InMemoryCacheStore()
+) {
 
     private val gson = Gson()
 
@@ -56,41 +63,32 @@ class CacheManager(private val storage: KeyValueStorage) {
 
     fun <T> getCachedData(key: String, classType: Class<T>, expiryMs: Long): T? {
         if (!cacheEnabled) return null
-        val cachedStr = storage.getString(key, null) ?: return null
+        val cachedStr = cacheStore.get(key, expiryMs) ?: return null
         return try {
-            val wrapper = gson.fromJson(cachedStr, CacheWrapper::class.java) ?: return null
-            if (System.currentTimeMillis() - wrapper.timestamp < expiryMs) {
-                gson.fromJson(wrapper.dataJson, classType)
-            } else {
-                storage.remove(key)
-                null
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
+            gson.fromJson(cachedStr, classType)
+        } catch (_: Exception) {
             null
         }
     }
 
-    fun <T> saveCachedData(key: String, data: T) {
+    fun <T> saveCachedData(key: String, data: T, lat: Double? = null, lon: Double? = null, ttlMs: Long = 0) {
         if (!cacheEnabled) return
         try {
             val dataJson = gson.toJson(data)
-            val wrapper = CacheWrapper(timestamp = System.currentTimeMillis(), dataJson = dataJson)
-            val wrapperJson = gson.toJson(wrapper)
-            storage.putString(key, wrapperJson)
-        } catch (e: Exception) {
-            e.printStackTrace()
+            cacheStore.put(key, dataJson, lat, lon, ttlMs)
+        } catch (_: Exception) {
+            // Tolleranza guasti
         }
     }
 
     fun getGeocodeCache(query: String): String? {
         if (!cacheEnabled) return null
-        return storage.getString("geo_query_${query.lowercase()}", null)
+        return cacheStore.get("geo_query_${query.lowercase()}", 7 * 24 * 60 * 60 * 1000L)
     }
 
     fun saveGeocodeCache(query: String, dataJson: String) {
         if (!cacheEnabled) return
-        storage.putString("geo_query_${query.lowercase()}", dataJson)
+        cacheStore.put("geo_query_${query.lowercase()}", dataJson, ttlMs = 7 * 24 * 60 * 60 * 1000L)
     }
 
     // ── Recent locations ──────────────────────────────────────────────────────
@@ -241,14 +239,7 @@ class CacheManager(private val storage: KeyValueStorage) {
         val roundedLat = String.format(Locale.US, "%.4f", lat)
         val roundedLon = String.format(Locale.US, "%.4f", lon)
         val key = "weather_${roundedLat}_${roundedLon}"
-        val json = storage.getString(key, null) ?: return null
-        return try {
-            val wrapper = gson.fromJson(json, CacheWrapper::class.java) ?: return null
-            val age = System.currentTimeMillis() - wrapper.timestamp
-            if (age < 60 * 60 * 1000L) age else null  // null se scaduto (>1h)
-        } catch (_: Exception) {
-            null
-        }
+        return cacheStore.getCacheAge(key)
     }
 
     // ── Clear ─────────────────────────────────────────────────────────────────
@@ -257,53 +248,27 @@ class CacheManager(private val storage: KeyValueStorage) {
         storage.remove(KEY_RECENT_LOCATIONS)
     }
 
+    /**
+     * Svuota completamente la cache effimera delle risposte di rete (meteo, Overpass, geocoding).
+     *
+     * Preserva integralmente le preferenze utente, le località salvate, i preferiti
+     * e lo stato di accettazione del disclaimer di sicurezza memorizzati in [KeyValueStorage].
+     */
     fun clearCache() {
-        val mapStyleVal = mapStyle
-        val radiusVal = radius
-        val thresholdVal = threshold
-        val cacheEnabledVal = cacheEnabled
-        val useLocalAiVal = useLocalAi
-        val recentsJson = storage.getString(KEY_RECENT_LOCATIONS, null)
-        val favsJson = storage.getString(KEY_FAVORITE_LOCATIONS, null)
-
-        storage.clear()
-
-        mapStyle = mapStyleVal
-        radius = radiusVal
-        threshold = thresholdVal
-        cacheEnabled = cacheEnabledVal
-        useLocalAi = useLocalAiVal
-        recentsJson?.let { json -> storage.putString(KEY_RECENT_LOCATIONS, json) }
-        favsJson?.let { json -> storage.putString(KEY_FAVORITE_LOCATIONS, json) }
+        cacheStore.clear()
     }
 
     fun getCacheSizeString(): String {
-        val allEntries = storage.getAll()
-        val settingsKeys = setOf(KEY_MAP_STYLE, KEY_RADIUS, KEY_THRESHOLD, KEY_CACHE_ENABLED,
-            KEY_USE_LOCAL_AI, KEY_RECENT_LOCATIONS, KEY_FAVORITE_LOCATIONS)
-        var totalChars = 0
-        var cacheItemCount = 0
-        for ((key, value) in allEntries) {
-            if (key !in settingsKeys) {
-                totalChars += key.length
-                if (value is String) totalChars += value.length
-                cacheItemCount++
-            }
-        }
-        if (cacheItemCount == 0) return "Vuota"
+        val stats = cacheStore.getCacheStats()
+        if (stats.totalEntries == 0) return "Vuota"
 
-        val bytes = totalChars * 2
+        val bytes = stats.totalSizeBytes
         return if (bytes < 1024) {
-            "$bytes B ($cacheItemCount elementi)"
+            "$bytes B (${stats.totalEntries} elementi)"
         } else if (bytes < 1024 * 1024) {
-            String.format(Locale.getDefault(), "%.1f KB (%d elementi)", bytes / 1024.0, cacheItemCount)
+            String.format(Locale.getDefault(), "%.1f KB (%d elementi)", bytes / 1024.0, stats.totalEntries)
         } else {
-            String.format(Locale.getDefault(), "%.1f MB (%d elementi)", bytes / (1024.0 * 1024.0), cacheItemCount)
+            String.format(Locale.getDefault(), "%.1f MB (%d elementi)", bytes / (1024.0 * 1024.0), stats.totalEntries)
         }
     }
-
-    private data class CacheWrapper(
-        val timestamp: Long,
-        val dataJson: String
-    )
 }

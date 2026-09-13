@@ -653,6 +653,7 @@ graph TD
 * **Buffer Raster Pure Kotlin**: `HeatmapRaster` usa un `IntArray` 32-bit ARGB senza riferimenti di piattaforma. iOS lo converte in `CGImage` e lo georeferenzia con un overlay MapKit; Android mantiene il proprio adapter grafico.
 * **Algoritmi Condivisi**: modelli, curve biologiche, probabilità canonica, facade di analisi, parser SPUN e generatore raster sono in `core/src/commonMain` senza API Java/Android/Apple.
 * **Adapter iOS Operativi**: `PreferencesStore`, `CoreLocationService`, `AppleMapsNavigator`, `FoundationModelService`, `SpunBundleService`, `CacheStore` e i client URLSession implementano il bordo Apple senza contaminare il core.
+* **Build locale iOS portabile**: la phase Xcode `Build MycoCore` valida Java 17 e risolve il JDK tramite `JAVA_HOME`, `java_home` o Homebrew sui prefissi standard Apple Silicon e Intel, senza richiedere symlink macchina-specifici.
 
 ### 6.2 Stato della Modularizzazione KMP
 1. **Rimozione dei costruttori con `Context` nei Repository** (risolve TD-05).

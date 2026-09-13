@@ -1,9 +1,11 @@
 import CoreLocation
 import MycoCore
 import SwiftUI
+import UIKit
 
 struct RegistryView: View {
     @Environment(\.herbariumColors) private var colors
+    @Environment(\.dismissSearch) private var dismissSearch
     @ObservedObject var viewModel: MycoViewModel
     @ObservedObject var locationService: CoreLocationService
     @State private var query = ""
@@ -23,7 +25,10 @@ struct RegistryView: View {
                 errorSection
             }
             .searchable(text: $query, prompt: "Cerca città, borgo o montagna")
-            .onSubmit(of: .search) { viewModel.submitSearch(query: query) }
+            .onSubmit(of: .search) {
+                dismissSearch()
+                viewModel.submitSearch(query: query)
+            }
             .scrollContentBackground(.hidden)
             .background(colors.background)
             .navigationTitle("Registro")
@@ -72,7 +77,9 @@ struct RegistryView: View {
             }
             if let selected = viewModel.selectedLocation {
                 LabeledContent {
-                    Text(selected.name).multilineTextAlignment(.trailing)
+                    Text(selected.name)
+                        .multilineTextAlignment(.trailing)
+                        .lineLimit(3)
                 } label: {
                     Label("Selezionata", systemImage: "mappin.and.ellipse")
                 }
@@ -84,6 +91,30 @@ struct RegistryView: View {
                 }
                 .frame(minHeight: 44)
             }
+            if locationService.locationServicesAvailable == false {
+                locationPermissionNotice(
+                    title: "Servizi di localizzazione disattivati",
+                    message: "Attivali nelle Impostazioni per usare la posizione attuale."
+                )
+            } else {
+                switch locationService.authorizationStatus {
+                case .denied:
+                    locationPermissionNotice(
+                        title: "Accesso alla posizione negato",
+                        message: "Consenti l'accesso alla posizione nelle Impostazioni per usare il GPS."
+                    )
+                case .restricted:
+                    Label("Accesso alla posizione limitato dal dispositivo", systemImage: "lock.slash")
+                        .font(.footnote)
+                        .foregroundStyle(colors.warning)
+                default:
+                    if locationService.accuracyAuthorization == .reducedAccuracy {
+                        Label("Posizione approssimativa attiva", systemImage: "location.slash")
+                            .font(.footnote)
+                            .foregroundStyle(colors.warning)
+                    }
+                }
+            }
             if viewModel.isOfflineFallback {
                 Label("Modalità offline: risultati da cache scaduta", systemImage: "wifi.slash")
                     .foregroundStyle(colors.warning)
@@ -92,6 +123,22 @@ struct RegistryView: View {
             Text("Località")
         } footer: {
             Text("La posizione del Registro usa una richiesta one-shot; il tracking continuo è limitato alla Mappa.")
+        }
+    }
+
+    private func locationPermissionNotice(title: String, message: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(title, systemImage: "location.slash")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(colors.warning)
+            Text(message)
+                .font(.footnote)
+                .foregroundStyle(colors.inkSoft)
+            Button("Apri Impostazioni", systemImage: "gear") {
+                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(url)
+            }
+            .frame(minHeight: 44)
         }
     }
 
@@ -127,7 +174,9 @@ struct RegistryView: View {
             Button { showingSpecies = true } label: {
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(viewModel.selectedSpecies.vernacularName).foregroundStyle(colors.ink)
+                        Text(viewModel.selectedSpecies.vernacularName)
+                            .foregroundStyle(colors.ink)
+                            .lineLimit(3)
                         Text(viewModel.selectedSpecies.binomialName).font(.caption).italic().foregroundStyle(colors.inkSoft)
                     }
                     Spacer()

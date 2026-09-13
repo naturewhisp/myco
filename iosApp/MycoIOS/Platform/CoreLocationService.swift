@@ -27,6 +27,8 @@ final class CoreLocationService: NSObject, ObservableObject {
     }
 
     @Published private(set) var authorizationStatus: CLAuthorizationStatus
+    @Published private(set) var accuracyAuthorization: CLAccuracyAuthorization
+    @Published private(set) var locationServicesAvailable: Bool?
     @Published private(set) var location: LocationSnapshot?
     @Published private(set) var heading: HeadingSnapshot?
     @Published private(set) var errorDescription: String?
@@ -47,10 +49,13 @@ final class CoreLocationService: NSObject, ObservableObject {
     init(manager: CLLocationManager) {
         self.manager = manager
         authorizationStatus = manager.authorizationStatus
+        accuracyAuthorization = manager.accuracyAuthorization
+        locationServicesAvailable = nil
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
         installLifecycleObservers()
+        refreshServiceAvailability()
     }
 
     /// Requests one location fix without leaving GPS or heading updates active.
@@ -66,7 +71,25 @@ final class CoreLocationService: NSObject, ObservableObject {
     }
 
     private func authorizeOrStart() {
-        guard CLLocationManager.locationServicesEnabled() else { return }
+        refreshServiceAvailability(continueAuthorization: true)
+    }
+
+    private func refreshServiceAvailability(continueAuthorization: Bool = false) {
+        Task { [weak self] in
+            let isAvailable = await Task.detached(priority: .userInitiated) {
+                CLLocationManager.locationServicesEnabled()
+            }.value
+            guard let self else { return }
+            locationServicesAvailable = isAvailable
+            guard continueAuthorization, isAvailable else {
+                if !isAvailable { stopUpdates() }
+                return
+            }
+            authorizeOrStartAfterAvailabilityCheck()
+        }
+    }
+
+    private func authorizeOrStartAfterAvailabilityCheck() {
         switch manager.authorizationStatus {
         case .notDetermined:
             manager.requestWhenInUseAuthorization()
@@ -104,7 +127,7 @@ final class CoreLocationService: NSObject, ObservableObject {
     @objc nonisolated private func applicationDidBecomeActive() {
         Task { @MainActor [weak self] in
             self?.isApplicationActive = true
-            self?.startRequestedModeIfActive()
+            self?.authorizeOrStart()
         }
     }
 
@@ -142,10 +165,12 @@ extension CoreLocationService: CLLocationManagerDelegate {
         Task { @MainActor [weak self] in
             guard let self else { return }
             authorizationStatus = status
-            if status == .authorizedAlways || status == .authorizedWhenInUse {
-                startRequestedModeIfActive()
-            } else {
+            accuracyAuthorization = manager.accuracyAuthorization
+            if status == .denied || status == .restricted {
                 stopUpdates()
+                refreshServiceAvailability()
+            } else {
+                refreshServiceAvailability(continueAuthorization: true)
             }
         }
     }

@@ -3,6 +3,7 @@ import SwiftUI
 
 struct MycoRootView: View {
     @Environment(\.colorScheme) private var systemColorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(PreferenceKey.theme) private var themePreference = ThemePreference.system.rawValue
     @AppStorage(PreferenceKey.safetyDisclaimer) private var hasAcknowledgedSafetyDisclaimer = false
     @StateObject private var viewModel: MycoViewModel
@@ -40,11 +41,12 @@ struct MycoRootView: View {
 
             if !hasAcknowledgedSafetyDisclaimer {
                 SafetyDisclaimerView { hasAcknowledgedSafetyDisclaimer = true }
-                    .transition(.opacity)
+                    .transition(reduceMotion ? .identity : .opacity)
             }
         }
         .environment(\.herbariumColors, colors)
         .preferredColorScheme(preference.colorScheme)
+        .animation(reduceMotion ? nil : .default, value: hasAcknowledgedSafetyDisclaimer)
     }
 }
 

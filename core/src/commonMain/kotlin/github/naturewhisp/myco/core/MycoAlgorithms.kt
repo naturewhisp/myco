@@ -18,13 +18,8 @@ object MycoAlgorithms {
     ): Int {
         if (dayIndex !in days.indices) return 0
 
-        val rainStart = max(0, dayIndex - 10)
-        val rainEnd = max(0, dayIndex - 2)
-        val totalRain = if (rainStart < rainEnd) {
-            days.subList(rainStart, rainEnd).sumOf { it.totalPrecipMm }
-        } else {
-            0.0
-        }
+        val windows = EnvironmentalWindows.derive(days, dayIndex)
+        val totalRain = windows.rainWindowTotalMm
         var rainScore = rainResponse(totalRain, species) * 40.0
         if (spunHyphalDensity != null && spunHyphalDensity >= 5.0 && totalRain >= 12.0) {
             rainScore = min(40.0, rainScore + 6.0)
@@ -32,27 +27,18 @@ object MycoAlgorithms {
             rainScore = max(0.0, rainScore - 4.0)
         }
 
-        val tempStart = max(0, dayIndex - 5)
-        val tempDays = if (tempStart < dayIndex) days.subList(tempStart, dayIndex) else emptyList()
-        val avgTemp = if (tempDays.isEmpty()) 0.0 else tempDays.sumOf { it.avgTemp } / tempDays.size
-        val tempScore = temperatureResponse(avgTemp, species) * 30.0
+        val tempScore = temperatureResponse(windows.averageTempWindowC, species) * 30.0
 
-        val humidityStart = max(0, dayIndex - 3)
-        val humidityDays = days.subList(humidityStart, min(days.size, dayIndex + 1))
-        val avgHumidity = if (humidityDays.isEmpty()) 0.0 else humidityDays.sumOf { it.avgHumidityPercent } / humidityDays.size
-        val shallow = humidityDays.mapNotNull { it.soilMoisture0To7 }
-        val deep = humidityDays.mapNotNull { it.soilMoisture7To28 }
-        val et0 = humidityDays.mapNotNull { it.evapotranspiration }
-        val humidityScore = if (shallow.isNotEmpty() || deep.isNotEmpty()) {
-            val soil = soilMoistureResponse(shallow.averageOrNull(), deep.averageOrNull(), et0.averageOrNull())
-            (0.40 * humidityResponse(avgHumidity) + 0.60 * soil) * 15.0
+        val humidityScore = if (windows.averageSoil0To7 != null || windows.averageSoil7To28 != null) {
+            val soil = soilMoistureResponse(windows.averageSoil0To7, windows.averageSoil7To28, windows.averageEt0)
+            (0.40 * humidityResponse(windows.averageHumidityWindowPercent) + 0.60 * soil) * 15.0
         } else {
-            humidityResponse(avgHumidity) * 15.0
+            humidityResponse(windows.averageHumidityWindowPercent) * 15.0
         }
 
         var shockScore = 0.0
         if (dayIndex > 4 && totalRain >= 12.0) {
-            val drop = days[dayIndex - 4].avgTemp - days[dayIndex - 1].avgTemp
+            val drop = windows.temperatureDropC ?: 0.0
             val minimumDrop = if (spunHyphalDensity != null && spunHyphalDensity >= 5.0) 2.0 else 3.0
             if (drop > minimumDrop) {
                 shockScore = 15.0 * ((drop - minimumDrop) / 3.0).coerceIn(0.0, 1.0) *
@@ -205,8 +191,5 @@ object MycoAlgorithms {
         val t = ((value - edge0) / (edge1 - edge0)).coerceIn(0.0, 1.0)
         return t * t * (3.0 - 2.0 * t)
     }
-
-    private fun List<Double>.averageOrNull(): Double? = if (isEmpty()) null else average()
-
     private fun radiansToDegrees(value: Double): Double = value * 180.0 / kotlin.math.PI
 }

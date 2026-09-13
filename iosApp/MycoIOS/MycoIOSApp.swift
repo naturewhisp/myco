@@ -3,21 +3,29 @@ import SwiftData
 
 @main
 struct MycoIOSApp: App {
-    private static let modelContainer: ModelContainer = {
-        do {
-            return try ModelContainer(for: CacheEntry.self, SavedPlace.self)
-        } catch {
-            fatalError("Unable to create the Myco data container: \(error)")
-        }
-    }()
+    private static let persistence = MycoPersistenceBootstrap.makeContainer()
 
     var body: some Scene {
         WindowGroup {
-            MycoRootView(
-                cacheStore: CacheStore(modelContainer: Self.modelContainer),
-                savedPlacesStore: SavedPlacesStore(modelContainer: Self.modelContainer)
-            )
+            if let container = Self.persistence.container {
+                MycoRootView(
+                    cacheStore: CacheStore(modelContainer: container),
+                    savedPlacesStore: SavedPlacesStore(modelContainer: container)
+                )
+                .modelContainer(container)
+            } else {
+                PersistenceUnavailableView()
+            }
         }
-        .modelContainer(Self.modelContainer)
+    }
+}
+
+private struct PersistenceUnavailableView: View {
+    var body: some View {
+        ContentUnavailableView(
+            "Archivio locale non disponibile",
+            systemImage: "externaldrive.badge.xmark",
+            description: Text("Myco non ha potuto inizializzare l'archivio locale. Riavvia l'app per riprovare.")
+        )
     }
 }

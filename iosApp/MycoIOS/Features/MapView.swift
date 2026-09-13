@@ -23,6 +23,8 @@ struct MapView: View {
                 viewModel.select(coordinate: coordinate)
             }
             .ignoresSafeArea(edges: .bottom)
+            .accessibilityLabel("Mappa delle località analizzate")
+            .accessibilityHint("Tocca per selezionare una località")
             .overlay(alignment: .topTrailing) { controls }
             .safeAreaInset(edge: .bottom) { analysisCard }
             .navigationTitle("Mappa")
@@ -64,13 +66,18 @@ struct MapView: View {
             }
         }
         .padding(12)
+        .safeAreaPadding(.top, 8)
     }
 
     @ViewBuilder private var analysisCard: some View {
         if let selected = viewModel.selectedLocation {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Label(selected.name, systemImage: "mappin.and.ellipse").lineLimit(2)
+                    Label {
+                        Text(selected.name).lineLimit(3)
+                    } icon: {
+                        Image(systemName: "mappin.and.ellipse")
+                    }
                     Spacer()
                     if viewModel.isLoadingEnvironment { ProgressView() }
                 }
@@ -89,6 +96,7 @@ struct MapView: View {
             .padding()
             .background(.regularMaterial)
             .accessibilityElement(children: .contain)
+            .accessibilityLabel("Analisi per \(selected.name)")
         } else {
             Text("Tocca la mappa per scegliere una località")
                 .font(.footnote.weight(.medium))
@@ -115,7 +123,7 @@ private struct MapCameraCommand {
 
 private struct MycoMapRepresentable: UIViewRepresentable {
     let selectedLocation: SelectedLocation?
-    let heatmap: HeatmapRaster?
+    let heatmap: SpunHeatmapRaster?
     let mapType: MKMapType
     let cameraCommand: MapCameraCommand?
     let markerColor: UIColor
@@ -188,12 +196,12 @@ private struct MycoMapRepresentable: UIViewRepresentable {
     }
 }
 
-private final class HeatmapImageOverlay: NSObject, MKOverlay {
+final class HeatmapImageOverlay: NSObject, MKOverlay {
     let coordinate: CLLocationCoordinate2D
     let boundingMapRect: MKMapRect
     let image: CGImage
 
-    init?(raster: HeatmapRaster) {
+    init?(raster: SpunHeatmapRaster) {
         guard let image = HeatmapImageConverter.makeImage(raster: raster) else { return nil }
         self.image = image
         coordinate = CLLocationCoordinate2D(latitude: (raster.north + raster.south) / 2, longitude: (raster.west + raster.east) / 2)
@@ -211,13 +219,13 @@ private final class HeatmapImageOverlay: NSObject, MKOverlay {
 }
 
 enum HeatmapImageConverter {
-    static func makeImage(raster: HeatmapRaster) -> CGImage? {
-        let width = Int(raster.width)
-        let height = Int(raster.height)
-        guard width > 0, height > 0, raster.argbPixels.size == raster.width * raster.height else { return nil }
+    static func makeImage(raster: SpunHeatmapRaster) -> CGImage? {
+        let width = raster.width
+        let height = raster.height
+        guard width > 0, height > 0, raster.argbPixels.count == width * height else { return nil }
         var rgba = [UInt8](repeating: 0, count: width * height * 4)
         for index in 0..<(width * height) {
-            let argb = UInt32(bitPattern: raster.argbPixels.get(index: Int32(index)))
+            let argb = UInt32(bitPattern: raster.argbPixels[index])
             rgba[index * 4] = UInt8((argb >> 16) & 0xFF)
             rgba[index * 4 + 1] = UInt8((argb >> 8) & 0xFF)
             rgba[index * 4 + 2] = UInt8(argb & 0xFF)

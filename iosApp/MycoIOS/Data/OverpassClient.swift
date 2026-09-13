@@ -49,7 +49,17 @@ struct HabitatSnapshot: Codable, Sendable {
     let canopyTypes: [String]
 }
 
+/// The two habitat acquisition strategies used by the shared ecological model.
+/// Parasites use the tree-host strategy because OSM has no sufficiently reliable
+/// tag for decaying wood at the required spatial resolution.
+enum HabitatEcologicalCategory: Sendable {
+    case saprotrophic
+    case treeAssociated
+}
+
 struct OverpassClient: Sendable {
+    static let defaultHabitatRadiusMeters = 1_500
+
     static let defaultEndpoints = [
         URL(string: "https://overpass-api.de/api/interpreter")!,
         URL(string: "https://overpass.kumi.systems/api/interpreter")!,
@@ -93,14 +103,12 @@ struct OverpassClient: Sendable {
     /// Mirrors the Android forest-count thresholds and preferred-canopy bonus query.
     func habitat(
         around coordinate: CLLocationCoordinate2D,
-        radiusMeters: Int,
-        preferredCanopyTypes: [String]
+        radiusMeters: Int = Self.defaultHabitatRadiusMeters,
+        preferredCanopyTypes: [String],
+        ecologicalCategory: HabitatEcologicalCategory = .treeAssociated
     ) async throws -> HabitatSnapshot {
         let radius = min(max(radiusMeters, 1), 50_000)
-        let lat = coordinate.latitude
-        let lon = coordinate.longitude
-        let forestQuery = "[out:json][timeout:25];(nwr[\"natural\"=\"wood\"](around:\(radius),\(lat),\(lon));nwr[\"landuse\"=\"forest\"](around:\(radius),\(lat),\(lon)););out center tags;"
-        let forest = try await query(forestQuery)
+        let forest = try await query(Self.forestQuery(around: coordinate, radiusMeters: radius))
         let forestCount = forest.elements.count
         let score: Double
         let description: String
@@ -119,19 +127,57 @@ struct OverpassClient: Sendable {
             description = "Habitat non ideale: nessun bosco rilevato nelle vicinanze."
         }
 
+        let specificHabitat = try await query(
+            Self.specificHabitatQuery(
+                around: coordinate,
+                radiusMeters: radius,
+                preferredCanopyTypes: preferredCanopyTypes,
+                ecologicalCategory: ecologicalCategory
+            )
+        )
+        let detected: Set<String>
+        if ecologicalCategory == .treeAssociated {
+            detected = Set(specificHabitat.elements.compactMap { $0.tags?["genus"]?.lowercased() })
+        } else {
+            detected = specificHabitat.elements.isEmpty ? [] : ["saprotrophic_habitat"]
+        }
+        return HabitatSnapshot(score: score, description: description, canopyTypes: detected.sorted())
+    }
+
+    static func forestQuery(around coordinate: CLLocationCoordinate2D, radiusMeters: Int) -> String {
+        let radius = min(max(radiusMeters, 1), 50_000)
+        return "[out:json][timeout:25];(nwr[\"natural\"=\"wood\"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude));nwr[\"landuse\"=\"forest\"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude)););out center tags;"
+    }
+
+    /// Matches Android's category-specific Overpass acquisition: open habitats for
+    /// saprotrophs, and forest canopy plus preferred host genera for tree-associated species.
+    static func specificHabitatQuery(
+        around coordinate: CLLocationCoordinate2D,
+        radiusMeters: Int,
+        preferredCanopyTypes: [String],
+        ecologicalCategory: HabitatEcologicalCategory
+    ) -> String {
+        let radius = min(max(radiusMeters, 1), 50_000)
+        let location = "(around:\(radius),\(coordinate.latitude),\(coordinate.longitude))"
+        switch ecologicalCategory {
+        case .saprotrophic:
+            return "[out:json][timeout:25];(nwr[\"landuse\"~\"meadow|grass|pasture\"]\(location);nwr[\"natural\"~\"grassland|heath\"]\(location);nwr[\"leaf_type\"~\"broadleaved|needleleaved\"]\(location););out center tags;"
+        case .treeAssociated:
+            let genusRegex = preferredGenusRegex(from: preferredCanopyTypes)
+            return "[out:json][timeout:25];(nwr[\"natural\"=\"wood\"]\(location);nwr[\"landuse\"=\"forest\"]\(location);nwr[\"leaf_type\"~\"broadleaved|needleleaved\"]\(location);nwr[\"genus\"~\"\(genusRegex)\"]\(location););out center tags;"
+        }
+    }
+
+    private static func preferredGenusRegex(from canopyTypes: [String]) -> String {
         let knownGenera = [
             "fagus": "Fagus", "quercus": "Quercus", "castanea": "Castanea", "pinus": "Pinus",
             "picea": "Picea", "abies": "Abies", "betula": "Betula", "larix": "Larix",
             "populus": "Populus", "salix": "Salix", "ostrya": "Ostrya", "carpinus": "Carpinus",
             "corylus": "Corylus",
         ]
-        let genera = preferredCanopyTypes.compactMap { knownGenera[$0.lowercased()] }
-        let regex = (genera.isEmpty ? ["Fagus", "Quercus", "Castanea", "Pinus", "Picea", "Abies"] : genera)
+        let genera = canopyTypes.compactMap { knownGenera[$0.lowercased()] }
+        return (genera.isEmpty ? ["Fagus", "Quercus", "Castanea", "Pinus", "Picea", "Abies"] : genera)
             .joined(separator: "|")
-        let canopyQuery = "[out:json][timeout:25];(nwr[\"leaf_type\"~\"broadleaved|needleleaved\"](around:\(radius),\(lat),\(lon));nwr[\"genus\"~\"\(regex)\"](around:\(radius),\(lat),\(lon)););out center tags;"
-        let canopy = try await query(canopyQuery)
-        let detected = Set(canopy.elements.compactMap { $0.tags?["genus"]?.lowercased() })
-        return HabitatSnapshot(score: score, description: description, canopyTypes: detected.sorted())
     }
 
     private func request(query: String, endpoint: URL) -> URLRequest {

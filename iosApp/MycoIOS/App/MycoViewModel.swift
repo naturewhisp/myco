@@ -201,6 +201,9 @@ final class MycoViewModel: ObservableObject {
         let species = selectedSpecies
         let speciesID = species.id
         let preferredCanopyTypes = species.preferredCanopyTypes.map { $0 }
+        let habitatEcologicalCategory: HabitatEcologicalCategory = species.category == .saprotrophic
+            ? .saprotrophic
+            : .treeAssociated
 
         environmentTask = Task { [weak self, openMeteo, overpass, cacheStore] in
             guard let self else { return }
@@ -209,8 +212,8 @@ final class MycoViewModel: ObservableObject {
             async let loadedElevation = try? openMeteo.elevations(around: coordinate)
             async let loadedHabitat = try? overpass.habitat(
                     around: coordinate,
-                    radiusMeters: 3_000,
-                    preferredCanopyTypes: preferredCanopyTypes
+                    preferredCanopyTypes: preferredCanopyTypes,
+                    ecologicalCategory: habitatEcologicalCategory
                 )
             let (freshForecast, freshElevation, freshHabitat) = await (loadedForecast, loadedElevation, loadedHabitat)
             guard !Task.isCancelled else { return }

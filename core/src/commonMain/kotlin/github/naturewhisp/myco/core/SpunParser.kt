@@ -32,8 +32,10 @@ object SpunParser {
     fun sample(grid: SpunGrid, latitude: Double, longitude: Double, radiusMeters: Int = 1500): SpunSample? {
         val header = grid.header
         if (latitude !in header.minLat..header.maxLat || longitude !in header.minLon..header.maxLon) return null
-        val stepLon = (header.maxLon - header.minLon) / header.width
-        val stepLat = (header.maxLat - header.minLat) / header.height
+        // The canonical Android reader stores header bounds and derives cell steps as Float.
+        // Preserve that rounding here so the same real atlas selects the same cells on iOS/KMP.
+        val stepLon = ((header.maxLon.toFloat() - header.minLon.toFloat()) / header.width).toDouble()
+        val stepLat = ((header.maxLat.toFloat() - header.minLat.toFloat()) / header.height).toDouble()
         val centerColumn = ((longitude - header.minLon) / stepLon).toInt()
         val centerRow = ((header.maxLat - latitude) / stepLat).toInt()
         val metersPerDegreeLongitude = 111_320.0 * cos(degreesToRadians(latitude))

@@ -32,6 +32,7 @@ DerivedData/
 xcuserdata/
 *.xccheckout
 *.xcscmblueprint
+/iosApp/Config/Local.xcconfig
 
 # Dataset geospaziali raw (GeoTIFF pesanti non versionati)
 *.tif

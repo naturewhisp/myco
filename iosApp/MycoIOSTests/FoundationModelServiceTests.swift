@@ -20,32 +20,31 @@ final class FoundationModelServiceTests: XCTestCase {
         XCTAssertEqual(result, note)
     }
 
-    func testSafeNarrativePreservesFactsAndReceivesSafetyNotice() {
-        let deterministic = "Probabilità stimata 62%. Habitat favorevole."
-        let generated = "Il quadro ambientale indica una probabilità stimata 62%, con habitat favorevole."
+    func testAllowedStylePreservesDeterministicNoteVerbatimAndAddsSafetyNotice() {
+        let deterministic = "Probabilità 62%, soglia 20 e seconda soglia 20. Habitat favorevole."
 
-        let result = FoundationModelService.validatedNarrative(generated, deterministicNote: deterministic)
+        let result = FoundationModelService.render(styleChoice: "taccuino", deterministicNote: deterministic)
 
-        XCTAssertTrue(result.contains(generated))
+        XCTAssertTrue(result.contains(deterministic))
         XCTAssertTrue(result.contains(FoundationModelService.safetyNotice))
     }
 
-    func testNarrativeChangingProbabilityFallsBackToDeterministicNote() {
+    func testUnknownStyleFallsBackToDeterministicNote() {
         let deterministic = "Probabilità stimata 62%."
 
-        let result = FoundationModelService.validatedNarrative(
-            "Probabilità stimata 80%.",
+        let result = FoundationModelService.render(
+            styleChoice: "creativo",
             deterministicNote: deterministic
         )
 
         XCTAssertEqual(result, deterministic)
     }
 
-    func testUnsafeIdentificationCertaintyFallsBackToDeterministicNote() {
+    func testArbitraryUnsafeNarrativeCannotCrossStyleBoundary() {
         let deterministic = "Probabilità stimata 62%."
 
-        let result = FoundationModelService.validatedNarrative(
-            "Probabilità stimata 62%: il fungo è commestibile.",
+        let result = FoundationModelService.render(
+            styleChoice: "È sicuro da consumare e adatto al consumo.",
             deterministicNote: deterministic
         )
 

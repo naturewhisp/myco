@@ -4,7 +4,7 @@
 - Git commit: `562d94aff30825b4c7c7d2f7fe9d2b23d606f3c6`
 - Android version: `1.2.0` (`versionCode 2`)
 - Source branch at inspection: `master`, clean and aligned with `origin/master`
-- Integration branch: `codex/ios-native`
+- Integration branch: `ios-native`
 - Build contract: compile/target SDK 36, min SDK 31, Java 17, Gradle 9.7.1, AGP 9.3.2
 
 ## Gate status

@@ -27,6 +27,16 @@ struct SavedPlaceValue: Identifiable, Sendable {
     let longitude: Double
 }
 
+struct PlaceCoordinateKey: Hashable, Sendable {
+    let latMilliDegree: Int
+    let lonMilliDegree: Int
+
+    init(latitude: Double, longitude: Double) {
+        latMilliDegree = Int((latitude * 1_000).rounded())
+        lonMilliDegree = Int((longitude * 1_000).rounded())
+    }
+}
+
 @MainActor
 final class SavedPlacesStore {
     private let context: ModelContext
@@ -34,18 +44,31 @@ final class SavedPlacesStore {
     init(modelContainer: ModelContainer) { context = ModelContext(modelContainer) }
 
     func favorites() throws -> [SavedPlaceValue] { try values(kind: "favorite", limit: nil) }
-    func recents() throws -> [SavedPlaceValue] { try values(kind: "recent", limit: 10) }
+    func recents() throws -> [SavedPlaceValue] {
+        try migrateRecentDuplicates()
+        return try values(kind: "recent", limit: 8)
+    }
 
     func recordRecent(name: String, latitude: Double, longitude: Double) throws {
-        let entry = SavedPlace(kind: "recent", name: name, latitude: latitude, longitude: longitude)
-        context.insert(entry)
+        try migrateRecentDuplicates()
+        let key = PlaceCoordinateKey(latitude: latitude, longitude: longitude)
         let all = try entities(kind: "recent")
-        for stale in all.dropFirst(10) { context.delete(stale) }
+        if let existing = all.first(where: { PlaceCoordinateKey(latitude: $0.latitude, longitude: $0.longitude) == key }) {
+            existing.name = name
+            existing.latitude = latitude
+            existing.longitude = longitude
+            existing.updatedAt = .now
+        } else {
+            context.insert(SavedPlace(kind: "recent", name: name, latitude: latitude, longitude: longitude))
+        }
+        let updated = try entities(kind: "recent")
+        for stale in updated.dropFirst(8) { context.delete(stale) }
         try context.save()
     }
 
     func toggleFavorite(name: String, latitude: Double, longitude: Double) throws {
-        if let existing = try entities(kind: "favorite").first(where: { abs($0.latitude - latitude) < 0.000_001 && abs($0.longitude - longitude) < 0.000_001 }) {
+        let key = PlaceCoordinateKey(latitude: latitude, longitude: longitude)
+        if let existing = try entities(kind: "favorite").first(where: { PlaceCoordinateKey(latitude: $0.latitude, longitude: $0.longitude) == key }) {
             context.delete(existing)
         } else {
             context.insert(SavedPlace(kind: "favorite", name: name, latitude: latitude, longitude: longitude))
@@ -68,6 +91,20 @@ final class SavedPlacesStore {
 
     private func values(kind: String, limit: Int?) throws -> [SavedPlaceValue] {
         Array(try entities(kind: kind).prefix(limit ?? .max)).map { SavedPlaceValue(id: $0.id, name: $0.name, latitude: $0.latitude, longitude: $0.longitude) }
+    }
+
+    private func migrateRecentDuplicates() throws {
+        let all = try entities(kind: "recent")
+        var seen = Set<PlaceCoordinateKey>()
+        var removedDuplicate = false
+        for entry in all {
+            let key = PlaceCoordinateKey(latitude: entry.latitude, longitude: entry.longitude)
+            if seen.insert(key).inserted == false {
+                context.delete(entry)
+                removedDuplicate = true
+            }
+        }
+        if removedDuplicate { try context.save() }
     }
 
     private func entities(kind: String) throws -> [SavedPlace] {

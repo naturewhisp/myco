@@ -1,7 +1,9 @@
 # Myco iOS portability audit
 
-**Data audit:** 2026-09-13  
-**Repository baseline:** `app/src/main` Android, nessun source set `commonMain`/`iosMain` rilevato  
+**Data audit:** 2026-09-13
+
+**Repository baseline:** `app/src/main` Android, nessun source set `commonMain`/`iosMain` rilevato
+
 **Scope:** classi e contratti che determinano il porting iOS. Questo documento è un audit dello stato osservato, non una dichiarazione che il porting sia già compilabile.
 
 ## Legenda

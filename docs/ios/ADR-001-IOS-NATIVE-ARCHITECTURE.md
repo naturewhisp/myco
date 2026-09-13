@@ -1,7 +1,9 @@
 # ADR-001 — Architettura iOS nativa per Myco
 
-*Stato:* Accepted  
-*Data:* 2026-09-13  
+*Stato:* Accepted
+
+*Data:* 2026-09-13
+
 *Decisione:* UI e integrazioni iOS native; KMP limitato al core deterministico.
 
 ## Contesto

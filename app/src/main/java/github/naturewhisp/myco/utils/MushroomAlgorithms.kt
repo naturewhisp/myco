@@ -14,6 +14,7 @@ import github.naturewhisp.myco.model.TerrainAspectConfig
 import github.naturewhisp.myco.model.TerrainAspectData
 import github.naturewhisp.myco.model.TerrainAspectEvaluation
 import github.naturewhisp.myco.model.WeatherResponse
+import github.naturewhisp.myco.core.MycoAlgorithms as SharedMycoAlgorithms
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
@@ -1687,6 +1688,15 @@ object MushroomAlgorithms {
         config: EcologicalWeightsConfig = EcologicalWeightsConfig.DEFAULT,
         species: MushroomSpecies? = null
     ): Int {
+        if (config == EcologicalWeightsConfig.DEFAULT) {
+            return SharedMycoAlgorithms.growthProbability(
+                weatherScore,
+                habitatScore,
+                altitudeScore,
+                seasonalityScore,
+                terrainModifier,
+            )
+        }
         val weightedWeatherScore = 100.0 * Math.pow(weatherScore / 100.0, config.weatherExponent)
         
         val rawProb = if (species != null && config.usePhenologicalInertia) {

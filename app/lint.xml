@@ -5,6 +5,10 @@
     <!-- Pure Compose app without Android Fragments: Ignore legacy FragmentActivity version check -->
     <issue id="InvalidFragmentVersionForActivityResult" severity="ignore" />
 
+    <!-- AGP 9.3 can miss the application manifest registration after adding a KMP Android library. -->
+    <!-- MainActivity is explicitly registered in app/src/main/AndroidManifest.xml. -->
+    <issue id="Registered" severity="ignore" />
+
     <!-- Treat dependency version advisory as informational -->
     <issue id="GradleDependency" severity="informational" />
     <issue id="NewerVersionAvailable" severity="informational" />

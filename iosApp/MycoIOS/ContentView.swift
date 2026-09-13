@@ -2,12 +2,19 @@ import MycoCore
 import SwiftUI
 
 struct MycoRootView: View {
+    private enum RootTab: Hashable {
+        case registry
+        case forecast
+        case map
+    }
+
     @Environment(\.colorScheme) private var systemColorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(PreferenceKey.theme) private var themePreference = ThemePreference.system.rawValue
     @AppStorage(PreferenceKey.safetyDisclaimer) private var hasAcknowledgedSafetyDisclaimer = false
     @StateObject private var viewModel: MycoViewModel
     @StateObject private var locationService = CoreLocationService()
+    @State private var selectedTab = RootTab.registry
 
     init(cacheStore: CacheStore? = nil, savedPlacesStore: SavedPlacesStore? = nil) {
         _viewModel = StateObject(wrappedValue: MycoViewModel(cacheStore: cacheStore, savedPlacesStore: savedPlacesStore))
@@ -27,13 +34,20 @@ struct MycoRootView: View {
 
     var body: some View {
         ZStack {
-            TabView {
+            TabView(selection: $selectedTab) {
                 RegistryView(viewModel: viewModel, locationService: locationService)
                     .tabItem { Label("Registro", systemImage: "book.closed") }
+                    .tag(RootTab.registry)
                 ForecastView(viewModel: viewModel)
                     .tabItem { Label("Previsioni", systemImage: "cloud.sun") }
-                MapView(viewModel: viewModel, locationService: locationService)
+                    .tag(RootTab.forecast)
+                MapView(
+                    viewModel: viewModel,
+                    locationService: locationService,
+                    isActive: hasAcknowledgedSafetyDisclaimer && selectedTab == .map
+                )
                     .tabItem { Label("Mappa", systemImage: "map") }
+                    .tag(RootTab.map)
             }
             .tint(colors.forest)
             .disabled(!hasAcknowledgedSafetyDisclaimer)

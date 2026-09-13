@@ -166,11 +166,15 @@ extension CoreLocationService: CLLocationManagerDelegate {
             guard let self else { return }
             authorizationStatus = status
             accuracyAuthorization = manager.accuracyAuthorization
-            if status == .denied || status == .restricted {
+            switch status {
+            case .authorizedAlways, .authorizedWhenInUse:
+                refreshServiceAvailability(continueAuthorization: true)
+            case .notDetermined, .denied, .restricted:
                 stopUpdates()
                 refreshServiceAvailability()
-            } else {
-                refreshServiceAvailability(continueAuthorization: true)
+            @unknown default:
+                stopUpdates()
+                refreshServiceAvailability()
             }
         }
     }

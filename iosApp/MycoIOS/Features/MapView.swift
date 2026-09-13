@@ -7,6 +7,7 @@ struct MapView: View {
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var viewModel: MycoViewModel
     @ObservedObject var locationService: CoreLocationService
+    let isActive: Bool
     @State private var mapType = MKMapType.standard
     @State private var isPitched = false
     @State private var cameraCommand: MapCameraCommand?
@@ -30,13 +31,22 @@ struct MapView: View {
             .navigationTitle("Mappa")
         }
         .onAppear {
-            locationService.startTracking()
-            viewModel.refreshHeatmapPalette(isDark: colorScheme == .dark)
+            updateActivity()
         }
         .onDisappear { locationService.stopTracking() }
+        .onChange(of: isActive) { _, _ in updateActivity() }
         .onChange(of: colorScheme) { _, newValue in
             viewModel.refreshHeatmapPalette(isDark: newValue == .dark)
         }
+    }
+
+    private func updateActivity() {
+        guard isActive else {
+            locationService.stopTracking()
+            return
+        }
+        locationService.startTracking()
+        viewModel.refreshHeatmapPalette(isDark: colorScheme == .dark)
     }
 
     private var controls: some View {

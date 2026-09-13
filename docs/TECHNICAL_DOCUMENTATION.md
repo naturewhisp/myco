@@ -1,7 +1,7 @@
 # Documentazione Tecnica e Architetturale del Progetto Myco
 
 **Progetto:** Myco (`github.naturewhisp.myco`)  
-**Piattaforma:** Android (minSdk 31, targetSdk 36, compileSdk 36, Java 17) & iOS (Ready via Hexagonal Architecture)  
+**Piattaforma:** Android (minSdk 31, targetSdk 36, compileSdk 36, Java 17) & iOS (client SwiftUI nativo in sviluppo)
 **Versione Documento:** 1.0.0  
 **Data:** 2026-09-09  
 **Stato:** Ufficiale / Architettura e Governance  
@@ -335,19 +335,23 @@ Le classi nel package `github.naturewhisp.myco.platform.android` collegano le po
 * `AndroidPlatformNavigator`: Costruisce e avvia un Intent nativo con schema URI `geo:lat,lon?q=lat,lon(label)`.
 * `LocalAiService`: Implementazione Android di `PlatformAiEngine` basata su Google AI Edge AICore (`com.google.ai.edge.aicore`).
 
-### 3.4 Predisposizione al Porting iOS e Roadmap Multiplatform
-In conformità a `docs/IOS_ARCHITECTURE.md`, Myco è predisposta per il riutilizzo del 100% della logica di calcolo su iOS. Il disaccoppiamento richiede unicamente la fornitura degli adapter specifici:
+### 3.4 Client iOS nativo e Roadmap Multiplatform
+La decisione registrata in `docs/ios/ADR-001-IOS-NATIVE-ARCHITECTURE.md` adotta SwiftUI e stack Apple nativi. Il riuso KMP è limitato al core deterministico; networking, persistenza, posizione, mappa, lifecycle e UI restano implementazioni specifiche di piattaforma.
 
 | Porta Piattaforma | Implementazione Android Attuale | Implementazione iOS Prevista |
 |---|---|---|
 | `AssetProvider` | `context.assets.open(path)` | `IosAssetProvider` (`NSBundle.mainBundle`) |
-| `KeyValueStorage` | `SharedPreferences` via KTX | `IosUserDefaultsStorage` (`NSUserDefaults`) |
-| `PlatformCacheStore` | `AndroidSqliteCacheStore` (SQLite nativo) | `IosSqliteCacheStore` (SQLite3 C-API / SQLDelight) |
-| `PlatformAiEngine` | Google AICore (Gemini Nano) | Apple Intelligence / CoreML on-device |
+| `KeyValueStorage` | `SharedPreferences` via KTX | `PreferencesStore` (`UserDefaults`) |
+| `PlatformCacheStore` | `AndroidSqliteCacheStore` (SQLite nativo) | `CacheStore` SwiftData con TTL e fallback scaduto |
+| `PlatformAiEngine` | Google AICore (Gemini Nano) | Foundation Models con availability check e fallback deterministico |
 | `PlatformLocationProvider` | Google Play Services Fused Location | Apple `CoreLocation` (`CLLocationManager`) |
 | `PlatformOrientationProvider`| Android `SensorManager` (Rot. Vector) | Apple `CoreLocation` (`CLHeading` / magnetometro iPhone) |
-| `PlatformNavigator` | Android `Intent("geo:...")` | Apple Maps URL `maps://?ll=lat,lon&q=...` / `MKMapItem` |
-| **Interfaccia Grafica** | Jetpack Compose M3 (Android) | Compose Multiplatform for iOS o SwiftUI nativo |
+| `PlatformNavigator` | Android `Intent("geo:...")` | `MKMapItem` / Apple Maps |
+| **Interfaccia Grafica** | Jetpack Compose M3 (Android) | SwiftUI nativo + MapKit + Swift Charts |
+
+Il package applicativo iOS è sotto `iosApp/MycoIOS`: `Data` contiene i client Foundation/URLSession e la cache SwiftData, `Platform` gli adapter UserDefaults/CoreLocation/MapKit, `App` lo state holder cancellabile e `Features` le schermate SwiftUI. Il progetto Xcode usa un gruppo sincronizzato col filesystem per includere automaticamente i nuovi sorgenti mantenendo target iOS 18+ e Swift 6 strict concurrency.
+
+Il modulo `:core` KMP è attivo con target Android, `iosArm64` e `iosSimulatorArm64`. Il primo contratto `MycoCoreInfo` viene generato come framework statico `MycoCore` e importato dal client Swift tramite integrazione diretta nella build Xcode; modelli e algoritmi scientifici restano ancora nella produzione Android fino ai batch di estrazione coperti dai golden master.
 
 ---
 

@@ -26,6 +26,13 @@ local.properties
 captures/
 .cxx/
 
+# Xcode / Swift local build state
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xccheckout
+*.xcscmblueprint
+
 # Dataset geospaziali raw (GeoTIFF pesanti non versionati)
 *.tif
 *.tiff
@@ -47,10 +54,7 @@ keystores/
 # File di mapping di ProGuard (utili per il debug ma spesso non versionati)
 /app/build/outputs/mapping/release/mapping.txt
 
-# Gradle Wrapper
-gradlew
-gradlew.bat
-gradle/wrapper/
+# Gradle Wrapper is intentionally versioned for reproducible Android and KMP builds.
 
 # Multi-agent teamwork artifacts
 .agents/

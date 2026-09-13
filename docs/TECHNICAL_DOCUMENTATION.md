@@ -1,7 +1,7 @@
 # Documentazione Tecnica e Architetturale del Progetto Myco
 
 **Progetto:** Myco (`github.naturewhisp.myco`)  
-**Piattaforma:** Android (minSdk 31, targetSdk 36, compileSdk 36, Java 17) & iOS (client SwiftUI nativo in sviluppo)
+**Piattaforma:** Android (minSdk 31, targetSdk 36, compileSdk 36, Java 17) & iOS 18+ (client SwiftUI nativo implementato)
 **Versione Documento:** 1.0.0  
 **Data:** 2026-09-09  
 **Stato:** Ufficiale / Architettura e Governance  
@@ -335,12 +335,12 @@ Le classi nel package `github.naturewhisp.myco.platform.android` collegano le po
 * `AndroidPlatformNavigator`: Costruisce e avvia un Intent nativo con schema URI `geo:lat,lon?q=lat,lon(label)`.
 * `LocalAiService`: Implementazione Android di `PlatformAiEngine` basata su Google AI Edge AICore (`com.google.ai.edge.aicore`).
 
-### 3.4 Client iOS nativo e Roadmap Multiplatform
+### 3.4 Client iOS nativo e core Multiplatform
 La decisione registrata in `docs/ios/ADR-001-IOS-NATIVE-ARCHITECTURE.md` adotta SwiftUI e stack Apple nativi. Il riuso KMP è limitato al core deterministico; networking, persistenza, posizione, mappa, lifecycle e UI restano implementazioni specifiche di piattaforma.
 
-| Porta Piattaforma | Implementazione Android Attuale | Implementazione iOS Prevista |
+| Porta Piattaforma | Implementazione Android Attuale | Implementazione iOS |
 |---|---|---|
-| `AssetProvider` | `context.assets.open(path)` | `IosAssetProvider` (`NSBundle.mainBundle`) |
+| `AssetProvider` | `context.assets.open(path)` | `SpunBundleService` (`Bundle.main` + Apple Compression) |
 | `KeyValueStorage` | `SharedPreferences` via KTX | `PreferencesStore` (`UserDefaults`) |
 | `PlatformCacheStore` | `AndroidSqliteCacheStore` (SQLite nativo) | `CacheStore` SwiftData con TTL e fallback scaduto |
 | `PlatformAiEngine` | Google AICore (Gemini Nano) | Foundation Models con availability check e fallback deterministico |
@@ -349,9 +349,9 @@ La decisione registrata in `docs/ios/ADR-001-IOS-NATIVE-ARCHITECTURE.md` adotta 
 | `PlatformNavigator` | Android `Intent("geo:...")` | `MKMapItem` / Apple Maps |
 | **Interfaccia Grafica** | Jetpack Compose M3 (Android) | SwiftUI nativo + MapKit + Swift Charts |
 
-Il package applicativo iOS è sotto `iosApp/MycoIOS`: `Data` contiene i client Foundation/URLSession e la cache SwiftData, `Platform` gli adapter UserDefaults/CoreLocation/MapKit, `App` lo state holder cancellabile e `Features` le schermate SwiftUI. Il progetto Xcode usa un gruppo sincronizzato col filesystem per includere automaticamente i nuovi sorgenti mantenendo target iOS 18+ e Swift 6 strict concurrency.
+Il package applicativo iOS è sotto `iosApp/MycoIOS`: `Data` contiene ricerca MapKit, client Foundation/URLSession, cache SwiftData e luoghi salvati; `DomainAdapters` aggrega i DTO Open-Meteo nel modello KMP; `Platform` contiene UserDefaults, CoreLocation, Apple Maps, Foundation Models e il bridge SPUN; `App` ospita lo state holder cancellabile; `Features` contiene Registry, Forecast, selettore specie e mappa con heatmap. Il progetto usa gruppi sincronizzati col filesystem, iOS 18+, Swift 6 strict concurrency, asset icon, launch screen generata e privacy manifest.
 
-Il modulo `:core` KMP è attivo con target Android, `iosArm64` e `iosSimulatorArm64`. Il primo contratto `MycoCoreInfo` viene generato come framework statico `MycoCore` e importato dal client Swift tramite integrazione diretta nella build Xcode; modelli e algoritmi scientifici restano ancora nella produzione Android fino ai batch di estrazione coperti dai golden master.
+Il modulo `:core` KMP è attivo con target Android, `iosArm64` e `iosSimulatorArm64`. Il framework statico `MycoCore` contiene catalogo delle 10 specie, tier e fattori, serie giornaliere, formule biologiche, `MycoAnalysisEngine`, parser SPUN e `HeatmapRaster`. iOS consuma questi tipi direttamente; Android usa il modulo e delega al core formula canonica e palette standard, mantenendo temporaneamente facade Android compatibili per non alterare ViewModel, Retrofit/OkHttp, OsmDroid o AICore. Golden test, hash raster e test cross-platform bloccano variazioni scientifiche involontarie.
 
 ---
 

@@ -2,6 +2,8 @@
 
 Questo documento definisce l'architettura tecnica, le interfacce di sistema e la guida di porting per lo sviluppo della versione **iOS** (iPhone e iPad) dell'applicazione **Myco**.
 
+> Stato settembre 2026: il client iOS 18+ e il core deterministico KMP descritti qui sono implementati. I sottostanti snippet storici restano riferimenti semantici; l'inventario operativo aggiornato è in `docs/ios/COMPLETION_STATUS.md`.
+
 ---
 
 ## 1. Visione Architetturale: Ports & Adapters (Architettura Esagonale)
@@ -295,7 +297,7 @@ class IosAiEngine : PlatformAiEngine {
 
 La decisione è stata formalizzata in `docs/ios/ADR-001-IOS-NATIVE-ARCHITECTURE.md`: la UI iOS usa **SwiftUI nativo**, MapKit, CoreLocation, Foundation/URLSession e Swift Charts. Compose Multiplatform, MapLibre e un design system Material su iOS non fanno parte dell'architettura target.
 
-Il modulo Kotlin `:core` viene compilato come framework `MycoCore` consumato direttamente dall'applicazione Xcode. Al termine dei batch di estrazione conterrà esclusivamente modelli e calcoli deterministici, parser SPUN portabile e contratto raster. View model, lifecycle, networking, storage e rendering restano Apple-native.
+Il modulo Kotlin `:core` viene compilato come framework `MycoCore` consumato direttamente dall'applicazione Xcode. Contiene modelli e calcoli deterministici, parser SPUN portabile e contratto raster. View model, lifecycle, networking, storage e rendering restano Apple-native.
 
 ---
 
@@ -308,7 +310,7 @@ myco/
 ├── core/                  # Modulo Kotlin Multiplatform puro
 │   ├── build.gradle.kts
 │   └── src/
-│       ├── commonMain/    # Contratti e, per batch, modelli/algoritmi deterministici
+│       ├── commonMain/    # Modelli, algoritmi, analisi, SPUN e raster deterministici
 │       ├── androidMain/   # Eventuali adapter strettamente necessari al core
 │       └── iosMain/       # Eventuali adapter Foundation strettamente necessari al core
 ├── app/                   # Applicazione Android nativa (Jetpack Compose, OsmDroid, AndroidManifest)

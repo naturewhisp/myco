@@ -650,14 +650,14 @@ graph TD
 ```
 
 ### 6.1 Verifica di Portabilità del Core Condiviso
-* **Buffer Raster Pure Kotlin**: `HeatmapRaster` impiega già un `IntArray` 32-bit ARGB senza riferimenti ad `android.graphics.Bitmap`. Su iOS il contratto target è la conversione diretta in `CGImage` e overlay MapKit.
-* **Portabilità Parziale degli Algoritmi**: `MushroomAlgorithms.kt` non importa Android, ma usa ancora API `java.util`/`Locale`; queste dipendenze devono essere isolate prima del trasferimento in `commonMain`.
-* **Interfacce Port già Esistenti**: `AssetProvider`, `KeyValueStorage`, `PlatformNavigator`, `PlatformLocationProvider` e `PlatformOrientationProvider` definiscono la semantica da preservare. Gli adapter iOS sono implementati in Swift (`PreferencesStore`, `CoreLocationService`, `AppleMapsNavigator`); il core KMP riceverà soltanto dati portabili.
+* **Buffer Raster Pure Kotlin**: `HeatmapRaster` usa un `IntArray` 32-bit ARGB senza riferimenti di piattaforma. iOS lo converte in `CGImage` e lo georeferenzia con un overlay MapKit; Android mantiene il proprio adapter grafico.
+* **Algoritmi Condivisi**: modelli, curve biologiche, probabilità canonica, facade di analisi, parser SPUN e generatore raster sono in `core/src/commonMain` senza API Java/Android/Apple.
+* **Adapter iOS Operativi**: `PreferencesStore`, `CoreLocationService`, `AppleMapsNavigator`, `FoundationModelService`, `SpunBundleService`, `CacheStore` e i client URLSession implementano il bordo Apple senza contaminare il core.
 
 ### 6.2 Stato della Modularizzazione KMP
 1. **Rimozione dei costruttori con `Context` nei Repository** (risolve TD-05).
 2. **Spostamento della classe `HeatmapData`** (che contiene il riferimento a `android.graphics.Bitmap`) dal package model del core al layer di presentazione Android (`ui/components` o `platform/android`).
-3. **Completato lo scaffold multi-modulo**: `:core` usa Kotlin DSL e produce framework Android/iPhone/simulatore; l'app Android resta nel modulo `:app` con Groovy DSL per ridurre l'impatto. I prossimi batch trasferiscono modelli e algoritmi soltanto dopo verifica dei golden master.
+3. **Completata l'estrazione deterministica**: `:core` produce framework Android/iPhone/simulatore e contiene dominio, algoritmi, analisi, SPUN e raster. L'app Android conserva facade compatibili ma usa il core per i percorsi standard; l'app iOS lo consuma tramite framework statico.
 
 ---
 
@@ -715,11 +715,11 @@ $$\text{Priority Score} = (\text{Impatto} \times 2) - \text{Sforzo} \quad (\text
 | **FEAT-11**| Science | Microclima di canopia e buffering De Frenne ($C_f$) | 4 | 2 | **6.0** | **P2** | 3 SP / **S** | v1.2 | **COMPLETATO** (v1.2) |
 | **FEAT-12**| Science | Modello termico cardinale CTMI e finestre $P_{d-26}$ / $T_{d-20}$ | 5 | 3 | **7.0** | **P1** | 5 SP / **M** | v1.2 | **COMPLETATO** (v1.2) |
 | **FEAT-13**| Science | Modello Hurdle a due stadi ($p_{\text{hurdle}}$ Weibull vs $P_{\text{cond}}$) | 5 | 3 | **7.0** | **P1** | 5 SP / **M** | v1.2 | **COMPLETATO** (v1.2) |
-| **FEAT-14**| Science | Risposta unimodale dell'area basimetrica $G$ (CTFC Bonet/de-Miguel) | 4 | 2 | **6.0** | **P2** | 3 SP / **S** | v1.2 | **COMPLETATO** (v1.2) |
+| **FEAT-14**| Science | Risposta unimodale dell'area basimetrica $G$ (CTFC Bonet/de-miguel) | 4 | 2 | **6.0** | **P2** | 3 SP / **S** | v1.2 | **COMPLETATO** (v1.2) |
 | **FEAT-15**| Science | Valutazione dinamica per specie dell'habitat (`evaluateSpeciesHabitat`) | 5 | 3 | **7.0** | **P1** | 5 SP / **M** | v1.2 | **COMPLETATO** (v1.2) |
 | **FEAT-16**| Taxonomy | Espansione catalogo con *Lactarius deliciosus* e *Morchella esculenta* | 4 | 2 | **6.0** | **P2** | 3 SP / **S** | v1.2 | **COMPLETATO** (v1.2) |
-| **KMP-01** | Architecture| Riorganizzazione Gradle in multi-modulo `:core` KMP | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v2.0 | **IN CORSO** — P1 con 20 scenari; P2 scaffold e bridge Swift completati; estrazione modelli/algoritmi successiva |
-| **KMP-02** | Mobile UI | Implementazione client iOS SwiftUI nativo | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v2.0 | **IN CORSO** — app SwiftUI eseguibile, URLSession/CoreLocation/MapKit/Swift Charts, disclaimer, preferenze e cache SwiftData |
+| **KMP-01** | Architecture| Riorganizzazione Gradle in multi-modulo `:core` KMP | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v2.0 | **COMPLETATO** — dominio, engine, SPUN e heatmap condivisi; gate scientifici e performance attivi |
+| **KMP-02** | Mobile UI | Implementazione client iOS SwiftUI nativo | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v2.0 | **IMPLEMENTAZIONE COMPLETATA** — Registry/Forecast/MapKit, offline, preferiti, Foundation Models e hardening release; firma e distribuzione restano attività operative |
 | **FEAT-05**| Hardware | Sensore barometrico nativo e telemetria sonde BLE | 3 | 4 | **2.0** | **P3** | 8 SP / **M** | v2.0 | *Pianificato* |
 | **FEAT-06**| Weather | Overlay radar precipitativo animato su MapView | 3 | 3 | **3.0** | **P3** | 5 SP / **M** | v2.0 | *Pianificato* |
 | **FEAT-07**| AI Weather | Nowcasting predittivo WeatherNext 3 (Google DeepMind) per FEAT-06 | 4 | 4 | **4.0** | **P3** | 13 SP / **L** | Post v2.0 | *Valutazione (Subordinata a FEAT-06)* |

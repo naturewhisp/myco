@@ -2,13 +2,13 @@
 
 ## Stato
 
-La fase P2 è attiva con un modulo minimo `:core` e tre target:
+Le fasi P2-P6 sono completate. Il modulo `:core` espone modelli di dominio, catalogo specie, curve biologiche, facade `MycoAnalysisEngine`, parser SPUN e raster heatmap, con tre target:
 
 - Android tramite `com.android.kotlin.multiplatform.library`;
 - `iosArm64` per iPhone;
 - `iosSimulatorArm64` per simulatori Apple Silicon.
 
-`MycoCoreInfo` espone il contratto smoke `version()`. Xcode invoca `:core:embedAndSignAppleFrameworkForXcode` prima della compilazione Swift e `ContentView.swift` importa realmente `MycoCore`.
+Xcode invoca `:core:embedAndSignAppleFrameworkForXcode` prima della compilazione Swift. Il client usa realmente `MycoCore` per analisi, forecast probabilistico, fattori, specie, SPUN e heatmap. Android dipende da `:core` e delega al core condiviso formula canonica e palette standard; i test di parità impediscono divergenze rispetto alle API Android mantenute per compatibilità.
 
 ## Toolchain
 
@@ -30,6 +30,6 @@ Kotlin è stato allineato a 2.4.20 perché la linea 2.4.10 non supporta Gradle 9
 
 La build Xcode richiede `JAVA_HOME` verso un JDK 17 e un Android SDK risolvibile da Gradle. Il Gradle Wrapper 9.7.1 è versionato nel repository.
 
-## Confine del prossimo batch
+## Gate di parità
 
-P3 trasferirà i modelli puri in gruppi piccoli, iniziando da tier/fattori e catalogo specie. Nessuna formula scientifica viene modificata durante il trasferimento; i 20 scenari P1 devono restare invariati.
+`ScientificParityTest` copre formule, engine deterministico, parser SPUN e hash completo del raster. `CrossPlatformScientificParityTest` confronta le curve Android esistenti con il core e verifica l'intera palette 0...100 in modalità chiara e scura. `PerformanceRegressionTest` aggiunge un budget ampio e stabile per intercettare regressioni macroscopiche di analisi e generazione raster.

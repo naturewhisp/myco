@@ -1,5 +1,11 @@
 import Foundation
 
+enum PreferenceKey {
+    static let safetyDisclaimer = "hasAcknowledgedSafetyDisclaimer"
+    static let theme = "themePreference"
+    static let aiEnabled = "foundationModelsEnabled"
+}
+
 @MainActor
 protocol PreferencesStoring: AnyObject {
     var hasAcknowledgedSafetyDisclaimer: Bool { get set }
@@ -9,11 +15,6 @@ protocol PreferencesStoring: AnyObject {
 
 @MainActor
 final class PreferencesStore: PreferencesStoring {
-    private enum Key {
-        static let safetyDisclaimer = "hasAcknowledgedSafetyDisclaimer"
-        static let themePreference = "themePreference"
-    }
-
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -21,13 +22,13 @@ final class PreferencesStore: PreferencesStoring {
     }
 
     var hasAcknowledgedSafetyDisclaimer: Bool {
-        get { defaults.bool(forKey: Key.safetyDisclaimer) }
-        set { defaults.set(newValue, forKey: Key.safetyDisclaimer) }
+        get { defaults.bool(forKey: PreferenceKey.safetyDisclaimer) }
+        set { defaults.set(newValue, forKey: PreferenceKey.safetyDisclaimer) }
     }
 
     var themePreference: String {
-        get { defaults.string(forKey: Key.themePreference) ?? "system" }
-        set { defaults.set(newValue, forKey: Key.themePreference) }
+        get { defaults.string(forKey: PreferenceKey.theme) ?? "system" }
+        set { defaults.set(newValue, forKey: PreferenceKey.theme) }
     }
 
     func value<T>(forKey key: String) -> T? {
@@ -40,7 +41,7 @@ final class PreferencesStore: PreferencesStoring {
 
     /// Removes only values passed by the caller; user safety and appearance preferences are never cleared here.
     func removeEphemeralValues(_ keys: [String]) {
-        for key in keys where key != Key.safetyDisclaimer && key != Key.themePreference {
+        for key in keys where key != PreferenceKey.safetyDisclaimer && key != PreferenceKey.theme && key != PreferenceKey.aiEnabled {
             defaults.removeObject(forKey: key)
         }
     }

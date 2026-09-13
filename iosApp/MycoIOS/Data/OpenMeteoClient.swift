@@ -28,11 +28,17 @@ struct OpenMeteoForecast: Codable, Sendable {
         let temperature2m: [Double?]?
         let relativeHumidity2m: [Double?]?
         let precipitation: [Double?]?
+        let soilMoisture0To7: [Double?]?
+        let soilMoisture7To28: [Double?]?
+        let evapotranspiration: [Double?]?
 
         enum CodingKeys: String, CodingKey {
             case time, precipitation
             case temperature2m = "temperature_2m"
             case relativeHumidity2m = "relative_humidity_2m"
+            case soilMoisture0To7 = "soil_moisture_0_to_7cm"
+            case soilMoisture7To28 = "soil_moisture_7_to_28cm"
+            case evapotranspiration = "et0_fao_evapotranspiration"
         }
     }
 
@@ -41,12 +47,14 @@ struct OpenMeteoForecast: Codable, Sendable {
         let precipitationSum: [Double?]?
         let temperature2mMax: [Double?]?
         let temperature2mMin: [Double?]?
+        let weatherCode: [Int?]?
 
         enum CodingKeys: String, CodingKey {
             case time
             case precipitationSum = "precipitation_sum"
             case temperature2mMax = "temperature_2m_max"
             case temperature2mMin = "temperature_2m_min"
+            case weatherCode = "weather_code"
         }
     }
 }
@@ -81,18 +89,35 @@ struct OpenMeteoClient: Sendable {
             URLQueryItem(name: "latitude", value: String(coordinate.latitude)),
             URLQueryItem(name: "longitude", value: String(coordinate.longitude)),
             URLQueryItem(name: "current", value: "temperature_2m,relative_humidity_2m,precipitation"),
-            URLQueryItem(name: "hourly", value: "temperature_2m,relative_humidity_2m,precipitation"),
-            URLQueryItem(name: "daily", value: "temperature_2m_max,temperature_2m_min,precipitation_sum"),
+            URLQueryItem(name: "hourly", value: "temperature_2m,relative_humidity_2m,precipitation,soil_moisture_0_to_7cm,soil_moisture_7_to_28cm,et0_fao_evapotranspiration"),
+            URLQueryItem(name: "daily", value: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum"),
+            URLQueryItem(name: "past_days", value: "14"),
+            URLQueryItem(name: "forecast_days", value: "11"),
             URLQueryItem(name: "timezone", value: timezone),
         ]
         return try await apiClient.decode(OpenMeteoForecast.self, from: URLRequest(url: components.url!))
     }
 
     func elevation(for coordinate: CLLocationCoordinate2D) async throws -> OpenMeteoElevation {
+        try await elevations(around: coordinate)
+    }
+
+    /// Samples center, north, south, east and west at the same 75 m spacing used by Android.
+    func elevations(around coordinate: CLLocationCoordinate2D, deltaMeters: Double = 75) async throws -> OpenMeteoElevation {
+        let latitudeDelta = deltaMeters / 111_320
+        let longitudeScale = max(1, 111_320 * cos(coordinate.latitude * .pi / 180))
+        let longitudeDelta = deltaMeters / longitudeScale
+        let coordinates = [
+            coordinate,
+            CLLocationCoordinate2D(latitude: coordinate.latitude + latitudeDelta, longitude: coordinate.longitude),
+            CLLocationCoordinate2D(latitude: coordinate.latitude - latitudeDelta, longitude: coordinate.longitude),
+            CLLocationCoordinate2D(latitude: coordinate.latitude, longitude: coordinate.longitude + longitudeDelta),
+            CLLocationCoordinate2D(latitude: coordinate.latitude, longitude: coordinate.longitude - longitudeDelta),
+        ]
         var components = URLComponents(url: elevationURL, resolvingAgainstBaseURL: false)!
         components.queryItems = [
-            URLQueryItem(name: "latitude", value: String(coordinate.latitude)),
-            URLQueryItem(name: "longitude", value: String(coordinate.longitude)),
+            URLQueryItem(name: "latitude", value: coordinates.map { String($0.latitude) }.joined(separator: ",")),
+            URLQueryItem(name: "longitude", value: coordinates.map { String($0.longitude) }.joined(separator: ",")),
         ]
         return try await apiClient.decode(OpenMeteoElevation.self, from: URLRequest(url: components.url!))
     }

@@ -1,69 +1,254 @@
 import MapKit
+import MycoCore
 import SwiftUI
 
 struct MapView: View {
     @Environment(\.herbariumColors) private var colors
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var viewModel: MycoViewModel
     @ObservedObject var locationService: CoreLocationService
-    @Namespace private var mapScope
-    @State private var cameraPosition = MapCameraPosition.region(Self.italyRegion)
+    @State private var mapType = MKMapType.standard
+    @State private var isPitched = false
+    @State private var cameraCommand: MapCameraCommand?
 
     var body: some View {
         NavigationStack {
-            MapReader { proxy in
-                Map(position: $cameraPosition, scope: mapScope) {
-                    UserAnnotation()
-                    if let selected = viewModel.selectedLocation {
-                        Marker(selected.name, coordinate: selected.coordinate)
-                            .tint(colors.forest)
-                    }
-                }
-                .onTapGesture(coordinateSpace: .local) { point in
-                    guard let coordinate = proxy.convert(point, from: .local) else { return }
-                    viewModel.select(coordinate: coordinate)
-                }
-                .overlay(alignment: .topTrailing) {
-                    VStack(spacing: 8) {
-                        MapCompass(scope: mapScope)
-                        MapPitchToggle(scope: mapScope)
-                        MapUserLocationButton(scope: mapScope)
-                    }
-                    .padding(12)
-                }
-                .overlay(alignment: .bottom) {
-                    Text("Tocca la mappa per scegliere una località")
-                        .font(.footnote.weight(.medium))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(.regularMaterial, in: Capsule())
-                        .padding()
-                        .accessibilityLabel("Tocca la mappa per scegliere una località e caricare i dati ambientali")
-                }
+            MycoMapRepresentable(
+                selectedLocation: viewModel.selectedLocation,
+                heatmap: viewModel.heatmap,
+                mapType: mapType,
+                cameraCommand: cameraCommand,
+                markerColor: UIColor(colors.forest)
+            ) { coordinate in
+                viewModel.select(coordinate: coordinate)
             }
+            .ignoresSafeArea(edges: .bottom)
+            .overlay(alignment: .topTrailing) { controls }
+            .safeAreaInset(edge: .bottom) { analysisCard }
             .navigationTitle("Mappa")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Italia", systemImage: "globe.europe.africa") {
-                        if reduceMotion {
-                            cameraPosition = .region(Self.italyRegion)
-                        } else {
-                            withAnimation(.easeInOut) {
-                                cameraPosition = .region(Self.italyRegion)
-                            }
-                        }
-                    }
-                    .frame(minWidth: 44, minHeight: 44)
-                    .accessibilityHint("Centra la mappa sull'Italia")
-                }
-            }
         }
-        .onAppear { locationService.start() }
-        .onDisappear { locationService.stop() }
+        .onAppear {
+            locationService.startTracking()
+            viewModel.refreshHeatmapPalette(isDark: colorScheme == .dark)
+        }
+        .onDisappear { locationService.stopTracking() }
+        .onChange(of: colorScheme) { _, newValue in
+            viewModel.refreshHeatmapPalette(isDark: newValue == .dark)
+        }
     }
 
-    private static let italyRegion = MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 42.5, longitude: 12.5),
-        span: MKCoordinateSpan(latitudeDelta: 10, longitudeDelta: 10)
-    )
+    private var controls: some View {
+        VStack(spacing: 8) {
+            mapButton("Posizione", icon: "location.fill") {
+                guard let location = locationService.location else {
+                    locationService.startTracking()
+                    return
+                }
+                cameraCommand = MapCameraCommand(coordinate: CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude))
+            }
+            mapButton("Selezione", icon: "mappin") {
+                guard let selected = viewModel.selectedLocation else { return }
+                cameraCommand = MapCameraCommand(coordinate: selected.coordinate)
+            }
+            mapButton("Nord", icon: "safari") {
+                let coordinate = viewModel.selectedLocation?.coordinate ?? CLLocationCoordinate2D(latitude: 42.5, longitude: 12.5)
+                cameraCommand = MapCameraCommand(coordinate: coordinate, heading: 0, pitch: isPitched ? 55 : 0)
+            }
+            mapButton(isPitched ? "Vista piana" : "Vista 3D", icon: "view.3d") {
+                isPitched.toggle()
+                let coordinate = viewModel.selectedLocation?.coordinate ?? CLLocationCoordinate2D(latitude: 42.5, longitude: 12.5)
+                cameraCommand = MapCameraCommand(coordinate: coordinate, pitch: isPitched ? 55 : 0)
+            }
+            mapButton(mapType == .standard ? "Satellite" : "Standard", icon: "square.3.layers.3d") {
+                mapType = mapType == .standard ? .hybrid : .standard
+            }
+        }
+        .padding(12)
+    }
+
+    @ViewBuilder private var analysisCard: some View {
+        if let selected = viewModel.selectedLocation {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Label(selected.name, systemImage: "mappin.and.ellipse").lineLimit(2)
+                    Spacer()
+                    if viewModel.isLoadingEnvironment { ProgressView() }
+                }
+                if let analysis = viewModel.analysis {
+                    Text("\(analysis.probability)% · \(analysis.tier.shortLabel)").font(.title3.bold())
+                    if viewModel.heatmap == nil {
+                        Label("Heatmap non disponibile per quest'area", systemImage: "square.slash")
+                            .font(.caption).foregroundStyle(colors.inkSoft)
+                    }
+                    Button("Apri indicazioni", systemImage: "arrow.triangle.turn.up.right.diamond") {
+                        AppleMapsNavigator().openDirections(to: selected.coordinate, name: selected.name)
+                    }
+                    .frame(minHeight: 44)
+                }
+            }
+            .padding()
+            .background(.regularMaterial)
+            .accessibilityElement(children: .contain)
+        } else {
+            Text("Tocca la mappa per scegliere una località")
+                .font(.footnote.weight(.medium))
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(.regularMaterial, in: Capsule())
+                .padding()
+        }
+    }
+
+    private func mapButton(_ label: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Image(systemName: icon).frame(width: 44, height: 44) }
+            .buttonStyle(.borderedProminent)
+            .tint(colors.forest)
+            .accessibilityLabel(label)
+    }
+}
+
+private struct MapCameraCommand {
+    let id = UUID()
+    let coordinate: CLLocationCoordinate2D
+    var heading: CLLocationDirection = 0
+    var pitch: CGFloat = 0
+}
+
+private struct MycoMapRepresentable: UIViewRepresentable {
+    let selectedLocation: SelectedLocation?
+    let heatmap: HeatmapRaster?
+    let mapType: MKMapType
+    let cameraCommand: MapCameraCommand?
+    let markerColor: UIColor
+    let onSelect: (CLLocationCoordinate2D) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    func makeUIView(context: Context) -> MKMapView {
+        let map = MKMapView()
+        map.delegate = context.coordinator
+        map.showsUserLocation = true
+        map.showsCompass = true
+        map.pointOfInterestFilter = .excludingAll
+        map.setRegion(
+            MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 42.5, longitude: 12.5),
+                span: MKCoordinateSpan(latitudeDelta: 10, longitudeDelta: 10)
+            ),
+            animated: false
+        )
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.didTap(_:)))
+        map.addGestureRecognizer(tap)
+        return map
+    }
+
+    func updateUIView(_ map: MKMapView, context: Context) {
+        context.coordinator.parent = self
+        map.mapType = mapType
+        map.removeAnnotations(map.annotations.filter { !($0 is MKUserLocation) })
+        if let selectedLocation {
+            let annotation = MKPointAnnotation()
+            annotation.coordinate = selectedLocation.coordinate
+            annotation.title = selectedLocation.name
+            map.addAnnotation(annotation)
+        }
+        map.removeOverlays(map.overlays)
+        if let heatmap, let overlay = HeatmapImageOverlay(raster: heatmap) {
+            map.addOverlay(overlay, level: .aboveRoads)
+        }
+        if let command = cameraCommand, command.id != context.coordinator.lastCameraCommandID {
+            context.coordinator.lastCameraCommandID = command.id
+            let camera = MKMapCamera(lookingAtCenter: command.coordinate, fromDistance: 18_000, pitch: command.pitch, heading: command.heading)
+            map.setCamera(camera, animated: !UIAccessibility.isReduceMotionEnabled)
+        }
+    }
+
+    final class Coordinator: NSObject, MKMapViewDelegate {
+        var parent: MycoMapRepresentable
+        var lastCameraCommandID: UUID?
+
+        init(parent: MycoMapRepresentable) { self.parent = parent }
+
+        @objc func didTap(_ recognizer: UITapGestureRecognizer) {
+            guard recognizer.state == .ended, let map = recognizer.view as? MKMapView else { return }
+            parent.onSelect(map.convert(recognizer.location(in: map), toCoordinateFrom: map))
+        }
+
+        func mapView(_ mapView: MKMapView, rendererFor overlay: any MKOverlay) -> MKOverlayRenderer {
+            guard let overlay = overlay as? HeatmapImageOverlay else { return MKOverlayRenderer(overlay: overlay) }
+            return HeatmapOverlayRenderer(overlay: overlay)
+        }
+
+        func mapView(_ mapView: MKMapView, viewFor annotation: any MKAnnotation) -> MKAnnotationView? {
+            guard !(annotation is MKUserLocation) else { return nil }
+            let view = mapView.dequeueReusableAnnotationView(withIdentifier: "selected") as? MKMarkerAnnotationView ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: "selected")
+            view.annotation = annotation
+            view.markerTintColor = parent.markerColor
+            return view
+        }
+    }
+}
+
+private final class HeatmapImageOverlay: NSObject, MKOverlay {
+    let coordinate: CLLocationCoordinate2D
+    let boundingMapRect: MKMapRect
+    let image: CGImage
+
+    init?(raster: HeatmapRaster) {
+        guard let image = HeatmapImageConverter.makeImage(raster: raster) else { return nil }
+        self.image = image
+        coordinate = CLLocationCoordinate2D(latitude: (raster.north + raster.south) / 2, longitude: (raster.west + raster.east) / 2)
+        let northWest = MKMapPoint(CLLocationCoordinate2D(latitude: raster.north, longitude: raster.west))
+        let southEast = MKMapPoint(CLLocationCoordinate2D(latitude: raster.south, longitude: raster.east))
+        boundingMapRect = MKMapRect(
+            x: min(northWest.x, southEast.x),
+            y: min(northWest.y, southEast.y),
+            width: abs(southEast.x - northWest.x),
+            height: abs(southEast.y - northWest.y)
+        )
+        super.init()
+    }
+
+}
+
+enum HeatmapImageConverter {
+    static func makeImage(raster: HeatmapRaster) -> CGImage? {
+        let width = Int(raster.width)
+        let height = Int(raster.height)
+        guard width > 0, height > 0, raster.argbPixels.size == raster.width * raster.height else { return nil }
+        var rgba = [UInt8](repeating: 0, count: width * height * 4)
+        for index in 0..<(width * height) {
+            let argb = UInt32(bitPattern: raster.argbPixels.get(index: Int32(index)))
+            rgba[index * 4] = UInt8((argb >> 16) & 0xFF)
+            rgba[index * 4 + 1] = UInt8((argb >> 8) & 0xFF)
+            rgba[index * 4 + 2] = UInt8(argb & 0xFF)
+            rgba[index * 4 + 3] = UInt8((argb >> 24) & 0xFF)
+        }
+        guard let provider = CGDataProvider(data: Data(rgba) as CFData),
+              let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+        else { return nil }
+        return CGImage(
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bitsPerPixel: 32,
+            bytesPerRow: width * 4,
+            space: colorSpace,
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
+            provider: provider,
+            decode: nil,
+            shouldInterpolate: true,
+            intent: .defaultIntent
+        )
+    }
+}
+
+private final class HeatmapOverlayRenderer: MKOverlayRenderer {
+    override func draw(_ mapRect: MKMapRect, zoomScale: MKZoomScale, in context: CGContext) {
+        guard let overlay = overlay as? HeatmapImageOverlay else { return }
+        let rect = rect(for: overlay.boundingMapRect)
+        context.saveGState()
+        context.interpolationQuality = .high
+        context.draw(overlay.image, in: rect)
+        context.restoreGState()
+    }
 }

@@ -24,6 +24,11 @@ final class OpenMeteoClientTests: XCTestCase {
         XCTAssertEqual(forecast.hourly?.precipitation?.first, 0.2)
         XCTAssertEqual(forecast.daily?.temperature2mMin?.first, 16.0)
         XCTAssertEqual(forecast.timezone, "Europe/Rome")
+        let query = try XCTUnwrap(loader.requests.first?.url?.query)
+        XCTAssertTrue(query.contains("soil_moisture_0_to_7cm"))
+        XCTAssertTrue(query.contains("soil_moisture_7_to_28cm"))
+        XCTAssertTrue(query.contains("et0_fao_evapotranspiration"))
+        XCTAssertTrue(query.contains("past_days=14"))
     }
 
     func testElevationExposesFirstParallelArrayValue() async throws {
@@ -38,5 +43,10 @@ final class OpenMeteoClientTests: XCTestCase {
         let elevation = try await client.elevation(for: CLLocationCoordinate2D(latitude: 41.9, longitude: 12.5))
 
         XCTAssertEqual(elevation.firstElevation, 35.0)
+        let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(loader.requests.first?.url), resolvingAgainstBaseURL: false))
+        let latitudes = try XCTUnwrap(components.queryItems?.first(where: { $0.name == "latitude" })?.value)
+        let longitudes = try XCTUnwrap(components.queryItems?.first(where: { $0.name == "longitude" })?.value)
+        XCTAssertEqual(latitudes.split(separator: ",").count, 5)
+        XCTAssertEqual(longitudes.split(separator: ",").count, 5)
     }
 }

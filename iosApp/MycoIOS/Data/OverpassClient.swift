@@ -23,13 +23,30 @@ struct OverpassResponse: Codable, Sendable {
         let latitude: Double?
         let longitude: Double?
         let tags: [String: String]?
+        let center: Center?
 
         enum CodingKeys: String, CodingKey {
-            case type, id, tags
+            case type, id, tags, center
             case latitude = "lat"
             case longitude = "lon"
         }
     }
+
+    struct Center: Codable, Sendable {
+        let latitude: Double
+        let longitude: Double
+
+        enum CodingKeys: String, CodingKey {
+            case latitude = "lat"
+            case longitude = "lon"
+        }
+    }
+}
+
+struct HabitatSnapshot: Codable, Sendable {
+    let score: Double
+    let description: String
+    let canopyTypes: [String]
 }
 
 struct OverpassClient: Sendable {
@@ -71,6 +88,50 @@ struct OverpassClient: Sendable {
         let radius = min(max(radiusMeters, 1), 50_000)
         let query = "[out:json][timeout:25];(nwr(around:\(radius),\(coordinate.latitude),\(coordinate.longitude))[\(filter)];);out center tags;"
         return try await self.query(query)
+    }
+
+    /// Mirrors the Android forest-count thresholds and preferred-canopy bonus query.
+    func habitat(
+        around coordinate: CLLocationCoordinate2D,
+        radiusMeters: Int,
+        preferredCanopyTypes: [String]
+    ) async throws -> HabitatSnapshot {
+        let radius = min(max(radiusMeters, 1), 50_000)
+        let lat = coordinate.latitude
+        let lon = coordinate.longitude
+        let forestQuery = "[out:json][timeout:25];(nwr[\"natural\"=\"wood\"](around:\(radius),\(lat),\(lon));nwr[\"landuse\"=\"forest\"](around:\(radius),\(lat),\(lon)););out center tags;"
+        let forest = try await query(forestQuery)
+        let forestCount = forest.elements.count
+        let score: Double
+        let description: String
+        switch forestCount {
+        case 16...:
+            score = 1
+            description = "Habitat ideale: punto immerso in area boschiva."
+        case 5...:
+            score = 0.95
+            description = "Habitat promettente: vicinanza a boschi e foreste."
+        case 1...:
+            score = 0.6
+            description = "Habitat misto: presenza di aree verdi sparse."
+        default:
+            score = 0.1
+            description = "Habitat non ideale: nessun bosco rilevato nelle vicinanze."
+        }
+
+        let knownGenera = [
+            "fagus": "Fagus", "quercus": "Quercus", "castanea": "Castanea", "pinus": "Pinus",
+            "picea": "Picea", "abies": "Abies", "betula": "Betula", "larix": "Larix",
+            "populus": "Populus", "salix": "Salix", "ostrya": "Ostrya", "carpinus": "Carpinus",
+            "corylus": "Corylus",
+        ]
+        let genera = preferredCanopyTypes.compactMap { knownGenera[$0.lowercased()] }
+        let regex = (genera.isEmpty ? ["Fagus", "Quercus", "Castanea", "Pinus", "Picea", "Abies"] : genera)
+            .joined(separator: "|")
+        let canopyQuery = "[out:json][timeout:25];(nwr[\"leaf_type\"~\"broadleaved|needleleaved\"](around:\(radius),\(lat),\(lon));nwr[\"genus\"~\"\(regex)\"](around:\(radius),\(lat),\(lon)););out center tags;"
+        let canopy = try await query(canopyQuery)
+        let detected = Set(canopy.elements.compactMap { $0.tags?["genus"]?.lowercased() })
+        return HabitatSnapshot(score: score, description: description, canopyTypes: detected.sorted())
     }
 
     private func request(query: String, endpoint: URL) -> URLRequest {

@@ -9,62 +9,46 @@ struct ForecastView: View {
         NavigationStack {
             Group {
                 if viewModel.isLoadingEnvironment {
-                    ProgressView("Caricamento condizioni ambientali")
-                } else if let selectedLocation = viewModel.selectedLocation,
-                          !viewModel.environmentalDays.isEmpty {
+                    ProgressView("Calcolo previsione probabilistica")
+                } else if let selectedLocation = viewModel.selectedLocation, !viewModel.environmentalDays.isEmpty {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 24) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Label(selectedLocation.name, systemImage: "mappin.and.ellipse")
-                                    .font(.headline)
-                                Text("Temperature e pioggia previste per i prossimi 7 giorni.")
-                                    .font(.subheadline)
-                                    .foregroundStyle(colors.inkSoft)
-                            }
+                            Label(selectedLocation.name, systemImage: "mappin.and.ellipse").font(.headline)
+                            Text("Probabilità prodotta dal core condiviso per \(viewModel.selectedSpecies.vernacularName).")
+                                .font(.subheadline).foregroundStyle(colors.inkSoft)
 
                             Chart(viewModel.environmentalDays.prefix(7)) { day in
-                                if let minimum = day.minimumTemperature, let maximum = day.maximumTemperature {
-                                    BarMark(
-                                        x: .value("Giorno", day.date, unit: .day),
-                                        yStart: .value("Minima", minimum),
-                                        yEnd: .value("Massima", maximum)
-                                    )
-                                    .foregroundStyle(colors.forest.gradient)
-                                    .accessibilityLabel("\(day.date.formatted(date: .abbreviated, time: .omitted)): da \(minimum.formatted(.number.precision(.fractionLength(1)))) a \(maximum.formatted(.number.precision(.fractionLength(1)))) gradi Celsius")
-                                }
+                                LineMark(x: .value("Giorno", day.date, unit: .day), y: .value("Probabilità", day.probability))
+                                    .foregroundStyle(colors.warning)
+                                    .symbol(Circle())
+                                PointMark(x: .value("Giorno", day.date, unit: .day), y: .value("Probabilità", day.probability))
+                                    .annotation(position: .top) { Text("\(day.probability)%").font(.caption2) }
                             }
-                            .chartYAxisLabel("Temperatura °C")
-                            .chartXAxis {
-                                AxisMarks(values: .stride(by: .day)) { _ in
-                                    AxisGridLine()
-                                    AxisValueLabel(format: .dateTime.weekday(.narrow))
-                                }
-                            }
-                            .frame(height: 220)
-                            .accessibilityLabel("Grafico delle temperature minime e massime previste")
+                            .chartYScale(domain: 0...100)
+                            .chartYAxisLabel("Probabilità %")
+                            .chartXAxis { AxisMarks(values: .stride(by: .day)) { _ in AxisGridLine(); AxisValueLabel(format: .dateTime.weekday(.narrow)) } }
+                            .frame(height: 240)
+                            .accessibilityLabel("Probabilità di fruttificazione nei prossimi sette giorni")
 
                             Chart(viewModel.environmentalDays.prefix(7)) { day in
-                                if let rainfall = day.rainfall {
-                                    BarMark(
-                                        x: .value("Giorno", day.date, unit: .day),
-                                        y: .value("Pioggia", rainfall)
-                                    )
-                                    .foregroundStyle(colors.lichen.gradient)
-                                }
+                                LineMark(x: .value("Giorno", day.date, unit: .day), y: .value("Temperatura", day.averageTemperature))
+                                    .foregroundStyle(colors.forest)
+                                BarMark(x: .value("Giorno", day.date, unit: .day), y: .value("Pioggia", day.rainfall))
+                                    .foregroundStyle(colors.lichen.opacity(0.55))
                             }
-                            .chartYAxisLabel("Pioggia mm")
-                            .chartXAxis {
-                                AxisMarks(values: .stride(by: .day)) { _ in
-                                    AxisGridLine()
-                                    AxisValueLabel(format: .dateTime.weekday(.narrow))
-                                }
-                            }
-                            .frame(height: 180)
-                            .accessibilityLabel("Grafico della pioggia prevista")
+                            .chartYAxisLabel("°C / mm")
+                            .chartXAxis { AxisMarks(values: .stride(by: .day)) { _ in AxisGridLine(); AxisValueLabel(format: .dateTime.weekday(.narrow)) } }
+                            .frame(height: 200)
+                            .accessibilityLabel("Temperature e precipitazioni previste")
 
-                            Label("Questi sono dati meteorologici, non probabilità di crescita. Le probabilità saranno mostrate solo dopo il collegamento del core KMP.", systemImage: "info.circle")
-                                .font(.footnote)
-                                .foregroundStyle(colors.inkSoft)
+                            ForEach(viewModel.environmentalDays.prefix(7)) { day in
+                                HStack {
+                                    Text(day.date.formatted(.dateTime.weekday(.abbreviated).day().month())).frame(maxWidth: .infinity, alignment: .leading)
+                                    Text("\(day.probability)% · \(day.tierLabel)").fontWeight(.semibold)
+                                }
+                                .frame(minHeight: 44)
+                                .accessibilityElement(children: .combine)
+                            }
                         }
                         .padding()
                     }
@@ -72,7 +56,7 @@ struct ForecastView: View {
                     ContentUnavailableView {
                         Label("Scegli una località", systemImage: "cloud.sun")
                     } description: {
-                        Text("Cerca una località nel Registro o tocca la Mappa per vedere le previsioni ambientali.")
+                        Text("Avvia un'analisi dal Registro o dalla Mappa.")
                     }
                 }
             }
@@ -81,5 +65,4 @@ struct ForecastView: View {
             .navigationTitle("Previsioni")
         }
     }
-
 }

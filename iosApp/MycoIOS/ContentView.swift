@@ -2,13 +2,27 @@ import MycoCore
 import SwiftUI
 
 struct MycoRootView: View {
-    @AppStorage("themePreference") private var themePreference = ThemePreference.system.rawValue
-    @AppStorage("hasAcknowledgedSafetyDisclaimer") private var hasAcknowledgedSafetyDisclaimer = false
-    @StateObject private var viewModel = MycoViewModel()
+    @Environment(\.colorScheme) private var systemColorScheme
+    @AppStorage(PreferenceKey.theme) private var themePreference = ThemePreference.system.rawValue
+    @AppStorage(PreferenceKey.safetyDisclaimer) private var hasAcknowledgedSafetyDisclaimer = false
+    @StateObject private var viewModel: MycoViewModel
     @StateObject private var locationService = CoreLocationService()
 
+    init(cacheStore: CacheStore? = nil, savedPlacesStore: SavedPlacesStore? = nil) {
+        _viewModel = StateObject(wrappedValue: MycoViewModel(cacheStore: cacheStore, savedPlacesStore: savedPlacesStore))
+    }
+
     private var preference: ThemePreference { ThemePreference(rawValue: themePreference) ?? .system }
-    private var colors: HerbariumColors { preference == .nocturne ? .nocturne : .parchment }
+    private var colors: HerbariumColors {
+        switch preference {
+        case .system:
+            systemColorScheme == .dark ? .nocturne : .parchment
+        case .parchment:
+            .parchment
+        case .nocturne:
+            .nocturne
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -36,9 +50,12 @@ struct MycoRootView: View {
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("themePreference") private var themePreference = ThemePreference.system.rawValue
-    @AppStorage("hasAcknowledgedSafetyDisclaimer") private var hasAcknowledgedSafetyDisclaimer = false
+    @AppStorage(PreferenceKey.theme) private var themePreference = ThemePreference.system.rawValue
+    @AppStorage(PreferenceKey.safetyDisclaimer) private var hasAcknowledgedSafetyDisclaimer = false
+    @AppStorage(PreferenceKey.aiEnabled) private var aiEnabled = false
     @Environment(\.herbariumColors) private var colors
+    @ObservedObject var viewModel: MycoViewModel
+    @State private var cacheMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -60,6 +77,27 @@ struct SettingsView: View {
                     }
                     .frame(minHeight: 44)
                 }
+                Section("Offline e cache") {
+                    Button("Svuota cache", systemImage: "trash") {
+                        Task {
+                            do {
+                                try await viewModel.clearCache()
+                                cacheMessage = "Cache eliminata. Preferenze e dati salvati sono invariati."
+                            } catch {
+                                cacheMessage = "Impossibile eliminare la cache."
+                            }
+                        }
+                    }
+                    .frame(minHeight: 44)
+                    if let cacheMessage {
+                        Text(cacheMessage).font(.footnote).foregroundStyle(colors.inkSoft)
+                    }
+                }
+                Section("AI locale") {
+                    Toggle("Arricchisci nota dal campo", isOn: $aiEnabled)
+                    Text("Se Foundation Models non è disponibile, Myco conserva automaticamente la nota deterministica del core.")
+                        .font(.footnote).foregroundStyle(colors.inkSoft)
+                }
                 Section("Informazioni") {
                     LabeledContent("Core condiviso", value: "KMP \(MycoCoreInfo().version())")
                 }
@@ -80,27 +118,30 @@ private struct SafetyDisclaimerView: View {
     let acknowledge: () -> Void
 
     var body: some View {
-        ZStack {
+        GeometryReader { proxy in
             colors.background.ignoresSafeArea()
-            VStack(spacing: 24) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 44))
-                    .foregroundStyle(colors.warning)
-                    .accessibilityHidden(true)
-                Text("Avvertenza di sicurezza").font(.title.bold()).multilineTextAlignment(.center)
-                Text("Myco offre indicazioni ambientali e non identifica funghi né conferma la loro commestibilità. Non consumare mai un fungo senza una verifica esperta indipendente.")
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(colors.inkSoft)
-                Button(action: acknowledge) {
-                    Text("Ho compreso").frame(maxWidth: .infinity, minHeight: 44)
+            ScrollView {
+                VStack(spacing: 24) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 44))
+                        .foregroundStyle(colors.warning)
+                        .accessibilityHidden(true)
+                    Text("Avvertenza di sicurezza").font(.title.bold()).multilineTextAlignment(.center)
+                    Text("Myco offre indicazioni ambientali e non identifica funghi né conferma la loro commestibilità. Non consumare mai un fungo senza una verifica esperta indipendente.")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(colors.inkSoft)
+                    Button(action: acknowledge) {
+                        Text("Ho compreso").frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(colors.forest)
+                    .controlSize(.large)
+                    .accessibilityHint("Conferma di aver letto l'avvertenza e apre l'app")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(colors.forest)
-                .controlSize(.large)
-                .accessibilityHint("Conferma di aver letto l'avvertenza e apre l'app")
+                .padding(28)
+                .frame(maxWidth: 520, minHeight: proxy.size.height)
+                .frame(maxWidth: .infinity)
             }
-            .padding(28)
-            .frame(maxWidth: 520)
         }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)

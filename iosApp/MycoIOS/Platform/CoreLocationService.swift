@@ -18,6 +18,12 @@ final class CoreLocationService: NSObject, ObservableObject {
         let trueHeading: Double
         let headingAccuracy: Double
         let timestamp: Date
+
+        var effectiveHeading: Double? {
+            guard headingAccuracy >= 0 else { return nil }
+            if trueHeading >= 0 { return trueHeading }
+            return magneticHeading >= 0 ? magneticHeading : nil
+        }
     }
 
     @Published private(set) var authorizationStatus: CLAuthorizationStatus
@@ -26,7 +32,13 @@ final class CoreLocationService: NSObject, ObservableObject {
     @Published private(set) var errorDescription: String?
 
     private let manager: CLLocationManager
-    private var shouldRun = false
+    private enum Mode {
+        case stopped
+        case oneShot
+        case tracking
+    }
+
+    private var mode = Mode.stopped
     private var isApplicationActive = true
     override convenience init() {
         self.init(manager: CLLocationManager())
@@ -41,15 +53,25 @@ final class CoreLocationService: NSObject, ObservableObject {
         installLifecycleObservers()
     }
 
-    /// Starts requesting location and heading updates while the application is active.
-    func start() {
-        shouldRun = true
+    /// Requests one location fix without leaving GPS or heading updates active.
+    func requestCurrentLocation() {
+        mode = .oneShot
+        authorizeOrStart()
+    }
+
+    /// Starts continuous location and heading updates while the map is visible and the app is active.
+    func startTracking() {
+        mode = .tracking
+        authorizeOrStart()
+    }
+
+    private func authorizeOrStart() {
         guard CLLocationManager.locationServicesEnabled() else { return }
         switch manager.authorizationStatus {
         case .notDetermined:
             manager.requestWhenInUseAuthorization()
         case .authorizedAlways, .authorizedWhenInUse:
-            startUpdatesIfActive()
+            startRequestedModeIfActive()
         case .denied, .restricted:
             stopUpdates()
         @unknown default:
@@ -58,8 +80,8 @@ final class CoreLocationService: NSObject, ObservableObject {
     }
 
     /// Stops all hardware-backed updates immediately. Call when the owning screen is no longer active.
-    func stop() {
-        shouldRun = false
+    func stopTracking() {
+        mode = .stopped
         stopUpdates()
     }
 
@@ -82,7 +104,7 @@ final class CoreLocationService: NSObject, ObservableObject {
     @objc nonisolated private func applicationDidBecomeActive() {
         Task { @MainActor [weak self] in
             self?.isApplicationActive = true
-            self?.startUpdatesIfActive()
+            self?.startRequestedModeIfActive()
         }
     }
 
@@ -93,11 +115,18 @@ final class CoreLocationService: NSObject, ObservableObject {
         }
     }
 
-    private func startUpdatesIfActive() {
-        guard shouldRun, isApplicationActive else { return }
-        manager.startUpdatingLocation()
-        if CLLocationManager.headingAvailable() {
-            manager.startUpdatingHeading()
+    private func startRequestedModeIfActive() {
+        guard isApplicationActive else { return }
+        switch mode {
+        case .stopped:
+            stopUpdates()
+        case .oneShot:
+            manager.requestLocation()
+        case .tracking:
+            manager.startUpdatingLocation()
+            if CLLocationManager.headingAvailable() {
+                manager.startUpdatingHeading()
+            }
         }
     }
 
@@ -114,7 +143,7 @@ extension CoreLocationService: CLLocationManagerDelegate {
             guard let self else { return }
             authorizationStatus = status
             if status == .authorizedAlways || status == .authorizedWhenInUse {
-                startUpdatesIfActive()
+                startRequestedModeIfActive()
             } else {
                 stopUpdates()
             }
@@ -132,7 +161,12 @@ extension CoreLocationService: CLLocationManagerDelegate {
             )
         }
         Task { @MainActor [weak self] in
-            self?.location = snapshot
+            guard let self else { return }
+            location = snapshot
+            if case .oneShot = mode {
+                mode = .stopped
+                stopUpdates()
+            }
         }
     }
 
@@ -151,7 +185,11 @@ extension CoreLocationService: CLLocationManagerDelegate {
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         let description = error.localizedDescription
         Task { @MainActor [weak self] in
-            self?.errorDescription = description
+            guard let self else { return }
+            errorDescription = description
+            if case .oneShot = mode {
+                mode = .stopped
+            }
         }
     }
 }

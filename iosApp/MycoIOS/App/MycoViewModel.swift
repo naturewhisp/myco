@@ -1,11 +1,14 @@
 import CoreLocation
 import Foundation
+import MycoCore
 
-struct EnvironmentalDay: Identifiable, Sendable {
+struct EnvironmentalDay: Identifiable {
     let date: Date
-    let minimumTemperature: Double?
-    let maximumTemperature: Double?
-    let rainfall: Double?
+    let averageTemperature: Double
+    let rainfall: Double
+    let humidity: Double
+    let probability: Int
+    let tierLabel: String
 
     var id: Date { date }
 }
@@ -19,33 +22,61 @@ struct SelectedLocation: Identifiable, Sendable {
 
 @MainActor
 final class MycoViewModel: ObservableObject {
-    @Published private(set) var searchResults: [NominatimPlace] = []
+    @Published private(set) var searchResults: [LocationSearchResult] = []
     @Published private(set) var selectedLocation: SelectedLocation?
     @Published private(set) var forecast: OpenMeteoForecast?
     @Published private(set) var elevation: Double?
+    @Published private(set) var analysis: AnalysisResult?
+    @Published private(set) var heatmap: HeatmapRaster?
+    @Published private(set) var fieldNote = ""
     @Published private(set) var isSearching = false
     @Published private(set) var isLoadingEnvironment = false
+    @Published private(set) var isOfflineFallback = false
     @Published private(set) var errorMessage: String?
+    @Published var selectedSpecies: MushroomSpecies
+    @Published private(set) var favorites: [SavedPlaceValue] = []
+    @Published private(set) var recentLocations: [SavedPlaceValue] = []
 
-    private let nominatim: NominatimClient
+    let speciesCatalog: [MushroomSpecies]
+
+    private let locationSearch: any LocationSearching
     private let openMeteo: OpenMeteoClient
+    private let overpass: OverpassClient
+    private let cacheStore: CacheStore?
+    private let spun = SpunBundleService()
+    private let fieldNoteGenerator: any FieldNoteGenerating
+    private let savedPlacesStore: SavedPlacesStore?
+    private let analysisEngine = MycoAnalysisEngine()
     private var searchTask: Task<Void, Never>?
     private var environmentTask: Task<Void, Never>?
+    private var fieldNoteTask: Task<Void, Never>?
 
     init(
-        nominatim: NominatimClient = NominatimClient(),
-        openMeteo: OpenMeteoClient = OpenMeteoClient()
+        locationSearch: any LocationSearching = MKLocalSearchService(),
+        openMeteo: OpenMeteoClient = OpenMeteoClient(),
+        overpass: OverpassClient = OverpassClient(),
+        cacheStore: CacheStore? = nil,
+        fieldNoteGenerator: any FieldNoteGenerating = FoundationModelService(),
+        savedPlacesStore: SavedPlacesStore? = nil
     ) {
-        self.nominatim = nominatim
+        self.locationSearch = locationSearch
         self.openMeteo = openMeteo
+        self.overpass = overpass
+        self.cacheStore = cacheStore
+        self.fieldNoteGenerator = fieldNoteGenerator
+        self.savedPlacesStore = savedPlacesStore
+        speciesCatalog = SpeciesCatalog.shared.all
+        selectedSpecies = SpeciesCatalog.shared.byId(id: "general")
+        refreshSavedPlaces()
     }
 
     deinit {
         searchTask?.cancel()
         environmentTask?.cancel()
+        fieldNoteTask?.cancel()
     }
 
-    func search(query: String) {
+    func submitSearch(query: String) {
         searchTask?.cancel()
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else {
@@ -54,19 +85,16 @@ final class MycoViewModel: ObservableObject {
             errorMessage = nil
             return
         }
-
         isSearching = true
         errorMessage = nil
-        searchTask = Task { [weak self, nominatim] in
+        searchTask = Task { [weak self, locationSearch] in
             do {
-                try await Task.sleep(for: .milliseconds(250))
-                try Task.checkCancellation()
-                let results = try await nominatim.search(query: trimmedQuery)
+                let results = try await locationSearch.search(query: trimmedQuery)
                 try Task.checkCancellation()
                 self?.searchResults = results
                 self?.isSearching = false
             } catch is CancellationError {
-                // A newer query superseded this request.
+                return
             } catch {
                 guard !Task.isCancelled else { return }
                 self?.isSearching = false
@@ -76,34 +104,87 @@ final class MycoViewModel: ObservableObject {
         }
     }
 
-    func select(place: NominatimPlace) {
-        selectedLocation = SelectedLocation(name: place.displayName, coordinate: place.coordinate)
-        searchResults = []
-        loadEnvironment(for: place.coordinate)
+    func select(place: LocationSearchResult) {
+        select(coordinate: place.coordinate, name: place.name)
     }
 
     func select(coordinate: CLLocationCoordinate2D, name: String = "Punto selezionato") {
+        searchTask?.cancel()
+        isSearching = false
         selectedLocation = SelectedLocation(name: name, coordinate: coordinate)
+        try? savedPlacesStore?.recordRecent(name: name, latitude: coordinate.latitude, longitude: coordinate.longitude)
+        refreshSavedPlaces()
         searchResults = []
         loadEnvironment(for: coordinate)
     }
 
     func useCurrentLocation(latitude: Double, longitude: Double) {
-        select(
-            coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
-            name: "Posizione attuale"
+        select(coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude), name: "Posizione attuale")
+    }
+
+    func chooseSpecies(_ species: MushroomSpecies) {
+        selectedSpecies = species
+        guard let coordinate = selectedLocation?.coordinate else { return }
+        loadEnvironment(for: coordinate)
+    }
+
+    func retry() {
+        guard let coordinate = selectedLocation?.coordinate else { return }
+        loadEnvironment(for: coordinate)
+    }
+
+    func refreshHeatmapPalette(isDark: Bool) {
+        guard let coordinate = selectedLocation?.coordinate, let analysis else { return }
+        heatmap = try? spun.heatmap(
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude,
+            analysis: analysis,
+            speciesID: selectedSpecies.id,
+            isDark: isDark
         )
     }
 
+    func clearCache() async throws {
+        try await cacheStore?.clearCache()
+    }
+
+    func selectSavedPlace(_ place: SavedPlaceValue) {
+        select(coordinate: CLLocationCoordinate2D(latitude: place.latitude, longitude: place.longitude), name: place.name)
+    }
+
+    func toggleFavorite() {
+        guard let selectedLocation else { return }
+        try? savedPlacesStore?.toggleFavorite(name: selectedLocation.name, latitude: selectedLocation.coordinate.latitude, longitude: selectedLocation.coordinate.longitude)
+        refreshSavedPlaces()
+    }
+
+    func removeFavorite(id: UUID) {
+        try? savedPlacesStore?.removeFavorite(id: id)
+        refreshSavedPlaces()
+    }
+
+    func renameFavorite(id: UUID, name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        try? savedPlacesStore?.renameFavorite(id: id, name: trimmed)
+        refreshSavedPlaces()
+    }
+
+    func isFavorite(_ location: SelectedLocation) -> Bool {
+        favorites.contains { abs($0.latitude - location.coordinate.latitude) < 0.000_001 && abs($0.longitude - location.coordinate.longitude) < 0.000_001 }
+    }
+
     var environmentalDays: [EnvironmentalDay] {
-        guard let daily = forecast?.daily else { return [] }
-        return daily.time.enumerated().compactMap { (index, dateString) -> EnvironmentalDay? in
-            guard let date = Self.dateFormatter.date(from: dateString) else { return nil }
+        guard let analysis else { return [] }
+        return analysis.dailyOutlooks.compactMap { outlook in
+            guard let date = Self.dateFormatter.date(from: outlook.dateIso) else { return nil }
             return EnvironmentalDay(
                 date: date,
-                minimumTemperature: daily.temperature2mMin?.value(at: index) ?? nil,
-                maximumTemperature: daily.temperature2mMax?.value(at: index) ?? nil,
-                rainfall: daily.precipitationSum?.value(at: index) ?? nil
+                averageTemperature: outlook.avgTemp,
+                rainfall: outlook.totalPrecipMm,
+                humidity: outlook.avgHumidityPercent,
+                probability: Int(outlook.probability),
+                tierLabel: outlook.tier.shortLabel
             )
         }
     }
@@ -111,27 +192,131 @@ final class MycoViewModel: ObservableObject {
     private func loadEnvironment(for coordinate: CLLocationCoordinate2D) {
         environmentTask?.cancel()
         isLoadingEnvironment = true
-        forecast = nil
-        elevation = nil
+        isOfflineFallback = false
+        analysis = nil
+        heatmap = nil
+        fieldNoteTask?.cancel()
+        fieldNote = ""
         errorMessage = nil
+        let species = selectedSpecies
+        let speciesID = species.id
+        let preferredCanopyTypes = species.preferredCanopyTypes.map { $0 }
 
-        environmentTask = Task { [weak self, openMeteo] in
-            do {
-                async let loadedForecast = openMeteo.forecast(for: coordinate)
-                async let loadedElevation = openMeteo.elevation(for: coordinate)
-                let (forecast, elevation) = try await (loadedForecast, loadedElevation)
-                try Task.checkCancellation()
-                self?.forecast = forecast
-                self?.elevation = elevation.firstElevation ?? forecast.elevation
-                self?.isLoadingEnvironment = false
-            } catch is CancellationError {
-                // A newer location superseded this request.
-            } catch {
-                guard !Task.isCancelled else { return }
-                self?.isLoadingEnvironment = false
-                self?.errorMessage = "Impossibile caricare i dati ambientali. Riprova."
+        environmentTask = Task { [weak self, openMeteo, overpass, cacheStore] in
+            guard let self else { return }
+            let keys = CacheKeys(coordinate: coordinate, speciesID: speciesID)
+            async let loadedForecast = try? openMeteo.forecast(for: coordinate)
+            async let loadedElevation = try? openMeteo.elevations(around: coordinate)
+            async let loadedHabitat = try? overpass.habitat(
+                    around: coordinate,
+                    radiusMeters: 3_000,
+                    preferredCanopyTypes: preferredCanopyTypes
+                )
+            let (freshForecast, freshElevation, freshHabitat) = await (loadedForecast, loadedElevation, loadedHabitat)
+            guard !Task.isCancelled else { return }
+
+            let cachedForecast: OpenMeteoForecast? = freshForecast == nil ? await self.cached(OpenMeteoForecast.self, key: keys.forecast, cache: cacheStore) : nil
+            guard let forecast = freshForecast ?? cachedForecast else {
+                self.isLoadingEnvironment = false
+                self.errorMessage = "Meteo non disponibile e nessuna cache utilizzabile: l'analisi non può essere calcolata."
+                return
             }
+            let cachedElevation: OpenMeteoElevation? = freshElevation == nil ? await self.cached(OpenMeteoElevation.self, key: keys.elevation, cache: cacheStore) : nil
+            let cachedHabitat: HabitatSnapshot? = freshHabitat == nil ? await self.cached(HabitatSnapshot.self, key: keys.habitat, cache: cacheStore) : nil
+            guard !Task.isCancelled else { return }
+
+            if let freshForecast { await self.save(freshForecast, key: keys.forecast, ttl: 60 * 60, cache: cacheStore) }
+            if let freshElevation { await self.save(freshElevation, key: keys.elevation, ttl: 30 * 24 * 60 * 60, cache: cacheStore) }
+            if let freshHabitat { await self.save(freshHabitat, key: keys.habitat, ttl: 24 * 60 * 60, cache: cacheStore) }
+
+            var missingSources: [String] = []
+            if freshForecast == nil { missingSources.append("meteo live (cache)") }
+            if freshElevation == nil { missingSources.append(cachedElevation == nil ? "quota DEM" : "quota DEM live (cache)") }
+            if freshHabitat == nil { missingSources.append(cachedHabitat == nil ? "habitat OSM" : "habitat OSM live (cache)") }
+            self.isOfflineFallback = cachedForecast != nil || cachedElevation != nil || cachedHabitat != nil
+
+            let elevations = (freshElevation ?? cachedElevation)?.elevation ?? forecast.elevation.map { [$0] } ?? []
+            let habitat = freshHabitat ?? cachedHabitat ?? HabitatSnapshot(
+                score: 0.1,
+                description: "Habitat non disponibile: stima conservativa e risultato parziale.",
+                canopyTypes: []
+            )
+            let sample = try? self.spun.sample(latitude: coordinate.latitude, longitude: coordinate.longitude)
+            self.finish(forecast: forecast, elevations: elevations, habitat: habitat, spunSample: sample, missingSources: missingSources)
         }
+    }
+
+    private func refreshSavedPlaces() {
+        favorites = (try? savedPlacesStore?.favorites()) ?? []
+        recentLocations = (try? savedPlacesStore?.recents()) ?? []
+    }
+
+    private func finish(
+        forecast: OpenMeteoForecast,
+        elevations: [Double],
+        habitat: HabitatSnapshot,
+        spunSample: SpunSample?,
+        missingSources: [String]
+    ) {
+        let days = OpenMeteoDomainMapper.processedDays(from: forecast)
+        guard !days.isEmpty else {
+            isLoadingEnvironment = false
+            errorMessage = "La risposta meteo non contiene una serie oraria utilizzabile."
+            return
+        }
+        let todayIndex = min(14, days.count - 1)
+        let month = Calendar.current.component(.month, from: .now) - 1
+        let elevationSamples = (elevations.isEmpty ? [forecast.elevation ?? 0] : elevations).map { KotlinDouble(double: $0) }
+        let input = AnalysisInputs(
+            days: days,
+            todayIndex: Int32(todayIndex),
+            speciesId: selectedSpecies.id,
+            habitatScore: habitat.score,
+            habitatDescription: habitat.description,
+            canopyTypes: habitat.canopyTypes,
+            elevationSamples: elevationSamples,
+            monthIndex: Int32(month),
+            spunEcmRichness: spunSample.map { KotlinDouble(double: $0.ecmRichness) },
+            spunHyphalDensity: spunSample.map { KotlinDouble(double: $0.hyphalDensity) },
+            missingSources: spunSample == nil ? missingSources + ["SPUN"] : missingSources
+        )
+        self.forecast = forecast
+        elevation = elevations.first ?? forecast.elevation
+        let result = analysisEngine.analyze(input: input)
+        analysis = result
+        fieldNote = result.deterministicFieldNote
+        fieldNoteTask = Task { [weak self, fieldNoteGenerator] in
+            let enriched = await fieldNoteGenerator.enrich(deterministicNote: result.deterministicFieldNote)
+            guard !Task.isCancelled else { return }
+            self?.fieldNote = enriched
+        }
+        if let coordinate = selectedLocation?.coordinate {
+            heatmap = try? spun.heatmap(
+                latitude: coordinate.latitude,
+                longitude: coordinate.longitude,
+                analysis: result,
+                speciesID: selectedSpecies.id,
+                isDark: false
+            )
+        }
+        isLoadingEnvironment = false
+    }
+
+    private func save<Value: Encodable & Sendable>(
+        _ value: Value,
+        key: String,
+        ttl: TimeInterval,
+        cache: CacheStore?
+    ) async {
+        guard let cache else { return }
+        let encoder = JSONEncoder()
+        guard let payload = try? encoder.encode(value) else { return }
+        try? await cache.put(key: key, payload: payload, ttl: ttl)
+    }
+
+    private func cached<Value: Decodable & Sendable>(_ type: Value.Type, key: String, cache: CacheStore?) async -> Value? {
+        guard let payload = try? await cache?.get(key: key, expiredFallback: true)?.payload else { return nil }
+        return try? JSONDecoder().decode(type, from: payload)
     }
 
     private static let dateFormatter: DateFormatter = {
@@ -144,8 +329,16 @@ final class MycoViewModel: ObservableObject {
     }()
 }
 
-private extension Array {
-    func value(at index: Index) -> Element? {
-        indices.contains(index) ? self[index] : nil
+private struct CacheKeys {
+    let forecast: String
+    let elevation: String
+    let habitat: String
+
+    init(coordinate: CLLocationCoordinate2D, speciesID: String) {
+        let locale = Locale(identifier: "en_US_POSIX")
+        let location = String(format: "%.4f_%.4f", locale: locale, coordinate.latitude, coordinate.longitude)
+        forecast = "weather_\(location)"
+        elevation = "terrain_\(location)"
+        habitat = "habitat_\(speciesID)_\(location)"
     }
 }

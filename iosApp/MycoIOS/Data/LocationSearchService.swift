@@ -1,6 +1,6 @@
 import CoreLocation
 import Foundation
-import MapKit
+@preconcurrency import MapKit
 
 struct LocationSearchResult: Identifiable, Sendable {
     let id: String
@@ -27,12 +27,7 @@ struct MKLocalSearchService: LocationSearching {
         let response = try await MKLocalSearch(request: request).start()
 
         return response.mapItems.prefix(12).map { item in
-            let coordinate: CLLocationCoordinate2D
-            if #available(iOS 26.0, *) {
-                coordinate = item.location.coordinate
-            } else {
-                coordinate = item.placemark.coordinate
-            }
+            let coordinate = item.placemark.coordinate
             let name = item.name ?? trimmed
             return LocationSearchResult(
                 id: "\(coordinate.latitude),\(coordinate.longitude),\(name)",

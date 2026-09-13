@@ -670,7 +670,7 @@ Il follow-up di implementazione ha consolidato la parità tra Android, KMP e iOS
 * Il bootstrap SwiftData è non distruttivo: conserva lo store esistente e usa un fallback in-memory quando l'apertura o la migrazione non è recuperabile, senza cancellare o ricostruire automaticamente i dati.
 * `MycoViewModel` applica token di generazione e controlli di cancellazione per impedire risultati stantii; i fallback offline e le sorgenti mancanti sono esplicitati nel modello e nella UI.
 * Le note narrative di Foundation Models passano da validazione deterministica e mantengono il testo del core quando il modello non è disponibile.
-* SwiftUI espone stati accessibili e stati di autorizzazione/errore di Core Location; il tracking e la richiesta del permesso GPS iniziano solo dopo l'accettazione dell'avvertenza e l'attivazione esplicita della Mappa o del comando one-shot. La suite iOS è stata ampliata con test per habitat, cache, persistenza, ricerca, concorrenza, SPUN, narrativa e conversione raster.
+* SwiftUI espone stati accessibili e stati di autorizzazione/errore di Core Location; il tracking e la richiesta del permesso GPS iniziano solo dopo l'accettazione dell'avvertenza e l'attivazione esplicita della Mappa o del comando one-shot. In modalità `stopped`, avvio e ritorno in foreground eseguono soltanto un refresh passivo e non possono richiedere autorizzazione o avviare location/heading. La suite iOS è stata ampliata con test per habitat, cache, persistenza, ricerca, concorrenza, SPUN, narrativa, conversione raster e lifecycle Core Location.
 
 Questo stato documenta l'implementazione e la copertura dei contratti; non certifica ancora CI verde, installazione su dispositivo, firma, TestFlight o readiness App Store.
 

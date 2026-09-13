@@ -34,6 +34,8 @@ final class CoreLocationService: NSObject, ObservableObject {
     @Published private(set) var errorDescription: String?
 
     private let manager: CLLocationManager
+    private let locationServicesEnabledProvider: @Sendable () -> Bool
+    private let headingAvailableProvider: @Sendable () -> Bool
     private enum Mode {
         case stopped
         case oneShot
@@ -46,8 +48,18 @@ final class CoreLocationService: NSObject, ObservableObject {
         self.init(manager: CLLocationManager())
     }
 
-    init(manager: CLLocationManager) {
+    init(
+        manager: CLLocationManager,
+        locationServicesEnabledProvider: @escaping @Sendable () -> Bool = {
+            CLLocationManager.locationServicesEnabled()
+        },
+        headingAvailableProvider: @escaping @Sendable () -> Bool = {
+            CLLocationManager.headingAvailable()
+        }
+    ) {
         self.manager = manager
+        self.locationServicesEnabledProvider = locationServicesEnabledProvider
+        self.headingAvailableProvider = headingAvailableProvider
         authorizationStatus = manager.authorizationStatus
         accuracyAuthorization = manager.accuracyAuthorization
         locationServicesAvailable = nil
@@ -75,9 +87,10 @@ final class CoreLocationService: NSObject, ObservableObject {
     }
 
     private func refreshServiceAvailability(continueAuthorization: Bool = false) {
+        let locationServicesEnabledProvider = locationServicesEnabledProvider
         Task { [weak self] in
             let isAvailable = await Task.detached(priority: .userInitiated) {
-                CLLocationManager.locationServicesEnabled()
+                locationServicesEnabledProvider()
             }.value
             guard let self else { return }
             locationServicesAvailable = isAvailable
@@ -90,6 +103,11 @@ final class CoreLocationService: NSObject, ObservableObject {
     }
 
     private func authorizeOrStartAfterAvailabilityCheck() {
+        if case .stopped = mode {
+            stopUpdates()
+            return
+        }
+
         switch manager.authorizationStatus {
         case .notDetermined:
             manager.requestWhenInUseAuthorization()
@@ -126,8 +144,13 @@ final class CoreLocationService: NSObject, ObservableObject {
 
     @objc nonisolated private func applicationDidBecomeActive() {
         Task { @MainActor [weak self] in
-            self?.isApplicationActive = true
-            self?.authorizeOrStart()
+            guard let self else { return }
+            isApplicationActive = true
+            if case .stopped = mode {
+                refreshServiceAvailability()
+            } else {
+                authorizeOrStart()
+            }
         }
     }
 
@@ -147,7 +170,7 @@ final class CoreLocationService: NSObject, ObservableObject {
             manager.requestLocation()
         case .tracking:
             manager.startUpdatingLocation()
-            if CLLocationManager.headingAvailable() {
+            if headingAvailableProvider() {
                 manager.startUpdatingHeading()
             }
         }

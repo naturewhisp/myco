@@ -32,6 +32,7 @@
    - 4.6 Fasi Fenologiche e Ciclo Sinodico Lunare
    - 4.7 Motore Raster della Mappa di Calore (`HeatmapRaster`)
    - 4.8 Calcolo Spaziale Haversine e Snapping Forestale Reale (`findNearestForest`)
+   - 4.9 Modulo Citizen Science, Discrete Global Grid System (DGGS Uber H3) e DeepMaxent-TGB
 5. [Sottosistema Cartografico OsmDroid](#5-sottosistema-cartografico-osmdroid)
    - 5.1 Ciclo di Vita e Integrazione Jetpack Compose (`MapViewContainer`)
    - 5.2 Invarianti Cartografiche Obbligatorie
@@ -140,7 +141,7 @@ La base di codice è organizzata sotto il namespace principale `github.naturewhi
 | Package | File Principali | Responsabilità e Contratti |
 |---|---|---|
 | **Root** | `MainActivity.kt` | Single Activity (`ComponentActivity`), punto di ingresso dell'applicazione e configurazione della finestra a tutto schermo (*edge-to-edge*). |
-| `model` | `DailyOutlook.kt`<br>`EcologicalWeightsConfig.kt`<br>`Factor.kt`<br>`GeocodingModel.kt`<br>`HeatmapModel.kt`<br>`HeatmapRenderConfig.kt`<br>`MushroomSpecies.kt`<br>`OverpassModel.kt`<br>`PlaceName.kt`<br>`ProbabilityTier.kt`<br>`SavedLocation.kt`<br>`SpunModel.kt`<br>`TerrainAspectConfig.kt`<br>`TerrainModel.kt`<br>`WeatherModel.kt` | **Dominio Puro:** Data classes, DTO per le API remote, strutture dati immutabili. `HeatmapRaster` definisce il buffer 32-bit grezzo agnostico. `MushroomSpecies` racchiude il catalogo tassonomico delle 10 specie con avvisi sosia tossici (`toxicLookAlikes`). DTO arricchiti: `OverpassCenter` e `OverpassElement.coordinate` (unificazione nodi/ways), `ClosestCoverageResult` (stazione SPUN più vicina e distanza in km), `SavedLocation.savedAt`. Nessuna dipendenza dal framework Android. |
+| `model` | `CitizenScienceModel.kt`<br>`DailyOutlook.kt`<br>`EcologicalWeightsConfig.kt`<br>`Factor.kt`<br>`GeocodingModel.kt`<br>`HeatmapModel.kt`<br>`HeatmapRenderConfig.kt`<br>`MushroomSpecies.kt`<br>`OverpassModel.kt`<br>`PlaceName.kt`<br>`ProbabilityTier.kt`<br>`SavedLocation.kt`<br>`SpunModel.kt`<br>`TerrainAspectConfig.kt`<br>`TerrainModel.kt`<br>`WeatherModel.kt` | **Dominio Puro:** Data classes, DTO per le API remote, strutture dati immutabili. `HeatmapRaster` definisce il buffer 32-bit grezzo agnostico. `MushroomSpecies` racchiude il catalogo tassonomico delle 10 specie con avvisi sosia tossici (`toxicLookAlikes`). `CitizenScienceModel` definisce il layer di crowdsourcing e DeepMaxent-TGB su DGGS Uber H3 (Risoluzione 7) con privacy differenziale. DTO arricchiti: `OverpassCenter` e `OverpassElement.coordinate` (unificazione nodi/ways), `ClosestCoverageResult` (stazione SPUN più vicina e distanza in km), `SavedLocation.savedAt`. Nessuna dipendenza dal framework Android. |
 | `platform` | `AssetProvider.kt`<br>`InMemoryCacheStore.kt`<br>`KeyValueStorage.kt`<br>`PlatformAiEngine.kt`<br>`PlatformCacheStore.kt`<br>`PlatformLocationProvider.kt`<br>`PlatformNavigator.kt`<br>`PlatformOrientationProvider.kt`<br>`UserLocation.kt` | **Porte Agnostiche:** Interfacce del pattern esagonale che disaccoppiano l'accesso all'hardware, allo storage persistente e al file system. I contratti (`PlatformCacheStore` con `get` e `getIgnoreExpiry`, `KeyValueStorage`, `AssetProvider`, `PlatformAiEngine`, ecc.) e i modelli associati (`UserLocation`, `DeviceHeading`, `MapOrientationMode`, `CacheStats`) contengono 0 import di sistema. Include `InMemoryCacheStore` per test unitari e ambienti JVM. |
 | `platform.android` | `AndroidAssetProvider`<br>`AndroidLocationProvider.kt`<br>`AndroidPlatformNavigator`<br>`AndroidSensorOrientationProvider.kt`<br>`AndroidSharedPreferencesStorage`<br>`AndroidSqliteCacheStore.kt`<br>`HeatmapBitmapExtensions.kt` | **Adapter Android:** Implementazioni concrete collegate alle API di Google Play Services, Android `SensorManager`, `AssetManager`, `SharedPreferences` e database relazionale nativo `SQLiteOpenHelper` (`AndroidSqliteCacheStore` con supporto `getIgnoreExpiry`) per caching HTTP a bassissima latenza con indici geospaziali e temporali. Conversioni grafiche raster-to-bitmap. |
 | `network` | `ApiServices.kt`<br>`LocalAiService.kt`<br>`NetworkClient.kt` | Client HTTP Retrofit per Open-Meteo, Nominatim e Overpass API (con User-Agent parametrico e pre-allocazione dei client mirror); adapter locale Google AI Edge AICore per Gemini Nano. |
@@ -645,6 +646,22 @@ out center;
 Grazie alla direttiva `out center;`, il parser Retrofit memorizza sia le coordinate dirette dei nodi sia il baricentro calcolato dal server per way e relation poligonali (`OverpassCenter`). L'algoritmo filtra tutti gli elementi dotati di coordinate valide e identifica l'elemento con distanza geodetica minima:
 $$\text{nearestElement} = \arg\min_{e \in \text{elements}} \text{haversineDistanceKm}(\text{lat}, \text{lon}, e.\text{lat}, e.\text{lon})$$
 Se individuato un bosco entro la soglia di ricerca, le coordinate selezionate vengono aggiornate esattamente sul baricentro del poligono forestale, ricalcolando istantaneamente il bollettino micologico su suolo idoneo.
+
+### 4.9 Modulo Citizen Science, Discrete Global Grid System (DGGS Uber H3) e DeepMaxent-TGB
+Per integrare osservazioni opportunistiche sul campo salvaguardando il "dilemma del fungaiolo" (riservatezza assoluta delle fungaie), Myco adotta il DGGS Uber H3 a Risoluzione 7 e il framework di massima entropia DeepMaxent con Target-Group Background (TGB, Ryckewaert et al. 2024; dettagli completi in `docs/CITIZEN_SCIENCE_H3_ARCHITECTURE.md`):
+
+1. **Privacy Differenziale e Distruzione Istantanea Coordinate:**
+   - La coordinata GPS volatile $(lat_{raw}, lon_{raw})$ viene convertita localmente nell'indice H3 a 64-bit a Risoluzione 7 (area media $\approx 5{,}16\text{ km}^2$, raggio di anonimizzazione $\sim 2{,}5 \dots 5\text{ km}$).
+   - Le coordinate puntuali vengono istantaneamente distrutte dalla memoria RAM del dispositivo (`MushroomSightingSubmission`). Nessun identificativo hardware o orario preciso viene memorizzato (quantizzazione a `timestampEpochDay`).
+2. **Superamento del Sampling Bias con Target-Group Background (TGB):**
+   - I cercatori campionano quasi unicamente lungo strade e sentieri accessibili ($s(x)$) senza segnalare assenze reali.
+   - Il campionamento TGB seleziona il background unicamente da celle H3 con almeno un ritrovamento registrato per la gilda dei macromiceti epigei (`SPECIES_CATALOG`).
+   - La funzione di accessibilità $s(x)$ si cancella analiticamente nel rapporto di verosimiglianza condizionale, isolando il puro contrasto ecologico e biologico.
+3. **Architettura Neurale Residuale & Batch Size come Regolarizzatore Spaziale:**
+   - Feature extractor condiviso $g_\theta(x)$: Residual MLP a 2 strati latenti ($C = 64$) con connessioni shortcut che estrae rappresentazioni latenti ambientali da idrologia van Genuchten, serie fenologica $P_{d-26}$ / $T_{d-20}$, DTR, microclima di canopy, orografia DEM e SPUN.
+   - Pesi specifici per specie ($\gamma_j, b_j$): l'apprendimento multi-task consente alle specie comuni di supportare la stima per specie rare (*Morchella esculenta*).
+   - Regolarizzazione $L_2$ ottimale $\tau = 3 \times 10^{-4}$ e mini-batch compatti $|B| = 128$ ($|B| \in [100, 250]$) che approssimano la funzione di partizione inducendo smooth territoriali naturali ed evitando picchi spuri su singole coordinate.
+   - Validazione incrociata a blocchi spaziali (Spatial Blocking a 10-fold) su macro-celle H3 Res 4 per garantire affidabilità predittiva su territori non campionati.
 
 ---
 

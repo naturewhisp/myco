@@ -1,9 +1,11 @@
 package github.naturewhisp.myco
 
 import github.naturewhisp.myco.model.DailyData
+import github.naturewhisp.myco.model.EcologicalWeightsConfig
 import github.naturewhisp.myco.model.FactorId
 import github.naturewhisp.myco.model.FactorLevel
 import github.naturewhisp.myco.model.HourlyData
+import github.naturewhisp.myco.model.ProcessedDay
 import github.naturewhisp.myco.model.SPECIES_CATALOG
 import github.naturewhisp.myco.model.WeatherResponse
 import github.naturewhisp.myco.utils.MushroomAlgorithms
@@ -376,6 +378,13 @@ class MushroomAlgorithmsTest {
     fun testSoilMoistureScoreSmooth_WaterloggedPenalty() {
         val score = MushroomAlgorithms.soilMoistureScoreSmooth(0.50, 0.46, 1.0)
         assertTrue("Suolo saturo/asfittico deve essere penalizzato", score < 0.70)
+        assertTrue("Suolo in asfissia idrica deve scendere sotto 0.35", score <= 0.35)
+    }
+
+    @Test
+    fun testSoilMoistureScoreSmooth_AcuteWaterloggingAnoxia() {
+        val score = MushroomAlgorithms.soilMoistureScoreSmooth(0.55, 0.52, 0.5)
+        assertTrue("Saturazione totale del suolo (>0.50 m³/m³) deve deprimere il punteggio sotto 0.20", score <= 0.20)
     }
 
     @Test
@@ -457,5 +466,215 @@ class MushroomAlgorithmsTest {
         // Courmayeur (45.7969, 6.9697) a Chamonix (45.9237, 6.8694) ~ 16 km
         val distanceCourmCham = MushroomAlgorithms.haversineDistanceKm(45.7969, 6.9697, 45.9237, 6.8694)
         assertEquals(16.0, distanceCourmCham, 3.0)
+    }
+
+    @Test
+    fun testApplyCanopyBuffering_SummerCoolingAndNightWarming() {
+        val hotDay = ProcessedDay(
+            date = "2026-08-15",
+            avgTemp = 18.0f,
+            totalPrecip = 0.0f,
+            avgHumidity = 50.0f,
+            weatherCode = 1,
+            minTemp = 6.0f,
+            maxTemp = 30.0f
+        )
+        val buffered = MushroomAlgorithms.applyCanopyBuffering(hotDay, canopyCover = 0.85)
+
+        assertTrue("Massima estiva deve essere attenuata sotto la chioma", buffered.maxTemp < 28.0f)
+        assertTrue("Minima notturna deve essere protetta dall'isolamento radiativo", buffered.minTemp > 7.0f)
+        val openDtr = hotDay.maxTemp - hotDay.minTemp
+        val bufferedDtr = buffered.maxTemp - buffered.minTemp
+        assertTrue("Escursione termica nel sottobosco deve essere compressa", bufferedDtr < openDtr - 3.0f)
+        assertTrue("Umidità relativa sub-canopy deve essere incrementata", buffered.avgHumidity > hotDay.avgHumidity)
+    }
+
+    @Test
+    fun testApplyCanopyBuffering_ThroughfallInterception() {
+        val drizzleDay = ProcessedDay(
+            date = "2026-09-01",
+            avgTemp = 16.0f,
+            totalPrecip = 2.0f,
+            avgHumidity = 80.0f,
+            weatherCode = 51
+        )
+        val heavyRainDay = ProcessedDay(
+            date = "2026-09-02",
+            avgTemp = 15.0f,
+            totalPrecip = 25.0f,
+            avgHumidity = 95.0f,
+            weatherCode = 63
+        )
+
+        val bufferedDrizzle = MushroomAlgorithms.applyCanopyBuffering(drizzleDay, canopyCover = 0.85)
+        val bufferedHeavy = MushroomAlgorithms.applyCanopyBuffering(heavyRainDay, canopyCover = 0.85)
+
+        // Pioggia lieve: forte intercettazione (> 25% persa nella chioma)
+        assertTrue("Pioggia lieve deve subire sensibile intercettazione", bufferedDrizzle.totalPrecip < 1.6f)
+        assertTrue("Throughfall deve rimanere positivo", bufferedDrizzle.totalPrecip > 1.2f)
+
+        // Pioggia intensa: saturazione chioma e penetrazione prevalente (> 80% al suolo)
+        assertTrue("Pioggia intensa deve penetrare al suolo oltre 21 mm", bufferedHeavy.totalPrecip > 21.0f)
+    }
+
+    @Test
+    fun testApplyCanopyBuffering_OpenFieldZeroOffset() {
+        val rawDay = ProcessedDay(
+            date = "2026-09-05",
+            avgTemp = 19.5f,
+            totalPrecip = 12.0f,
+            avgHumidity = 65.0f,
+            weatherCode = 3,
+            minTemp = 11.0f,
+            maxTemp = 26.0f
+        )
+        val openField = MushroomAlgorithms.applyCanopyBuffering(rawDay, canopyCover = 0.0)
+
+        assertEquals(rawDay.avgTemp, openField.avgTemp, 0.001f)
+        assertEquals(rawDay.minTemp, openField.minTemp, 0.001f)
+        assertEquals(rawDay.maxTemp, openField.maxTemp, 0.001f)
+        assertEquals(rawDay.totalPrecip, openField.totalPrecip, 0.001f)
+        assertEquals(rawDay.avgHumidity, openField.avgHumidity, 0.001f)
+    }
+
+    @Test
+    fun testCalculateWeatherScore_CanopyBufferingDampensExtremeDtr() {
+        // Genera serie 21 giorni con giorni stabili e giorno 14 con escursione aperta estrema (DTR = 16°C: 24°C max, 8°C min)
+        val days = (0..20).map { i ->
+            ProcessedDay(
+                date = "2026-09-${String.format(java.util.Locale.US, "%02d", i + 1)}",
+                avgTemp = 16.0f,
+                totalPrecip = if (i == 4) 20.0f else 0.0f,
+                avgHumidity = 75.0f,
+                weatherCode = 1,
+                minTemp = if (i == 14) 8.0f else 12.0f,
+                maxTemp = if (i == 14) 24.0f else 20.0f
+            )
+        }
+
+        // Punteggio campo aperto (nessuna copertura, DTR = 16°C > 15°C attiva penalità dtr 0.8)
+        val openScore = MushroomAlgorithms.calculateWeatherScore(
+            dayIndex = 14,
+            allData = days,
+            canopyCover = 0.0
+        )
+
+        // Punteggio sotto chioma forestale densa (C = 0.85 restringe DTR < 15°C, rimuovendo la penalità da cielo aperto)
+        val forestScore = MushroomAlgorithms.calculateWeatherScore(
+            dayIndex = 14,
+            allData = days,
+            canopyCover = 0.85
+        )
+
+        assertTrue("La chioma boschiva deve proteggere dal falso stress termico notturno di campo aperto", forestScore >= openScore)
+    }
+
+    @Test
+    fun testCtmi_CardinalTemperaturesAndPeak() {
+        val tMin = 9.0
+        val tOpt = 14.0
+        val tMax = 24.0
+
+        // Condizioni ai limiti cardinali
+        assertEquals(0.0, MushroomAlgorithms.ctmi(8.0, tMin, tOpt, tMax), 0.0001)
+        assertEquals(0.0, MushroomAlgorithms.ctmi(9.0, tMin, tOpt, tMax), 0.0001)
+        assertEquals(0.0, MushroomAlgorithms.ctmi(24.0, tMin, tOpt, tMax), 0.0001)
+        assertEquals(0.0, MushroomAlgorithms.ctmi(26.0, tMin, tOpt, tMax), 0.0001)
+
+        // Picco esatto alla temperatura cardinale ottimale
+        assertEquals(1.0, MushroomAlgorithms.ctmi(tOpt, tMin, tOpt, tMax), 0.0001)
+
+        // Risposta continua asimmetrica per temperature intermedie
+        val coldScore = MushroomAlgorithms.ctmi(11.0, tMin, tOpt, tMax)
+        val warmScore = MushroomAlgorithms.ctmi(20.0, tMin, tOpt, tMax)
+        assertTrue("Cold score must be in (0, 1): was $coldScore", coldScore in 0.01..0.99)
+        assertTrue("Warm score must be in (0, 1): was $warmScore", warmScore in 0.01..0.99)
+        assertFalse("ctmi must not produce NaN", coldScore.isNaN())
+    }
+
+    @Test
+    fun testTempScoreSmooth_PlateauAndColdWarmTransitions() {
+        val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+        // Ideal: 13..20, Tolerated: 9..24
+        assertEquals(1.0, MushroomAlgorithms.tempScoreSmooth(13.0, edulis), 0.0001)
+        assertEquals(1.0, MushroomAlgorithms.tempScoreSmooth(16.5, edulis), 0.0001)
+        assertEquals(1.0, MushroomAlgorithms.tempScoreSmooth(20.0, edulis), 0.0001)
+
+        assertEquals(0.0, MushroomAlgorithms.tempScoreSmooth(8.5, edulis), 0.0001)
+        assertEquals(0.0, MushroomAlgorithms.tempScoreSmooth(25.0, edulis), 0.0001)
+
+        val transCold = MushroomAlgorithms.tempScoreSmooth(11.0, edulis)
+        val transWarm = MushroomAlgorithms.tempScoreSmooth(22.0, edulis)
+        assertTrue("Ascending cold flank in (0, 1): was $transCold", transCold in 0.1..0.9)
+        assertTrue("Descending warm flank in (0, 1): was $transWarm", transWarm in 0.1..0.9)
+    }
+
+    @Test
+    fun testPhenologicalRainfall_ExtendedWindow26Days() {
+        val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+        // Genera 29 giorni di serie meteo (giorni 0..28, oggi = 28)
+        // Pioggia intensa (45 mm) caduta 26 giorni prima (giorno 2: tau = 28 - 2 = 26 gg)
+        val days = (0..28).map { i ->
+            ProcessedDay(
+                date = "2026-09-${String.format(java.util.Locale.US, "%02d", (i % 30) + 1)}",
+                avgTemp = 15.0f,
+                totalPrecip = if (i == 2) 45.0f else 0.0f,
+                avgHumidity = 70.0f,
+                weatherCode = 1,
+                avgSoilMoisture7To28cm = 0.28f
+            )
+        }
+
+        val effectiveRain = MushroomAlgorithms.calculateEffectiveRainfall(28, days, edulis)
+        assertTrue("Pioggia di 26 giorni prima deve essere catturata dalla finestra estesa P_d-26", effectiveRain > 0.0)
+    }
+
+    @Test
+    fun testMediumTermThermalConditioning_Td20() {
+        val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+        // Serie 29 giorni:
+        // Entrambe le serie hanno identica pioggia (25 mm a tau = 11, giorno 17) e identica T recente ultimi 5 giorni (16°C)
+        val optimalDays = (0..28).map { i ->
+            ProcessedDay(
+                date = "2026-09-${String.format(java.util.Locale.US, "%02d", (i % 30) + 1)}",
+                avgTemp = if (i in 8..23) 14.0f else 16.0f, // 14°C ottimale Brejon Lamartinière nel medio termine
+                totalPrecip = if (i == 17) 25.0f else 0.0f,
+                avgHumidity = 75.0f,
+                weatherCode = 1,
+                minTemp = 12.0f,
+                maxTemp = 18.0f
+            )
+        }
+
+        val heatwaveDays = (0..28).map { i ->
+            ProcessedDay(
+                date = "2026-09-${String.format(java.util.Locale.US, "%02d", (i % 30) + 1)}",
+                avgTemp = if (i in 8..23) 32.0f else 16.0f, // Caldo torrido estremo 32°C nelle settimane precedenti
+                totalPrecip = if (i == 17) 25.0f else 0.0f,
+                avgHumidity = 75.0f,
+                weatherCode = 1,
+                minTemp = 12.0f,
+                maxTemp = 18.0f
+            )
+        }
+
+        val scoreOptimal = MushroomAlgorithms.calculateWeatherScore(
+            dayIndex = 28,
+            allData = optimalDays,
+            species = edulis,
+            config = EcologicalWeightsConfig.PHENOLOGICAL
+        )
+
+        val scoreHeatwave = MushroomAlgorithms.calculateWeatherScore(
+            dayIndex = 28,
+            allData = heatwaveDays,
+            species = edulis,
+            config = EcologicalWeightsConfig.PHENOLOGICAL
+        )
+
+        assertTrue(
+            "Il condizionamento termico T_d-20 ottimale (14°C) deve produrre un punteggio superiore a un pregresso torrido (32°C): $scoreOptimal vs $scoreHeatwave",
+            scoreOptimal > scoreHeatwave
+        )
     }
 }

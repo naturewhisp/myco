@@ -385,24 +385,43 @@ Dove:
 ### 4.3 Curve di Risposta Biologica Continue
 Tutte le variabili ambientali sono modellate mediante funzioni continue definite nell'intervallo $[0.0, 1.0]$, eliminando qualsiasi gradino discontinuo.
 
-#### A. Risposta Termica ($S_T$, `tempScoreSmooth`) e Inibizione da Freddo Notturno
-La risposta termica di base basata sulla temperatura media $S_{T,avg}$ è modulata da un'inibizione continua da freddo notturno $F_{\text{nocturnal}}(T_{\min})$ per penalizzare le notti in cui la temperatura minima scende sotto le soglie critiche (evitando che una media mite mascheri una nottata distruttiva per i primordi):
+#### A. Risposta Termica ($S_T$, `tempScoreSmooth`, `ctmi`), Condizionamento $T_{d-20}$ e Inibizione da Freddo Notturno
+La risposta termica è articolata su tre livelli fisici complementari che catturano l'ecofisiologia cellulare dei macromiceti:
 
-$$F_{\text{nocturnal}}(T_{\min}) = \begin{cases}
-1.0 & \text{se } T_{\min} \ge T_{\text{id,min}} \\
-0.3 & \text{se } T_{\min} \le T_{\text{tol,min}} \\
-0.3 + 0.7 \cdot \text{smoothstep}(T_{\text{tol,min}}, T_{\text{id,min}}, T_{\min}) & \text{altrimenti}
-\end{cases}$$
+1. **Risposta Termica a Breve Termine ($S_{T,\text{short}}$, `tempScoreSmooth`):**
+   Valuta la media degli ultimi 5 giorni combinando il plateau ottimale $[T_{\text{id,min}}, T_{\text{id,max}}]$ con rampe controllate sui versanti di transizione:
+   $$S_{T,\text{short}} = \begin{cases}
+   0.0 & \text{se } T \le T_{\text{tol,min}} \text{ o } T \ge T_{\text{tol,max}} \\
+   1.0 & \text{se } T_{\text{id,min}} \le T \le T_{\text{id,max}} \\
+   \frac{T - T_{\text{tol,min}}}{T_{\text{id,min}} - T_{\text{tol,min}}} & \text{se } T_{\text{tol,min}} < T < T_{\text{id,min}} \\
+   \frac{T_{\text{tol,max}} - T}{T_{\text{tol,max}} - T_{\text{id,max}}} & \text{se } T_{\text{id,max}} < T < T_{\text{tol,max}}
+   \end{cases}$$
 
-Il punteggio termico finale è $S_T = S_{T,avg} \times F_{\text{nocturnal}}(T_{\min})$.
+2. **Modello Termico Cardinale con Flessione (CTMI di Rosso et al., 1993, `ctmi`):**
+   Descrive con rigore termodinamico la cinetica biologica enzimatica e l'allungamento ifale:
+   $$V(T) = \frac{(T - T_{\max})(T - T_{\min})^2}{(T_{\text{opt}} - T_{\min}) \left[ (T_{\text{opt}} - T_{\min})(T - T_{\text{opt}}) - (T_{\text{opt}} - T_{\max})(T_{\text{opt}} + T_{\min} - 2T) \right]}$$
+   In presenza di parametri dominanti al denominatore, si applica la formulazione cardinale continua di Yan & Hunt (1999) garantendo Lipschitz-continuità.
 
-#### B. Precipitazioni Efficaci & Convoluzione Fenologica ($S_R$, `calculateEffectiveRainfall`, `MushroomAlgorithms.kt`)
-Superando la rigida finestra rettangolare a 10 giorni, il volume idrico efficace viene calcolato integrando la serie storica delle precipitazioni mediante convoluzione con un kernel unimodale asimmetrico normalizzato calibrato sulla specifica specie fungina (`MushroomSpecies.kt`):
+3. **Condizionamento Termico di Medio Termine a 20 Giorni ($T_{d-20}$, Brejon Lamartinière & Hoffman, 2025/2026):**
+   Nei modelli avanzati (`usePhenologicalInertia = true`), la carpogenesi di *Boletus edulis* richiede che le 2–3 settimane precedenti abbiano mantenuto un regime termico idoneo (ottimo centrato a $T_{\text{opt}} \approx 13.5^\circ\text{C} \dots 14.0^\circ\text{C}$). Il punteggio termico combina la cinetica recente con il condizionamento pregresso:
+   $$S_{T,\text{eff}} = 0.75 \cdot S_{T,\text{short}} + 0.25 \cdot \text{CTMI}(T_{d-20},\; T_{\text{tol,min}},\; T_{\text{opt}},\; T_{\text{tol,max}})$$
 
+4. **Inibizione Continua da Freddo Notturno ($F_{\text{nocturnal}}$) & Penalità DTR:**
+   $$F_{\text{nocturnal}}(T_{\min}) = \begin{cases}
+   1.0 & \text{se } T_{\min} \ge T_{\text{id,min}} \\
+   0.3 & \text{se } T_{\min} \le T_{\text{tol,min}} \\
+   0.3 + 0.7 \cdot \text{smoothstep}(T_{\text{tol,min}}, T_{\text{id,min}}, T_{\min}) & \text{altrimenti}
+   \end{cases}$$
+   Se l'escursione termica giornaliera $\text{DTR} = T_{\max} - T_{\min} > 15^\circ\text{C}$, viene applicato un coefficiente di stress termico $0.80$. Il punteggio termico finale è $S_T = S_{T,\text{eff}} \times F_{\text{nocturnal}}(T_{\min}) \times \text{dtrPenalty}$.
+
+#### B. Precipitazioni Efficaci, Finestra Estesa a 26 Giorni ($P_{d-26}$) & Convoluzione Fenologica ($S_R$, `calculateEffectiveRainfall`, `MushroomAlgorithms.kt`)
+Superando la rigida finestra rettangolare a 10 giorni, l'orizzonte storico meteo interrogato da Open-Meteo è esteso a **28 giorni** (`past_days = 28`), consentendo di coprire integralmente la finestra empirica di ricarica idrica profonda a **26 giorni** ($P_{d-26}$) documentata da Brejon Lamartinière & Hoffman (2025/2026).
+
+Il volume idrico efficace viene calcolato integrando la serie storica mediante convoluzione con un kernel unimodale asimmetrico normalizzato calibrato sulla specifica specie fungina (`MushroomSpecies.kt`):
 $$f_{\text{species}}(\tau) = \left(\frac{\tau}{\tau_{\text{peak}}}\right)^\alpha \exp\left(-\alpha\left(\frac{\tau}{\tau_{\text{peak}}} - 1\right)\right)$$
 
 dove:
-* $\tau = t_{\text{oggi}} - t_{\text{pioggia}} \ge 0$ rappresenta i giorni trascorsi dall'evento piovoso;
+* $\tau = t_{\text{oggi}} - t_{\text{pioggia}} \ge 0$ rappresenta i giorni trascorsi dall'evento piovoso (esteso fino a $28\text{ giorni}$);
 * $\tau_{\text{peak}}$ è il picco di latenza biologica al culmine epigeo (es. $11.0\text{ giorni}$ per *Boletus edulis*).
 * Inoltre, è integrata un'isteresi da trauma termico notturno: se nei 5 giorni recenti la temperatura minima scende sotto $T_{\text{tol,min}}$, $\tau_{\text{peak}}$ viene incrementato di $1.5\text{ giorni}$ per simulare la stasi di ripresa cellulare.
 * $\alpha$ governa l'ampiezza della finestra di fruttificazione (default $4.0$).
@@ -424,17 +443,39 @@ $$S_H(H) = \begin{cases}
 1.0 & \text{se } H \ge 85\%
 \end{cases}$$
 
-#### D. Umidità del Suolo Multi-Profondità ed Evapotraspirazione ($S_M$, `soilMoistureScoreSmooth`, `MushroomAlgorithms.kt:701`)
-Modella l'idratazione pedologica a due orizzonti strategici unitamente al tasso di evaporazione superficiale $ET_0$ da Open-Meteo:
-* **Orizzonte Superficiale ($0 \dots 7\text{ cm}$, $M_{0-7}$):** Lettiera e strato organico dei primordi.
-  * Range ottimale: $0.22 \dots 0.38\text{ m}^3/\text{m}^3$ ($S = 1.0$).
-  * Secco / disidratazione: $M_{0-7} < 0.10 \implies S = 0.15$ (disseccamento dei primordi).
-  * Asfissia / anossia da ristagno: $M_{0-7} > 0.48 \implies S = 0.30$.
-* **Orizzonte Radicale Miceliare ($7 \dots 28\text{ cm}$, $M_{7-28}$):** Riserva d'acqua del micelio perenne profondo.
-  * Range ottimale: $0.20 \dots 0.35\text{ m}^3/\text{m}^3$.
-  * Mancanza idrica profonda: $M_{7-28} < 0.10 \implies$ malus fino a $0.20$.
+#### D. Umidità del Suolo Multi-Profondità ed Evapotraspirazione ($S_M$, `soilMoistureScoreSmooth`, `MushroomAlgorithms.kt`)
+Modella l'idratazione pedologica a due orizzonti strategici unitamente al tasso di evaporazione superficiale $ET_0$ da Open-Meteo, integrando la fisica idrodinamica di van Genuchten e il limite biologico di porosità aerifera ($\varepsilon_a = \Phi - \theta$):
+* **Orizzonte Superficiale ($0 \dots 7\text{ cm}$, $M_{0-7}$):** Lettiera e strato organico dove avviene l'induzione e lo sviluppo dei bottoni primordiali.
+  * Stress da disseccamento acuto: $M_{0-7} < 0.10\text{ m}^3/\text{m}^3 \implies S = 0.10$ (disidratazione irreversibile e lisi da secco).
+  * Rampa di salita: $0.10 \le M_{0-7} < 0.22 \implies 0.10 + 0.90 \cdot \text{smoothstep}(0.10, 0.22, M_{0-7})$.
+  * Plateau ottimale (capacità di campo forestale): $0.22 \le M_{0-7} \le 0.38\text{ m}^3/\text{m}^3 \implies S = 1.0$.
+  * Insorgenza ipossia (saturazione dei macropori): $0.38 < M_{0-7} \le 0.44 \implies 1.0 - 0.50 \cdot \text{smoothstep}(0.38, 0.44, M_{0-7})$ (l'aria residua scende sotto il $10\%$).
+  * Asfissia acuta e lisi batterica dei primordi: $0.44 < M_{0-7} \le 0.52 \implies 0.50 - 0.35 \cdot \text{smoothstep}(0.44, 0.52, M_{0-7})$ (morte cellulare dei primordi per anossia).
+  * Fondo di asfissia satura: $M_{0-7} > 0.52\text{ m}^3/\text{m}^3 \implies S = 0.15$.
+* **Orizzonte Radicale Miceliare ($7 \dots 28\text{ cm}$, $M_{7-28}$):** Riserva d'acqua del micelio perenne profondo e ancoraggio ifale.
+  * Deficit idrico profondo: $M_{7-28} < 0.12\text{ m}^3/\text{m}^3 \implies S = 0.20$; rampa $0.12 \dots 0.20 \implies 0.20 + 0.80 \cdot \text{smoothstep}(0.12, 0.20, M_{7-28})$.
+  * Plateau ottimale: $0.20 \le M_{7-28} \le 0.35\text{ m}^3/\text{m}^3 \implies S = 1.0$.
+  * Saturazione prolungata: $0.35 < M_{7-28} \le 0.42 \implies 1.0 - 0.45 \cdot \text{smoothstep}(0.35, 0.42, M_{7-28})$.
+  * Anossia dell'orizzonte profondo: $0.42 < M_{7-28} \le 0.50 \implies 0.55 - 0.35 \cdot \text{smoothstep}(0.42, 0.50, M_{7-28})$.
+  * Fondo suolo profondo allagato: $M_{7-28} > 0.50\text{ m}^3/\text{m}^3 \implies S = 0.20$.
 * **Stress da Evapotraspirazione ($ET_0$):** Valori $> 3.0\text{ mm/giorno}$ accelerano la perdita d'acqua dello strato superficiale, applicando una penalizzazione progressiva smoothstep fino al $25\%$.
+* **Feedback Diagnostico UI:** Nel riepilogo fattori (`FactorId.SOIL_MOISTURE`), il sistema rileva e segnala esplicitamente all'utente le condizioni estreme:
+  * `" • Ristagno/asfissia"` se $M_{0-7} > 0.42\text{ m}^3/\text{m}^3$.
+  * `" • Stress idrico/secco"` se $M_{0-7} < 0.14\text{ m}^3/\text{m}^3$.
 * In assenza di dati pedologici, la funzione restituisce il valore neutro di fallback $1.0$.
+
+#### E. Microclima della Volta Forestale & De Frenne Offset ($C_f$, `applyCanopyBuffering`, `MushroomAlgorithms.kt`)
+I dati meteorologici macroclimatici convenzionali (Open-Meteo, ERA5-Land a 2 metri in campo aperto) non registrano le condizioni microclimatiche del sottobosco dove risiedono i funghi. La densità della volta forestale (*canopy cover* $C_f \in [0.0, 1.0]$) agisce come un isolante termico e idrologico dinamico (De Frenne et al., *Nature Ecology & Evolution* 2019, 2021; Zellweger et al., 2020):
+* **Attenuazione Termica Diurna Estiva/Autunnale ($\Delta T_{\max} < 0$):** L'ombreggiamento della volta e l'evapotraspirazione fogliare riducono le massime estreme al suolo fino a $4.0^\circ\text{C}$:
+  $$\Delta T_{\max} = C_f \cdot \min\left(4.0,\; 1.0 + 0.15 \cdot \max(0.0, T_{\max} - 18.0)\right)$$
+* **Isolamento Radiativo Notturno ($\Delta T_{\min} > 0$):** La volta impedisce la dispersione radiativa a onde lunghe verso il cielo sereno (*downward longwave radiation*), mantenendo il sottobosco da $+1.0^\circ\text{C}$ a $+2.0^\circ\text{C}$ più caldo rispetto ai campi aperti:
+  $$\Delta T_{\min} = C_f \cdot \left(1.2 + 0.5 \cdot \text{smoothstep}(0.0, 10.0, 10.0 - T_{\min})\right)$$
+* **Restringimento Escursione Termica Diurna ($\text{DTR}_{\text{subcanopy}} < \text{DTR}_{\text{macro}}$):** Mitiga la penalizzazione per stress termico $DTR > 15^\circ\text{C}$ quando il bosco isola efficacemente i primordi.
+* **Intercettazione Idrica e Throughfall ($P_{\text{throughfall}}$):** Trattiene quote di precipitazione sulle chiome ($S_{\text{canopy}} \approx 1.2\text{ mm}$), riducendo le piogge deboli ($~30\%$ di perdita) e consentendo il passaggio quasi integrale ($>80\%$) dei forti temporali:
+  $$P_{\text{throughfall}} = P \cdot \left(1.0 - C_f \cdot \left(0.15 + 0.20 \cdot \exp\left(-\frac{P}{8.0}\right)\right)\right)$$
+* **Umidità Relativa Sub-Canopy:** Contenimento dei venti ed evaporazione interna aumentano l'umidità dell'aria fino a $+6\%$:
+  $$\text{RH}_{\text{subcanopy}} = \min\left(100.0,\; \text{RH} + C_f \cdot 6.0 \cdot \left(1.0 - \frac{\text{RH}}{100.0}\right)\right)$$
+* La copertura canopica $C_f$ viene stimata dinamicamente da `MushroomViewModel` integrando la consistenza boschiva OSM (`forestCount`) e la nicchia della specie ($C_f = 0.85$ per bosco denso; $C_f = 0.10$ per saprotrofi prativi come *Macrolepiota procera*).
 
 ### 4.4 Shock Termico Induttivo dei Primordi e DTR (Diurnal Temperature Range)
 I carpofori della maggior parte dei funghi micorrizici necessitano di uno shock induttivo (*cold shock*) per avviare la fruttificazione, consistente in un brusco abbassamento delle temperature a seguito di temporali estivi o autunnali (`MushroomAlgorithms.kt:280`):

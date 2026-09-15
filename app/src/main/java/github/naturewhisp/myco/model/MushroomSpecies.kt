@@ -58,7 +58,8 @@ data class MushroomSpecies(
     val toxicLookAlikes: List<String> = emptyList(),
     val edibilityWarning: String? = null,
     val phenologyLatencyPeakDays: Double = 11.0,
-    val phenologyShapeAlpha: Double = 4.0
+    val phenologyShapeAlpha: Double = 4.0,
+    val optimalTemp: Float = (idealTempMin + idealTempMax) / 2.0f
 ) {
     /**
      * Indica se la specie rappresenta il modello baseline polifito generale.
@@ -112,7 +113,8 @@ val SPECIES_CATALOG: List<MushroomSpecies> = listOf(
         toxicLookAlikes = listOf("Tylopilus felleus (Porcino del fiele, amaro)", "Rubroboletus satanas (Boletus satanas, tossico)"),
         edibilityWarning = "Verificare carne bianca immutabile e assenza di pori rossi o sapori amari.",
         phenologyLatencyPeakDays = 11.0,
-        phenologyShapeAlpha = 4.0
+        phenologyShapeAlpha = 4.0,
+        optimalTemp = 14.0f
     ),
     MushroomSpecies(
         id = "boletus_aereus",

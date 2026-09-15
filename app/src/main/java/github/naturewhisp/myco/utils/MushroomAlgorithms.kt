@@ -466,6 +466,80 @@ object MushroomAlgorithms {
     }
 
     /**
+     * Applica il modello microclimatico di volta forestale (Canopy Buffering / De Frenne Offset)
+     * a una singola giornata meteorologica.
+     *
+     * I dati macroclimatici da stazioni o reanalisi (Open-Meteo 2m in campo aperto) vengono corretti
+     * per riflettere le condizioni effettive del sottobosco (De Frenne et al., Nature Ecol. Evol. 2019/2021):
+     * 1. Attenuazione delle temperature massime estive per ombreggiamento ed evapotraspirazione (cooling offset ΔT_max).
+     * 2. Isolamento radiativo notturno che riduce le dispersioni verso il cielo sereno (warming offset ΔT_min).
+     * 3. Attenuazione dell'escursione termica diurna (DTR).
+     * 4. Intercettazione idrica fogliare con riduzione della pioggia netta al suolo (throughfall).
+     * 5. Incremento moderato dell'umidità relativa dell'aria sub-canopy.
+     *
+     * @param day Giornata meteorologica grezza [ProcessedDay].
+     * @param canopyCover Frazione di copertura arborea [0.0, 1.0] (0.0 = campo aperto, 0.85 = foresta densa).
+     * @return Istanza di [ProcessedDay] con parametri microclimatici sub-canopy corretti.
+     */
+    fun applyCanopyBuffering(
+        day: ProcessedDay,
+        canopyCover: Double = 0.80
+    ): ProcessedDay {
+        val c = canopyCover.coerceIn(0.0, 1.0)
+        if (c <= 0.001) return day
+
+        // 1. Attenuazione diurna massime (De Frenne offset estivo/caldo per ombreggiamento ed evaporazione)
+        val maxOffset = if (day.maxTemp > 18f) {
+            c * kotlin.math.min(4.0, 1.0 + 0.15 * (day.maxTemp - 18.0))
+        } else {
+            c * 0.5 * kotlin.math.max(0.0, (day.maxTemp - 5.0) / 13.0)
+        }
+        val subMaxTemp = (day.maxTemp - maxOffset).toFloat()
+
+        // 2. Isolamento radiativo notturno (Effetto serra della volta forestale che blocca dispersioni a onde lunghe)
+        val minOffset = c * (1.2 + 0.5 * smoothstep(0.0, 10.0, 10.0 - day.minTemp))
+        val subMinTemp = (day.minTemp + minOffset).toFloat()
+
+        // 3. Vincoli fisici (minTemp <= avgTemp <= maxTemp)
+        val boundedMinTemp = kotlin.math.min(subMinTemp, subMaxTemp)
+        val boundedMaxTemp = kotlin.math.max(subMinTemp, subMaxTemp)
+        val deltaAvg = (minOffset - maxOffset) / 2.0
+        val subAvgTemp = (day.avgTemp + deltaAvg).coerceIn(boundedMinTemp.toDouble(), boundedMaxTemp.toDouble()).toFloat()
+
+        // 4. Intercettazione idrica chiome e throughfall (Bonet et al. / CTFC)
+        val grossPrecip = day.totalPrecip.toDouble()
+        val throughfall = if (grossPrecip > 0.0) {
+            val interceptionLossFraction = c * (0.15 + 0.20 * kotlin.math.exp(-grossPrecip / 8.0))
+            (grossPrecip * (1.0 - interceptionLossFraction)).coerceAtLeast(0.0)
+        } else {
+            0.0
+        }
+
+        // 5. Umidità relativa sub-canopy (minore ventilazione ed evapotraspirazione interna)
+        val humOffset = c * 6.0 * (1.0 - day.avgHumidity.toDouble() / 100.0)
+        val subHumidity = (day.avgHumidity + humOffset).coerceIn(0.0, 100.0).toFloat()
+
+        return day.copy(
+            avgTemp = subAvgTemp,
+            minTemp = boundedMinTemp,
+            maxTemp = boundedMaxTemp,
+            totalPrecip = throughfall.toFloat(),
+            avgHumidity = subHumidity
+        )
+    }
+
+    /**
+     * Mappa l'intera serie temporale applicando il modello di volta forestale (De Frenne Offset).
+     */
+    fun applyCanopyBuffering(
+        days: List<ProcessedDay>,
+        canopyCover: Double = 0.80
+    ): List<ProcessedDay> {
+        if (canopyCover <= 0.001) return days
+        return days.map { applyCanopyBuffering(it, canopyCover) }
+    }
+
+    /**
      * Calcola il punteggio meteorologico composito (0..100) per una specifica data.
      *
      * Integra le quattro componenti continue ponderate secondo [EcologicalWeightsConfig]:
@@ -474,11 +548,14 @@ object MushroomAlgorithms {
      * - Umidità relativa aria/suolo multi-orizzonte ([EcologicalWeightsConfig.humidityWeight]%)
      * - Shock termico induttivo con latenza biologica differita ([EcologicalWeightsConfig.thermalShockWeight]%)
      *
+     * Integra opzionalmente il microclima di volta forestale (De Frenne Offset) tramite [canopyCover].
+     *
      * @param dayIndex Indice del giorno bersaglio all'interno della lista cronologica [allData].
      * @param allData Serie temporale completa dei dati meteorologici giornalieri [ProcessedDay].
      * @param spunHyphalDensity Densità ifale sotterranea SPUN in m/cm³, se disponibile.
      * @param species Profilo ecologico della specie target [MushroomSpecies].
      * @param config Configurazione tipizzata dei pesi e delle finestre climatiche [EcologicalWeightsConfig].
+     * @param canopyCover Frazione di copertura boschiva [0.0, 1.0] per il microclima sub-canopy.
      * @return Punteggio meteorologico intero normalizzato nell'intervallo [0, 100].
      */
     fun calculateWeatherScore(
@@ -486,19 +563,23 @@ object MushroomAlgorithms {
         allData: List<ProcessedDay>,
         spunHyphalDensity: Float? = null,
         species: MushroomSpecies = SPECIES_CATALOG[0],
-        config: EcologicalWeightsConfig = EcologicalWeightsConfig.PHENOLOGICAL
+        config: EcologicalWeightsConfig = EcologicalWeightsConfig.PHENOLOGICAL,
+        canopyCover: Double? = null
     ): Int {
         if (dayIndex < 0 || dayIndex >= allData.size) return 0
+
+        val effectiveCanopy = canopyCover?.coerceIn(0.0, 1.0) ?: 0.0
+        val effectiveData = if (effectiveCanopy > 0.001) applyCanopyBuffering(allData, effectiveCanopy) else allData
 
         // Calcolo della componente idrica (convoluzione fenologica f(tau) o finestra legacy)
         val effectiveRain: Double
         if (config.usePhenologicalInertia) {
-            effectiveRain = calculateEffectiveRainfall(dayIndex, allData, species)
+            effectiveRain = calculateEffectiveRainfall(dayIndex, effectiveData, species)
         } else {
             val rainStart = max(0, dayIndex - config.rainWindowDays)
             val rainEnd = max(0, dayIndex - config.rainLagDays)
-            val rainWindow = if (rainStart < rainEnd && rainEnd <= allData.size) {
-                allData.subList(rainStart, rainEnd)
+            val rainWindow = if (rainStart < rainEnd && rainEnd <= effectiveData.size) {
+                effectiveData.subList(rainStart, rainEnd)
             } else {
                 emptyList()
             }
@@ -515,8 +596,8 @@ object MushroomAlgorithms {
 
         // Calcolo continuo della temperatura media (finestra ultimi tempWindowDays giorni)
         val tempStart = max(0, dayIndex - config.tempWindowDays)
-        val tempWindow = if (tempStart < dayIndex && dayIndex <= allData.size) {
-            allData.subList(tempStart, dayIndex)
+        val tempWindow = if (tempStart < dayIndex && dayIndex <= effectiveData.size) {
+            effectiveData.subList(tempStart, dayIndex)
         } else {
             emptyList()
         }
@@ -528,17 +609,44 @@ object MushroomAlgorithms {
         val minTempRecent = if (tempWindow.isNotEmpty()) tempWindow.minOf { it.minTemp.toDouble() } else avgTempLast5Days
         val nocturnalInhibition = nocturnalChillingInhibition(minTempRecent.toFloat(), species)
         
-        val currentDay = if (dayIndex < allData.size) allData[dayIndex] else allData.lastOrNull()
+        val currentDay = if (dayIndex < effectiveData.size) effectiveData[dayIndex] else effectiveData.lastOrNull()
         val dtr = if (currentDay != null) (currentDay.maxTemp - currentDay.minTemp).toDouble() else 0.0
         val dtrPenalty = if (dtr > 15.0) 0.8 else 1.0
 
-        val tempScore = tempScoreSmooth(avgTempLast5Days, species) * config.tempWeight * nocturnalInhibition * dtrPenalty
+        val effectiveTempScore: Double
+        if (config.usePhenologicalInertia && dayIndex >= 10) {
+            // Condizionamento termico di medio termine a 20 giorni (Brejon Lamartinière & Hoffman, 2025/2026)
+            val mediumStart = max(0, dayIndex - 20)
+            val mediumEnd = max(0, dayIndex - config.tempWindowDays)
+            val mediumWindow = if (mediumStart < mediumEnd && mediumEnd <= effectiveData.size) {
+                effectiveData.subList(mediumStart, mediumEnd)
+            } else {
+                emptyList()
+            }
+            val avgTempMediumTerm = if (mediumWindow.isNotEmpty()) {
+                mediumWindow.sumOf { it.avgTemp.toDouble() } / mediumWindow.size
+            } else {
+                avgTempLast5Days
+            }
+            val mediumScore = ctmi(
+                temp = avgTempMediumTerm,
+                tMin = species.toleratedTempMin.toDouble(),
+                tOpt = species.optimalTemp.toDouble(),
+                tMax = species.toleratedTempMax.toDouble()
+            )
+            val shortScore = tempScoreSmooth(avgTempLast5Days, species)
+            effectiveTempScore = 0.75 * shortScore + 0.25 * mediumScore
+        } else {
+            effectiveTempScore = tempScoreSmooth(avgTempLast5Days, species)
+        }
+
+        val tempScore = effectiveTempScore * config.tempWeight * nocturnalInhibition * dtrPenalty
 
         // Calcolo continuo dell'umidità relativa e idratazione suolo (finestra humidityWindowDays giorni fino a oggi)
         val humStart = max(0, dayIndex - config.humidityWindowDays)
-        val humEnd = min(allData.size, dayIndex + 1)
+        val humEnd = min(effectiveData.size, dayIndex + 1)
         val humWindow = if (humStart < humEnd) {
-            allData.subList(humStart, humEnd)
+            effectiveData.subList(humStart, humEnd)
         } else {
             emptyList()
         }
@@ -577,8 +685,8 @@ object MushroomAlgorithms {
             if (dayIndex >= 2 && effectiveRain >= config.minRainForShockMm) {
                 var bestShock = 0.0
                 for (j in 2 until dayIndex) {
-                    val tempBefore = allData[max(0, j - 3)].avgTemp
-                    val tempAfter = allData[j].avgTemp
+                    val tempBefore = effectiveData[max(0, j - 3)].avgTemp
+                    val tempAfter = effectiveData[j].avgTemp
                     val drop = (tempBefore - tempAfter).toDouble()
                     if (drop > minDrop) {
                         val tau = (dayIndex - j).toDouble()
@@ -599,8 +707,8 @@ object MushroomAlgorithms {
             }
         } else {
             if (dayIndex > 4 && effectiveRain >= config.minRainForShockMm) {
-                val tempBefore = allData[dayIndex - 4].avgTemp
-                val tempAfter = allData[dayIndex - 1].avgTemp
+                val tempBefore = effectiveData[dayIndex - 4].avgTemp
+                val tempAfter = effectiveData[dayIndex - 1].avgTemp
                 val drop = (tempBefore - tempAfter).toDouble()
                 if (drop > minDrop) {
                     val dropFactor = ((drop - minDrop) / config.shockDropSaturationSpan).coerceIn(0.0, 1.0)
@@ -1097,7 +1205,48 @@ object MushroomAlgorithms {
     }
 
     /**
+     * Modello Termico Cardinale con Flessione (CTMI di Rosso et al., 1993).
+     *
+     * Modella con rigore termodinamico la cinetica cellulare ed enzimatica dei macromiceti:
+     * - Risposta nulla per temp <= tMin o temp >= tMax.
+     * - Massimo unitario (1.0) esattamente alla temperatura ottimale tOpt.
+     * - Asimmetria biologica: ascesa progressiva dal limite psicrotollerante tMin e rapido decadimento verso tMax
+     *   dovuto alla denaturazione termica delle proteine cellulari.
+     *
+     * In presenza di parametri singolari al denominatore, applica la formulazione cardinale
+     * continua di Yan & Hunt (1999) garantendo Lipschitz-continuità e assenza di divisioni per zero.
+     *
+     * @param temp Temperatura media in °C.
+     * @param tMin Temperatura minima cardinale di tolleranza miceliare in °C.
+     * @param tOpt Temperatura ottimale di carpogenesi in °C.
+     * @param tMax Temperatura massima cardinale di tolleranza miceliare in °C.
+     * @return Risposta termica cardinale normalizzata in [0.0, 1.0].
+     */
+    fun ctmi(temp: Double, tMin: Double, tOpt: Double, tMax: Double): Double {
+        if (temp <= tMin || temp >= tMax || tMin >= tOpt || tOpt >= tMax) return 0.0
+
+        val num = (temp - tMax) * (temp - tMin) * (temp - tMin)
+        val den = (tOpt - tMin) * ((tOpt - tMin) * (temp - tOpt) - (tOpt - tMax) * (tOpt + tMin - 2.0 * temp))
+
+        if (den > 0.0) {
+            val v = num / den
+            if (v in 0.0..1.0) return v
+        }
+
+        // Fallback analitico continuo cardinale privo di singolarità (Yan & Hunt, 1999)
+        val b = (tOpt - tMin) / (tMax - tOpt)
+        val term1 = (tMax - temp) / (tMax - tOpt)
+        val term2 = (temp - tMin) / (tOpt - tMin)
+        return (term1 * Math.pow(term2, b)).coerceIn(0.0, 1.0)
+    }
+
+    /**
      * Curva di risposta termica biologica continua normalizzata nell'intervallo [0.0, 1.0].
+     *
+     * Valuta l'idoneità termica istantanea o a breve termine:
+     * - Valore nullo per temperature esterne all'intervallo di tolleranza [toleratedTempMin .. toleratedTempMax].
+     * - Valore unitario (1.0) all'interno dell'intervallo termico ideale [idealTempMin .. idealTempMax].
+     * - Rampa lineare continua Lipschitziana con pendenza controllata sulle fasce di transizione.
      *
      * @param temp Temperatura media registrata in °C.
      * @param species Profilo biologico della specie micologica target [MushroomSpecies].
@@ -1161,6 +1310,9 @@ object MushroomAlgorithms {
      * Valuta in modo continuo il contenuto idrico del suolo [0.0, 1.0] combinando l'orizzonte superficiale (0-7 cm)
      * e l'orizzonte radicale profondo (7-28 cm), modulati dall'evapotraspirazione di riferimento FAO ET0.
      *
+     * Integra la dinamica idraulica di van Genuchten penalizzando sia il deficit idrico/disseccamento (< 0.20 m³/m³),
+     * sia la saturazione asfittica dei macropori (> 0.40 m³/m³) che induce ipossia e lisi batterica dei primordi.
+     *
      * @param m0To7 Umidità volumetrica superficiale in m³/m³ (orizzonte primordi/lettiera). Range ottimale: 0.22..0.38.
      * @param m7To28 Umidità volumetrica profonda in m³/m³ (orizzonte miceliare perenne). Range ottimale: 0.20..0.35.
      * @param et0 Evapotraspirazione cumulata giornaliera di riferimento FAO ET0 in mm/giorno.
@@ -1170,24 +1322,30 @@ object MushroomAlgorithms {
         if (m0To7 == null && m7To28 == null) return 1.0
 
         // Calcolo continuo orizzonte superficiale 0-7 cm (induzione e idratazione primordiale)
+        // Dinamica van Genuchten: capacità di campo ottimale 0.22..0.38 m³/m³;
+        // decadimento per asfissia e lisi dei primordi per saturazione dei macropori oltre 0.38 m³/m³,
+        // con crollo ipossico severo oltre 0.44 m³/m³.
         val s0To7 = if (m0To7 != null) {
             when {
                 m0To7 < 0.10 -> 0.10
                 m0To7 in 0.10..0.22 -> 0.10 + 0.90 * smoothstep(0.10, 0.22, m0To7)
                 m0To7 in 0.22..0.38 -> 1.0
-                m0To7 in 0.38..0.48 -> 1.0 - 0.50 * smoothstep(0.38, 0.48, m0To7)
-                else -> 0.50
+                m0To7 in 0.38..0.44 -> 1.0 - 0.50 * smoothstep(0.38, 0.44, m0To7)
+                m0To7 in 0.44..0.52 -> 0.50 - 0.35 * smoothstep(0.44, 0.52, m0To7)
+                else -> 0.15
             }
         } else null
 
         // Calcolo continuo orizzonte profondo 7-28 cm (rete ifale perenne e assorbimento)
+        // Saturazione prolungata oltre 0.42 m³/m³ induce stasi respiratoria radicale e miceliare.
         val s7To28 = if (m7To28 != null) {
             when {
                 m7To28 < 0.12 -> 0.20
                 m7To28 in 0.12..0.20 -> 0.20 + 0.80 * smoothstep(0.12, 0.20, m7To28)
                 m7To28 in 0.20..0.35 -> 1.0
-                m7To28 in 0.35..0.45 -> 1.0 - 0.40 * smoothstep(0.35, 0.45, m7To28)
-                else -> 0.60
+                m7To28 in 0.35..0.42 -> 1.0 - 0.45 * smoothstep(0.35, 0.42, m7To28)
+                m7To28 in 0.42..0.50 -> 0.55 - 0.35 * smoothstep(0.42, 0.50, m7To28)
+                else -> 0.20
             }
         } else null
 
@@ -1342,7 +1500,8 @@ object MushroomAlgorithms {
         terrainEvaluation: TerrainAspectEvaluation? = null,
         avgSoilMoisture0To7: Float? = null,
         avgSoilMoisture7To28: Float? = null,
-        totalEvapotranspiration: Float? = null
+        totalEvapotranspiration: Float? = null,
+        canopyCover: Double? = null
     ): List<Factor> {
         val factors = mutableListOf<Factor>()
 
@@ -1353,13 +1512,19 @@ object MushroomAlgorithms {
             tempNorm >= 0.4 -> FactorLevel.NEUTRAL
             else -> FactorLevel.ADVERSE
         }
+        val tempDetail = buildString {
+            append(if (tempLevel == FactorLevel.FAVORABLE) "Range termico ideale" else "Range non ottimale")
+            if (canopyCover != null && canopyCover >= 0.40) {
+                append(String.format(Locale.ITALIAN, " • Chioma boschiva %.0f%% (De Frenne)", canopyCover * 100))
+            }
+        }
         factors.add(
             Factor(
                 id = FactorId.TEMPERATURE,
                 label = "Temperatura media",
                 formattedValue = String.format(Locale.ITALIAN, "%.1f°C", avgTemp),
                 level = tempLevel,
-                detail = if (tempLevel == FactorLevel.FAVORABLE) "Range termico ideale" else "Range non ottimale"
+                detail = tempDetail
             )
         )
 
@@ -1370,13 +1535,19 @@ object MushroomAlgorithms {
             rainNorm >= 0.4 -> FactorLevel.NEUTRAL
             else -> FactorLevel.ADVERSE
         }
+        val rainDetail = buildString {
+            append("Ultime 2 settimane")
+            if (canopyCover != null && canopyCover >= 0.40) {
+                append(" • Throughfall al suolo")
+            }
+        }
         factors.add(
             Factor(
                 id = FactorId.PRECIPITATION,
                 label = "Precipitazioni cumulate",
                 formattedValue = String.format(Locale.ITALIAN, "%.0f mm", totalRain),
                 level = rainLevel,
-                detail = "Ultime 2 settimane"
+                detail = rainDetail
             )
         )
 
@@ -1419,6 +1590,11 @@ object MushroomAlgorithms {
                 }
                 if (totalEvapotranspiration != null) {
                     append(String.format(Locale.ITALIAN, " • ET0 %.1f mm", totalEvapotranspiration))
+                }
+                if (avgSoilMoisture0To7 != null && avgSoilMoisture0To7 > 0.42f) {
+                    append(" • Ristagno/asfissia")
+                } else if (avgSoilMoisture0To7 != null && avgSoilMoisture0To7 < 0.14f) {
+                    append(" • Stress idrico/secco")
                 }
             }
 
@@ -1585,6 +1761,8 @@ object MushroomAlgorithms {
      * @param month Mese dell'anno (0..11).
      * @param spunHyphalDensity Densità ifale sotterranea SPUN, se disponibile.
      * @param terrainModifier Modificatore orografico del versante ed esposizione (default 1.0).
+     * @param config Configurazione pesi ecologici [EcologicalWeightsConfig].
+     * @param canopyCover Frazione di copertura arborea [0.0, 1.0] per il microclima sub-canopy.
      * @return Lista di [DailyOutlook] per ciascun giorno previsionale.
      */
     fun calculateDailyOutlooks(
@@ -1596,17 +1774,20 @@ object MushroomAlgorithms {
         month: Int = 9,
         spunHyphalDensity: Float? = null,
         terrainModifier: Double = 1.0,
-        config: EcologicalWeightsConfig = EcologicalWeightsConfig.PHENOLOGICAL
+        config: EcologicalWeightsConfig = EcologicalWeightsConfig.PHENOLOGICAL,
+        canopyCover: Double? = null
     ): List<DailyOutlook> {
         if (processedDays.isEmpty()) return emptyList()
         val altScore = calculateSpeciesAltitudeScore(elevation, species).score
         val seasonScore = calculateSpeciesSeasonalityScore(month, species).score
         val result = mutableListOf<DailyOutlook>()
 
+        val effectiveDays = if (canopyCover != null && canopyCover > 0.001) applyCanopyBuffering(processedDays, canopyCover) else processedDays
+
         for (i in startIndex until processedDays.size) {
-            val weatherScore = calculateWeatherScore(i, processedDays, spunHyphalDensity, species, config)
+            val weatherScore = calculateWeatherScore(i, processedDays, spunHyphalDensity, species, config, canopyCover)
             val prob = dailyGrowthProbability(weatherScore, habitatScore, altScore, seasonScore, terrainModifier, config)
-            result.add(DailyOutlook.fromProcessedDay(processedDays[i], prob))
+            result.add(DailyOutlook.fromProcessedDay(effectiveDays[i], prob))
         }
         return result
     }

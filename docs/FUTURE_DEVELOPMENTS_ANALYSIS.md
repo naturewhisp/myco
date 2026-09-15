@@ -789,11 +789,14 @@ gantt
   7. [x] **Inerzia Biologica & Fase Fenologica (FEAT-08)**: **COMPLETATO** (v1.2) — Sostituzione della finestra rigida meteo con l'integrazione pesata `evaluateGrowthPhase` e convoluzione `calculateEffectiveRainfall` in `MushroomAlgorithms.kt`.
   8. [x] **Isteresi Notturna & Inibizione DTR (FEAT-09)**: **COMPLETATO** (v1.2) — Aggiunta estrazione min/max temperature in `ProcessedDay`, implementazione del modello di penalità asimmetrica per inibizione da freddo notturno e modulazione inerzia biologica in caso di trauma termico.
   9. [x] **Invariante Geospaziale Hardware (FIX-07)**: **COMPLETATO** (v1.2) — Restrizione dell'utilizzo della bussola hardware in `MushroomViewModel` e `MapScreen` esclusivamente se il cursore dista $\le 50$ metri dal GPS fisico dell'utente, risolvendo consumi anomali.
+  10. [x] **Dinamica Idraulica van Genuchten & Anti-Asfissia (FEAT-10)**: **COMPLETATO** (v1.2) — Rimodellazione biofisica continua di `soilMoistureScoreSmooth` secondo la curva idrodinamica di van Genuchten e la porosità aerifera residua ($\varepsilon_a < 10\%$). Penalizzazione asfittica progressiva e severa ($0.38 \dots 0.44 \dots 0.52\text{ m}^3/\text{m}^3$) fino al fondo biologico di $0.15$ per saturazione dei macropori superficiali e $0.20$ profonda. Feedback diagnostico in `FactorId.SOIL_MOISTURE` ("Ristagno/asfissia" / "Stress idrico/secco") e test unitari dedicati (83 test totali).
+  11. [x] **Canopy Buffering & Microclima Forestale (FEAT-11)**: **COMPLETATO** (v1.2) — Modellazione biometeorologica continua del microclima di sottobosco secondo De Frenne et al. (Nature Ecol. Evol. 2019/2021) e intercettazione chiome CTFC/Bonet et al. Attenuazione massime estive (cooling offset), isolamento radiativo notturno contro il freddo aperto, restringimento DTR ed evaporazione throughfall. Integrazione dinamica Overpass `forestCount` e test dedicati (87 test totali).
+  12. [x] **Modello Termico Cardinale CTMI & Finestre Fenologiche Decennali (FEAT-12)**: **COMPLETATO** (v1.2) — Implementazione del modello termico cardinale con flessione (CTMI di Rosso et al., 1993 / Yan & Hunt, 1999) con cinetica asimmetrica enzimatica. Integrazione delle risultanze empiriche decennali di Brejon Lamartinière & Hoffman (2025/2026): estensione della ricarica idrica preventiva a 26 giorni ($P_{d-26}$) con `past_days = 28` in Open-Meteo, indicizzazione temporale dinamica nel ViewModel, e condizionamento termico di medio termine a 20 giorni ($T_{d-20}$) calibrato sull'ottimo di $13.5^\circ\text{C}$ per *Boletus edulis*. Suite estesa a 91 test (100% pass).
 
 * **Criteri di Rilascio v1.2**:
   - Calcolo dell'heatmap in meno di 50 ms su dispositivo mobile medio di riferimento (raggiunto: $< 2\text{ ms}$).
   - Ricalcolo dinamico istantaneo dell'heatmap e dei fattori ecologici su selezione nuova specie.
-  - Zero warning diagnostici (`0 errors, 0 warnings`) e 100% test passing su suite estesa (82 test).
+  - Zero warning diagnostici (`0 errors, 0 warnings`) e 100% test passing su suite estesa (91 test).
   - Validazione e verifica funzionale superata su Google Pixel 10 Pro fisico.
 
 ---

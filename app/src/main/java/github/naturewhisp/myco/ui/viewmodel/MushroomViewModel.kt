@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import github.naturewhisp.myco.model.DailyOutlook
+import github.naturewhisp.myco.model.EcologicalCategory
 import github.naturewhisp.myco.model.Factor
 import github.naturewhisp.myco.model.GeocodeResult
 import github.naturewhisp.myco.platform.android.HeatmapData
@@ -36,7 +37,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
@@ -312,6 +315,7 @@ class MushroomViewModel(
     private var lastProcessedDays: List<ProcessedDay>? = null
     private var lastFinalHabitatScore: Double = 1.0
     private var lastHabitatBaseText: String = ""
+    private var lastForestCount: Int = 0
     private var lastElevation: Float = 800f
     private var lastSpunData: SpunData? = null
     private var lastLat: Double = 41.8902
@@ -349,16 +353,29 @@ class MushroomViewModel(
     fun recalculateForSpecies() {
         val days = lastProcessedDays ?: return
         val species = selectedSpecies
-        val todayIndex = 14
-        if (days.size <= todayIndex) return
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val matchedIndex = days.indexOfFirst { it.date == todayStr }
+        val todayIndex = if (matchedIndex >= 0) matchedIndex else min(28, days.size - 1)
+        if (days.size <= todayIndex || todayIndex < 0) return
 
         val altScore = MushroomAlgorithms.calculateSpeciesAltitudeScore(lastElevation, species)
         val seasonScore = MushroomAlgorithms.calculateSpeciesSeasonalityScore(lastCurrentMonth, species)
+
+        val estimatedCanopy = when {
+            species.category == EcologicalCategory.SAPROTROPHIC && species.preferredCanopyTypes.any { it.contains("prat") || it.contains("radur") } -> 0.10
+            lastForestCount > 15 -> 0.85
+            lastForestCount > 4 -> 0.70
+            lastForestCount > 0 -> 0.45
+            else -> 0.20
+        }
+        val bufferedDays = if (estimatedCanopy > 0.001) MushroomAlgorithms.applyCanopyBuffering(days, estimatedCanopy) else days
+
         val rawWeatherScore = MushroomAlgorithms.calculateWeatherScore(
             todayIndex,
             days,
             lastSpunData?.hyphalDensity,
-            species
+            species,
+            canopyCover = estimatedCanopy
         )
 
         val habScore = if (calculationMode == "WEATHER_ONLY") 1.0 else lastFinalHabitatScore
@@ -366,11 +383,11 @@ class MushroomViewModel(
         val seasonMult = if (calculationMode == "WEATHER_ONLY") 1.0 else seasonScore.score
 
         val moon = lastMoonPhase ?: MushroomAlgorithms.getMoonPhase()
-        val tempWindow = if (todayIndex >= 5) days.subList(todayIndex - 5, todayIndex) else emptyList()
+        val tempWindow = if (todayIndex >= 5) bufferedDays.subList(todayIndex - 5, todayIndex) else emptyList()
         val avgTemp = if (tempWindow.isNotEmpty()) tempWindow.sumOf { it.avgTemp.toDouble() } / tempWindow.size else 0.0
-        val rainWindow = if (todayIndex >= 10) days.subList(todayIndex - 10, todayIndex - 2) else emptyList()
+        val rainWindow = if (todayIndex >= 10) bufferedDays.subList(todayIndex - 10, todayIndex - 2) else emptyList()
         val totalRain = rainWindow.sumOf { it.totalPrecip.toDouble() }
-        val humWindow = days.subList(todayIndex - 3, min(days.size, todayIndex + 1))
+        val humWindow = bufferedDays.subList(todayIndex - 3, min(bufferedDays.size, todayIndex + 1))
         val avgHum = if (humWindow.isNotEmpty()) humWindow.sumOf { it.avgHumidity.toDouble() } / humWindow.size else 0.0
 
         val terrainEval = MushroomAlgorithms.evaluateTerrainAspect(
@@ -391,7 +408,7 @@ class MushroomViewModel(
         )
         todayProbability = prob
 
-        val todayData = days.getOrNull(todayIndex)
+        val todayData = bufferedDays.getOrNull(todayIndex)
         val soil0To7 = todayData?.avgSoilMoisture0To7cm
         val soil7To28 = todayData?.avgSoilMoisture7To28cm
         val et0 = todayData?.totalEvapotranspiration
@@ -413,7 +430,8 @@ class MushroomViewModel(
             terrainEvaluation = terrainEval,
             avgSoilMoisture0To7 = soil0To7,
             avgSoilMoisture7To28 = soil7To28,
-            totalEvapotranspiration = et0
+            totalEvapotranspiration = et0,
+            canopyCover = estimatedCanopy
         )
 
         dailyOutlooks = MushroomAlgorithms.calculateDailyOutlooks(
@@ -424,7 +442,8 @@ class MushroomViewModel(
             elevation = lastElevation,
             month = lastCurrentMonth,
             spunHyphalDensity = lastSpunData?.hyphalDensity,
-            terrainModifier = if (calculationMode == "WEATHER_ONLY") 1.0 else terrainEval.modifier
+            terrainModifier = if (calculationMode == "WEATHER_ONLY") 1.0 else terrainEval.modifier,
+            canopyCover = estimatedCanopy
         )
 
         val fav = favoriteLocations.firstOrNull {
@@ -1010,7 +1029,9 @@ class MushroomViewModel(
 
                 // Process weather
                 val processedDays = MushroomAlgorithms.processWeatherData(weather)
-                val todayIndex = 14
+                val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                val matchedIndex = processedDays.indexOfFirst { it.date == todayStr }
+                val todayIndex = if (matchedIndex >= 0) matchedIndex else min(28, processedDays.size - 1)
                 
                 // Forecast grid: next 5 days starting today (todayIndex to todayIndex+4)
                 forecastDays = processedDays.subList(todayIndex, min(processedDays.size, todayIndex + 5))
@@ -1024,14 +1045,23 @@ class MushroomViewModel(
                 val growthPhaseVal = growthPhaseEval.phaseText
                 val moonPhase = MushroomAlgorithms.getMoonPhase()
 
+                val estimatedCanopy = when {
+                    selectedSpecies.category == EcologicalCategory.SAPROTROPHIC && selectedSpecies.preferredCanopyTypes.any { it.contains("prat") || it.contains("radur") } -> 0.10
+                    forestCount > 15 -> 0.85
+                    forestCount > 4 -> 0.70
+                    forestCount > 0 -> 0.45
+                    else -> 0.20
+                }
+                val bufferedDays = if (estimatedCanopy > 0.001) MushroomAlgorithms.applyCanopyBuffering(processedDays, estimatedCanopy) else processedDays
+
                 // Rain calculation with phenological integration
-                val effectiveRain = MushroomAlgorithms.calculateEffectiveRainfall(todayIndex, processedDays, selectedSpecies)
+                val effectiveRain = MushroomAlgorithms.calculateEffectiveRainfall(todayIndex, bufferedDays, selectedSpecies)
                 val rainStatus = MushroomAlgorithms.getRainStatus(effectiveRain)
                 val rainTextVal = "Pioggia: ${effectiveRain.toInt()}mm (${rainStatus.label})"
 
                 // Temp window calculation (last 5 days)
                 val tempStart = max(0, todayIndex - 5)
-                val tempWindow = processedDays.subList(tempStart, todayIndex)
+                val tempWindow = bufferedDays.subList(tempStart, todayIndex)
                 val avgTempLast5Days = if (tempWindow.isNotEmpty()) {
                     tempWindow.sumOf { it.avgTemp.toDouble() } / tempWindow.size
                 } else {
@@ -1047,7 +1077,8 @@ class MushroomViewModel(
                     todayIndex,
                     processedDays,
                     spunHyphalDensity = spunData?.hyphalDensity,
-                    species = selectedSpecies
+                    species = selectedSpecies,
+                    canopyCover = estimatedCanopy
                 )
 
                 // Assign states
@@ -1086,6 +1117,7 @@ class MushroomViewModel(
                 lastProcessedDays = processedDays
                 lastFinalHabitatScore = finalHabitatScore
                 lastHabitatBaseText = habitatBaseText
+                lastForestCount = forestCount
                 lastElevation = elevation
                 lastSpunData = spunData
                 lastLat = lat

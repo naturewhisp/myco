@@ -72,7 +72,7 @@ interface WeatherService {
     suspend fun getForecast(
         @Query("latitude") latitude: Double,
         @Query("longitude") longitude: Double,
-        @Query("past_days") pastDays: Int = 14,
+        @Query("past_days") pastDays: Int = 28,
         @Query("forecast_days") forecastDays: Int = 11,
         @Query("hourly") hourly: String = "temperature_2m,relativehumidity_2m,precipitation,soil_moisture_0_to_7cm,soil_moisture_7_to_28cm,et0_fao_evapotranspiration",
         @Query("daily") daily: String = "weathercode",

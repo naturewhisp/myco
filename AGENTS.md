@@ -103,12 +103,23 @@ docs/
 
 ### 4.7 Scientific & Ecological Modeling Standards
 - **Continuous Biological Curves**: Model environmental variables (temperature, soil moisture, precipitation, elevation) with continuous normalized response functions ($0.0 \dots 1.0$) rather than discrete step functions.
-- **Unified Probability Calibration**: Aggregate probability scores must adhere to the standardized formula:
-  $$P = 100 \times (W / 100)^{1.2} \times H \times A \times S \times T$$
+- **Unified Probability Calibration**: Aggregate raw probability scores $P_{\text{raw}}$ using the standard ecological product, then compress them via a smooth asymptotic threshold ($P_{\text{knee}} = 70.0$, $P_{\max} = 92.0$) to realistically reflect unobservable ecological uncertainty:
+  $$P_{\text{raw}} = 100 \times (W / 100)^{1.2} \times H \times A \times S \times T$$
+  $$P_{\text{calibrated}} = \begin{cases} P_{\text{raw}} & \text{if } P_{\text{raw}} \le 70.0 \\ 70.0 + 22.0 \cdot \tanh\left(\frac{P_{\text{raw}} - 70.0}{22.0}\right) & \text{if } P_{\text{raw}} > 70.0 \end{cases}$$
   where $W$ is weather score, $H$ is habitat score, $A$ is altitude score, $S$ is seasonality score, and $T$ is the continuous terrain aspect modifier ($0.50 \dots 1.10$).
+- **Phenological Inertia & Unimodal Convolution**: Precipitation must NEVER be aggregated via flat rectangular rolling-window sums (e.g. `[10-to-2 days]`). Precipitation must be weighted using a continuous, species-specific unimodal normalized phenological kernel:
+  $$f_{\text{species}}(\tau) = \left(\frac{\tau}{\tau_{\text{peak}}}\right)^\alpha \exp\left(-\alpha\left(\frac{\tau}{\tau_{\text{peak}}} - 1\right)\right)$$
+  with guaranteed unit peak $f(\tau_{\text{peak}}) = 1.0$ at species-specific latency (e.g. $\tau_{\text{peak}} \approx 11\text{ days}$ for *Boletus edulis*).
+- **Deep Soil Moisture Deficit Gating**: Effective precipitation must discount hydrophobic priming and deep root zone deficit ($\theta_{7-28} < 0.20\text{ m}^3/\text{m}^3$) to prevent premature fruiting predictions over desiccated subsoils.
+- **Nocturnal Chilling & Hysteresis**: Thermal score must apply continuous nocturnal chilling inhibition via smoothstep when the minimum temperature falls below the tolerated threshold. In case of nocturnal chilling trauma, phenological latency ($\tau_{\text{peak}}$) must be modulated with an added biological recovery stasis (e.g., +1.5 days). Furthermore, if the diurnal temperature range ($\text{DTR} = T_{\max} - T_{\min}$) exceeds $15^\circ\text{C}$, an additional thermal stress penalty factor ($0.80$) must be applied.
+- **Multi-Screen Outlook Coherence**: All prospective calculations (e.g., `calculateDailyOutlooks`) must forward the identical environmental and terrain modifiers (`terrainModifier`) used by primary single-day routines to guarantee 100% numerical consistency across screens.
 
 ### 4.8 Lifecycle, Hardware Sensors & Concurrency Invariants
 - **Lifecycle-Bound Hardware Sensors**: Do NOT use naked `DisposableEffect(Unit)` for battery-intensive hardware listeners (GPS updates, rotation vector compass, barometer). Sensors must be bound to `LocalLifecycleOwner.current` via `LifecycleEventObserver`, starting exclusively on `Lifecycle.Event.ON_RESUME` (or `ON_START`) and stopping immediately on `Lifecycle.Event.ON_PAUSE` (or `ON_STOP`).
+- **Geospatial Hardware Sensor Isolation**: Physical device hardware sensors (rotation vector compass, orientation, gyroscope, barometer) must ONLY be queried or applied if:
+  $$\text{haversineDistance}(lat_{\text{user}}, lon_{\text{user}}, lat_{\text{target}}, lon_{\text{target}}) \le 50\text{ meters}$$
+  or if inspecting the user's current GPS position. When inspecting remote map coordinates ($\Delta d > 50\text{ m}$), heading-up rotation and device compass cones must be strictly disabled/neutralized.
+- **Unambiguous Environmental Telemetry Labels**: Never label remote agrometeorological or satellite reanalysis data (Open-Meteo, ERA5-Land, DEM) as "Sensori" or "Sensori del dispositivo". The UI and documentation must strictly and unambiguously distinguish on-board hardware sensors from remote meteorological models.
 - **OsmDroid Lifecycle Hygiene**: All `MapView` instances hosted in `AndroidView` must explicitly receive `onResume()` on `ON_RESUME`, `onPause()` on `ON_PAUSE`, and `onRelease = { it.onDetach() }` to terminate background tile download workers and prevent Activity context leaks.
 - **Interactive ViewModel Concurrency (Anti-Stale Overrides)**: When user actions (e.g. map tapping, location search) trigger asynchronous data fetches, the ViewModel must maintain an explicit `Job?` reference (e.g. `dataFetchJob`). Any in-flight job must be deterministically cancelled (`dataFetchJob?.cancel()`) prior to launching a new request. All active coroutine jobs must be explicitly cancelled in `onCleared()`.
 

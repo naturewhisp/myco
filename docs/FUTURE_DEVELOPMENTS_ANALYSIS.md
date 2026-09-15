@@ -786,6 +786,10 @@ gantt
   5. [x] **Internazionalizzazione e Pulizia Risorse (TASK-04 / TD-17)**: **COMPLETATO** (v1.2) — Estrazione progressiva e integrale delle stringhe di interfaccia in `res/values/strings.xml`, supporto alle forme plurali (`plurals`), conformità tipografica ed eliminazione totale dei warning di analisi statica.
   6. [x] **Espansione Test Suite Automatizzata**: **COMPLETATO** (v1.2) — Aggiunti test su formula di Haversine, sentinelle SPUN, fallback offline del repository, snapping forestale del ViewModel e sincronizzazione offline, portando la suite a **82 test unitari (100% passing)**.
 
+  7. [x] **Inerzia Biologica & Fase Fenologica (FEAT-08)**: **COMPLETATO** (v1.2) — Sostituzione della finestra rigida meteo con l'integrazione pesata `evaluateGrowthPhase` e convoluzione `calculateEffectiveRainfall` in `MushroomAlgorithms.kt`.
+  8. [x] **Isteresi Notturna & Inibizione DTR (FEAT-09)**: **COMPLETATO** (v1.2) — Aggiunta estrazione min/max temperature in `ProcessedDay`, implementazione del modello di penalità asimmetrica per inibizione da freddo notturno e modulazione inerzia biologica in caso di trauma termico.
+  9. [x] **Invariante Geospaziale Hardware (FIX-07)**: **COMPLETATO** (v1.2) — Restrizione dell'utilizzo della bussola hardware in `MushroomViewModel` e `MapScreen` esclusivamente se il cursore dista $\le 50$ metri dal GPS fisico dell'utente, risolvendo consumi anomali.
+
 * **Criteri di Rilascio v1.2**:
   - Calcolo dell'heatmap in meno di 50 ms su dispositivo mobile medio di riferimento (raggiunto: $< 2\text{ ms}$).
   - Ricalcolo dinamico istantaneo dell'heatmap e dei fattori ecologici su selezione nuova specie.

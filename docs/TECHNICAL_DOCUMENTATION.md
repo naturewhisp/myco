@@ -367,9 +367,13 @@ La stima della probabilità di fruttificazione è differenziata in base alle car
 10. **Chiodino** (*Armillaria mellea*): Parassita e saprotrofo lignicolo autunnale; cresce su ceppaie di latifoglie con temperature fresche (10–18°C).
 
 ### 4.2 Formula Unificata di Calibrazione della Probabilità
-In conformità a `AGENTS.md` (Sezione 4.7), la probabilità di fruttificazione finale $P \in [0, 100]$ viene calcolata moltiplicando la componente meteorologica pesata per i fattori moltiplicatori ecologici continui:
+In conformità a `AGENTS.md` (Sezione 4.7), la probabilità di fruttificazione grezza $P_{\text{raw}}$ viene calcolata moltiplicando la componente meteorologica pesata per i fattori moltiplicatori ecologici continui:
 
-$$P = \text{clamp}\left(100 \times \left(\frac{W}{100}\right)^{1.2} \times H \times A \times S \times T,\; 0,\; 100\right)$$
+$$P_{\text{raw}} = \max\left(0.0,\; 100 \times \left(\frac{W}{100}\right)^{1.2} \times H \times A \times S \times T\right)$$
+
+Per riflettere l'incertezza ecologica inosservabile (pressione antropica, parassitismo, microclima locale) ed evitare una distribuzione in cui si raggiunga garantitamente il 100%, i valori eccellenti vengono compressi tramite una funzione asintotica smooth con soglia (*knee-point*) $P_{\text{knee}} = 70.0$ e tetto massimo teorico $P_{\max} = 92.0$. La probabilità finale calibrata $P_{\text{calibrated}}$ viene definita come:
+
+$$P_{\text{calibrated}} = \begin{cases} P_{\text{raw}} & \text{se } P_{\text{raw}} \le 70.0 \\ 70.0 + 22.0 \cdot \tanh\left(\frac{P_{\text{raw}} - 70.0}{22.0}\right) & \text{se } P_{\text{raw}} > 70.0 \end{cases}$$
 
 Dove:
 * **$W \in [0, 100]$:** Punteggio meteorologico combinato. L'esponente **$1.2$** introduce una risposta biologica super-lineare: condizioni meteo mediocri vengono attenuate, mentre la coincidenza di piogge ideali e temperature ottimali viene premiata in modo esponenziale.
@@ -381,21 +385,34 @@ Dove:
 ### 4.3 Curve di Risposta Biologica Continue
 Tutte le variabili ambientali sono modellate mediante funzioni continue definite nell'intervallo $[0.0, 1.0]$, eliminando qualsiasi gradino discontinuo.
 
-#### A. Risposta Termica ($S_T$, `tempScoreSmooth`, `MushroomAlgorithms.kt:643`)
-Dato il range ottimale $[T_{\text{id,min}}, T_{\text{id,max}}]$ e il range di tolleranza biologica $[T_{\text{tol,min}}, T_{\text{tol,max}}]$:
+#### A. Risposta Termica ($S_T$, `tempScoreSmooth`) e Inibizione da Freddo Notturno
+La risposta termica di base basata sulla temperatura media $S_{T,avg}$ è modulata da un'inibizione continua da freddo notturno $F_{\text{nocturnal}}(T_{\min})$ per penalizzare le notti in cui la temperatura minima scende sotto le soglie critiche (evitando che una media mite mascheri una nottata distruttiva per i primordi):
 
-$$S_T(T) = \begin{cases}
-0.0 & \text{se } T < T_{\text{tol,min}} \lor T > T_{\text{tol,max}} \\
-1.0 & \text{se } T_{\text{id,min}} \le T \le T_{\text{id,max}} \\
-\frac{T - T_{\text{tol,min}}}{T_{\text{id,min}} - T_{\text{tol,min}}} & \text{se } T_{\text{tol,min}} \le T < T_{\text{id,min}} \\
-\frac{T_{\text{tol,max}} - T}{T_{\text{tol,max}} - T_{\text{id,max}}} & \text{se } T_{\text{id,max}} < T \le T_{\text{tol,max}}
+$$F_{\text{nocturnal}}(T_{\min}) = \begin{cases}
+1.0 & \text{se } T_{\min} \ge T_{\text{id,min}} \\
+0.3 & \text{se } T_{\min} \le T_{\text{tol,min}} \\
+0.3 + 0.7 \cdot \text{smoothstep}(T_{\text{tol,min}}, T_{\text{id,min}}, T_{\min}) & \text{altrimenti}
 \end{cases}$$
 
-#### B. Precipitazioni Cumulate ($S_R$, `rainScoreSmooth`, `MushroomAlgorithms.kt:659`)
-Calcolata sulle piogge cadute nella finestra da 10 a 2 giorni prima ($R_{10-2}$), periodo necessario per l'idratazione e la differenziazione dei primordi:
+Il punteggio termico finale è $S_T = S_{T,avg} \times F_{\text{nocturnal}}(T_{\min})$.
 
-$$S_R(R) = \min\left(1.0,\; \frac{R}{R_{\text{target}}}\right)$$
+#### B. Precipitazioni Efficaci & Convoluzione Fenologica ($S_R$, `calculateEffectiveRainfall`, `MushroomAlgorithms.kt`)
+Superando la rigida finestra rettangolare a 10 giorni, il volume idrico efficace viene calcolato integrando la serie storica delle precipitazioni mediante convoluzione con un kernel unimodale asimmetrico normalizzato calibrato sulla specifica specie fungina (`MushroomSpecies.kt`):
 
+$$f_{\text{species}}(\tau) = \left(\frac{\tau}{\tau_{\text{peak}}}\right)^\alpha \exp\left(-\alpha\left(\frac{\tau}{\tau_{\text{peak}}} - 1\right)\right)$$
+
+dove:
+* $\tau = t_{\text{oggi}} - t_{\text{pioggia}} \ge 0$ rappresenta i giorni trascorsi dall'evento piovoso;
+* $\tau_{\text{peak}}$ è il picco di latenza biologica al culmine epigeo (es. $11.0\text{ giorni}$ per *Boletus edulis*).
+* Inoltre, è integrata un'isteresi da trauma termico notturno: se nei 5 giorni recenti la temperatura minima scende sotto $T_{\text{tol,min}}$, $\tau_{\text{peak}}$ viene incrementato di $1.5\text{ giorni}$ per simulare la stasi di ripresa cellulare.
+* $\alpha$ governa l'ampiezza della finestra di fruttificazione (default $4.0$).
+* **Proprietà:** $f(0) = 0$, $f(\tau_{\text{peak}}) = 1.0$ (picco unitario garantito), $\lim_{\tau \to \infty} f(\tau) = 0$.
+
+Inoltre, la pioggia grezza viene decurtata della quota assorbita dal deficit idrico del suolo profondo (orizzonte 7–28 cm sotto la soglia di $0.20\text{ m}^3/\text{m}^3$):
+$$P_{\text{eff}}(\tau) = \max\left(0.0,\; P(\tau) - \max\left(0.0,\; (0.20 - \theta_{7-28}(\tau)) \times 120.0\right)\right)$$
+
+Il punteggio normalizzato vale:
+$$S_R(R_{\text{eff}}) = \min\left(1.0,\; \frac{R_{\text{eff}}}{R_{\text{target}}}\right)$$
 dove $R_{\text{target}}$ è la pioggia minima necessaria per la specie (es. 35 mm per *B. edulis*, 40 mm per *C. cibarius*).
 
 #### C. Umidità Relativa Media ($S_H$, `humidityScoreSmooth`, `MushroomAlgorithms.kt:670`)
@@ -419,13 +436,15 @@ Modella l'idratazione pedologica a due orizzonti strategici unitamente al tasso 
 * **Stress da Evapotraspirazione ($ET_0$):** Valori $> 3.0\text{ mm/giorno}$ accelerano la perdita d'acqua dello strato superficiale, applicando una penalizzazione progressiva smoothstep fino al $25\%$.
 * In assenza di dati pedologici, la funzione restituisce il valore neutro di fallback $1.0$.
 
-### 4.4 Shock Termico Induttivo dei Primordi
+### 4.4 Shock Termico Induttivo dei Primordi e DTR (Diurnal Temperature Range)
 I carpofori della maggior parte dei funghi micorrizici necessitano di uno shock induttivo (*cold shock*) per avviare la fruttificazione, consistente in un brusco abbassamento delle temperature a seguito di temporali estivi o autunnali (`MushroomAlgorithms.kt:280`):
 * Si verifica la presenza di pioggia cumulativa a 10 giorni $R_{10} \ge 12\text{ mm}$.
 * Si calcola il gradiente termico tra il quarto giorno precedente e il giorno precedente: $\Delta T = T_{d-4} - T_{d-1}$.
 * La soglia minima di shock $\Delta T_{\min}$ è pari a $2.0^\circ\text{C}$ in presenza di un micelio SPUN denso ($\ge 5.0\text{ m/cm}^3$), oppure $3.0^\circ\text{C}$ in condizioni ordinarie.
 * La componente di shock termico vale:
   $$\text{shockScore} = 15.0 \times \text{clamp}\left(\frac{\Delta T - \Delta T_{\min}}{3.0},\; 0,\; 1\right) \times \text{clamp}\left(\frac{R_{10}}{25.0},\; 0,\; 1\right)$$
+
+Inoltre, viene calcolata l'escursione termica giornaliera (DTR) per valutare lo stress termico giornaliero: se l'escursione termica giornaliera ($\text{DTR} = T_{\max} - T_{\min}$) supera i 15 gradi, viene applicata una penalità addizionale (moltiplicatore $0.8$) allo score termico (stress da shock termico diurno-notturno).
 
 #### Punteggio Meteo Composito Pesato ($W$, `calculateWeatherScore`, `MushroomAlgorithms.kt:225`)
 La componente idrica combina le precipitazioni cumulate $S_R$ con il moltiplicatore pedologico $S_M$:
@@ -470,12 +489,15 @@ $$\frac{\partial z}{\partial x} = \frac{z_E - z_W}{2\Delta}, \qquad \frac{\parti
   * **Pendenze Estreme ($> 38^\circ$):** Il ruscellamento superficiale impedisce all'acqua piovana di penetrare nella lettiera $\to$ moltiplicatore orografico plafonato tassativamente a $0.92$.
 
 ### 4.6 Fasi Fenologiche e Ciclo Sinodico Lunare
-* **Macchina a stati della fase di crescita (`calculateGrowthPhase`, `MushroomAlgorithms.kt:297`):**
-  Rileva il giorno scatenante (*trigger day*) con precipitazione $\ge 12\text{ mm}$ o 3 giorni cumulati $\ge 18\text{ mm}$:
-  * $\le 3\text{ giorni}$: *Idratazione miceliare* (attivazione metabolica del micelio).
-  * $4 \dots 7\text{ giorni}$: *Incubazione primordi* (differenziazione dei carpofori).
-  * $8 \dots 14\text{ giorni}$: *Buttata attiva* (finestra ottimale di raccolta e massima probabilità).
-  * $> 14\text{ giorni}$: *Flusso in esaurimento* (necessità di nuove piogge scatenanti).
+* **Valutazione Fenologica Continua (`evaluateGrowthPhase`, `MushroomAlgorithms.kt`):**
+  Superando la semplice etichetta testuale, `evaluateGrowthPhase` restituisce un oggetto strutturato `GrowthPhaseEvaluation` che calcola sia la descrizione qualitativa sia il moltiplicatore probabilistico reale associato allo stadio di crescita:
+  * Rileva il giorno scatenante (*trigger day*) con precipitazione $\ge 12\text{ mm}$ o 3 giorni cumulati $\ge 18\text{ mm}$.
+  * Le soglie temporali sono dinamicamente calibrate sul $\tau_{\text{peak}}$ della specie:
+    * $\tau \le 0.35 \cdot \tau_{\text{peak}}$: *Idratazione miceliare* (attivazione metabolica del micelio, moltiplicatore $0.35 \dots 0.50$);
+    * $\tau \le 0.75 \cdot \tau_{\text{peak}}$: *Incubazione primordi* (differenziazione dei primordi ipogei, moltiplicatore $0.50 \dots 0.85$);
+    * $\tau \le 1.35 \cdot \tau_{\text{peak}}$: *Buttata attiva* (finestra ottimale di raccolta e culmine epigeo, moltiplicatore $0.85 \dots 1.00$);
+    * $\tau > 1.35 \cdot \tau_{\text{peak}}$: *Flusso in esaurimento* (buttata al termine, moltiplicatore decrescente $0.30 \dots 0.70$).
+  * La compatibilità con la UI preesistente è garantita dal delegato `calculateGrowthPhase` che estrae `phaseText`.
 * **Fase Lunare (`getMoonPhase`, `MushroomAlgorithms.kt:166`):**
   Calcolata sul ciclo sinodico lunare di $29.53058867\text{ giorni}$ riferito al novilunio del `2000-01-06T18:14:00Z`. La tradizione micologica popolare considera favorevoli la *Luna Nuova* e la *Luna Crescente* (primi 5.5 giorni).
 
@@ -604,7 +626,11 @@ internal fun smoothAngle(current: Float, target: Float, alpha: Float): Float {
        mapView.setMapOrientation(mapOrientationDegrees, false)
    }
    ```
-   Ciò previene ridisegni continui su micro-oscillazioni della mano dell'utente, azzerando il consumo anomalo della batteria.
+3. **Invariante di Isolamento Geospaziale (`isCompassGeospatiallyValid`, `MushroomViewModel.kt`):**
+   I sensori fisici di orientamento del dispositivo (`Sensor.TYPE_ROTATION_VECTOR`) vengono attivati per ruotare la mappa o visualizzare il fascio di direzione utente **esclusivamente se**:
+   $$\text{haversineDistance}(lat_{\text{gps}}, lon_{\text{gps}}, lat_{\text{selected}}, lon_{\text{selected}}) \le 0.05\text{ km}\; (50\text{ metri})$$
+   oppure se `currentLocationIsGps == true`.
+   Se l'utente naviga la mappa o seleziona una località remota oltre i 50 metri, l'orientamento della mappa viene bloccato a Nord (`0f`) e il cono della bussola viene nascosto (`deviceHeading = null`), garantendo che nessun sensore fisico dello smartphone possa interferire o suggerire un uso improprio durante l'analisi a distanza.
 
 ---
 
@@ -955,3 +981,13 @@ Qualsiasi variazione introdotta nella logica applicativa comporta l'obbligo di s
 1. Se vengono ricalibrati pesi, esponenti, soglie o formule ecologiche in `MushroomAlgorithms.kt`, i valori devono essere contestualmente aggiornati nella Sezione 4 del presente documento (`docs/TECHNICAL_DOCUMENTATION.md`).
 2. Se vengono introdotte nuove porte piattaforma o adapter hardware, la matrice della Sezione 3 e il diagramma architetturale devono essere tempestivamente integrati.
 3. Se vengono modificate le durate di validità della cache in `CacheManager.kt`, la tabella della Sezione 6.4 deve essere allineata.
+
+---
+
+## 10. Evoluzione Futura: Modulo Citizen Science & Uber H3
+L'architettura per la raccolta delle osservazioni da campo e la ricalibrazione retroattiva dell'inerzia biologica è documentata nel blueprint dedicato:
+* **Riferimento:** [`docs/CITIZEN_SCIENCE_H3_ARCHITECTURE.md`](file:///c:/Users/dendo/Documents/GitHub/myco/docs/CITIZEN_SCIENCE_H3_ARCHITECTURE.md)
+* **Principi Chiave:**
+  * Privacy Differenziale Spaziale tramite celle esagonali **Uber H3 Risoluzione 7** (~5 km di raggio, zero coordinate GPS persistite o trasmesse).
+  * Validazione locale on-device tramite **Gemini Nano / AICore** (classificazione specie e stadio fenologico con distruzione locale della foto).
+  * Aggiornamento bayesiano della probabilità e ricalibrazione retroattiva della latenza $\tau_{\text{peak}}$ su versanti omogenei.

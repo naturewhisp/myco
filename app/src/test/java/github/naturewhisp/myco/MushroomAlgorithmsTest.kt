@@ -142,13 +142,15 @@ class MushroomAlgorithmsTest {
             altitudeScore = 1.0,
             seasonalityScore = 1.0
         )
-        // 100 * (0.80)^1.2 ≈ 76.5 -> 76
+        // 100 * (0.80)^1.2 ≈ 76.5
+        // After cap: 70 + 22 * tanh((76.5 - 70)/22) = 76.28 -> 76
         assertEquals(76, prob)
 
         // 0 weather score produces 0
         assertEquals(0, MushroomAlgorithms.dailyGrowthProbability(0, 1.0, 1.0, 1.0))
-        // 100 weather score produces 100
-        assertEquals(100, MushroomAlgorithms.dailyGrowthProbability(100, 1.0, 1.0, 1.0))
+        // 100 weather score produces max probability around 89
+        val maxProb = MushroomAlgorithms.dailyGrowthProbability(100, 1.0, 1.0, 1.0)
+        assertEquals(89, maxProb)
     }
 
     @Test

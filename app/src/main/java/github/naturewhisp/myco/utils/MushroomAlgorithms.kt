@@ -56,6 +56,32 @@ data class RainStatus(val score: Int, val label: String)
 data class TempStatus(val score: Int, val label: String)
 
 /**
+ * Fasi biologiche evolutive del ciclo di fruttificazione macrofungina.
+ */
+enum class GrowthStage {
+    WAITING_FOR_RAIN,
+    MYCELIAL_HYDRATION,
+    PRIMORDIA_INCUBATION,
+    ACTIVE_FRUITING,
+    WANING
+}
+
+/**
+ * Valutazione strutturata della fase fenologica di crescita fungina.
+ *
+ * @property phaseText Stringa discorsiva completa formattata per la UI.
+ * @property multiplier Moltiplicatore di probabilità fenologica continua (0.25..1.00).
+ * @property daysSinceTrigger Giorni trascorsi dall'evento pluviometrico scatenante.
+ * @property stage Fase biologica discreta corrispondente [GrowthStage].
+ */
+data class GrowthPhaseEvaluation(
+    val phaseText: String,
+    val multiplier: Double,
+    val daysSinceTrigger: Int? = null,
+    val stage: GrowthStage = GrowthStage.WAITING_FOR_RAIN
+)
+
+/**
  * Motore matematico e biologico per la modellazione della crescita e fruttificazione fungina.
  *
  * Fornisce funzioni 100% pure Kotlin per:
@@ -97,6 +123,8 @@ object MushroomAlgorithms {
 
         return dailyMap.map { (date, acc) ->
             val avgTemp = if (acc.temps.isNotEmpty()) acc.temps.sum() / acc.temps.size else 0.0f
+            val minTemp = acc.temps.minOrNull() ?: avgTemp
+            val maxTemp = acc.temps.maxOrNull() ?: avgTemp
             val totalPrecip = acc.precips.sum()
             val avgHumidity = if (acc.humidities.isNotEmpty()) acc.humidities.sum() / acc.humidities.size else 0.0f
             val avgSoil0To7 = if (acc.soilMoisture0To7.isNotEmpty()) acc.soilMoisture0To7.sum() / acc.soilMoisture0To7.size else null
@@ -110,7 +138,9 @@ object MushroomAlgorithms {
                 weatherCode = acc.weatherCode,
                 avgSoilMoisture0To7cm = avgSoil0To7,
                 avgSoilMoisture7To28cm = avgSoil7To28,
-                totalEvapotranspiration = totalET0
+                totalEvapotranspiration = totalET0,
+                minTemp = minTemp,
+                maxTemp = maxTemp
             )
         }.sortedBy { it.date }
     }
@@ -327,6 +357,127 @@ object MushroomAlgorithms {
      * @param allData Serie temporale completa dei dati meteorologici giornalieri [ProcessedDay].
      * @param spunHyphalDensity Densità ifale sotterranea SPUN in m/cm³, se disponibile.
      * @param species Profilo ecologico della specie target [MushroomSpecies].
+     */
+    /**
+     * Kernel unimodale continuo normalizzato per la convoluzione fenologica dell'inerzia biologica.
+     *
+     * Modellato come curva gamma asimmetrica a picco unitario calibrata sulla specie:
+     * $$f(\tau) = \left(\frac{\tau}{\tau_{peak}}\right)^\alpha \cdot \exp\left(-\alpha \left(\frac{\tau}{\tau_{peak}} - 1\right)\right)$$
+     * con $f(\tau_{peak}) = 1.0$, $f(\tau \le 0) = 0.0$.
+     *
+     * @param tauDays Ritardo temporale in giorni ($\tau \ge 0$).
+     * @param tauPeak Latenza di picco biologico in giorni (default 11.0).
+     * @param alpha Parametro di forma del kernel (default 4.0).
+     * @return Peso fenologico continuo normalizzato nell'intervallo [0.0, 1.0].
+     */
+    fun phenologyKernel(
+        tauDays: Double,
+        tauPeak: Double = 11.0,
+        alpha: Double = 4.0
+    ): Double {
+        if (tauDays <= 0.0 || tauPeak <= 0.0 || alpha <= 0.0) return 0.0
+        val r = tauDays / tauPeak
+        val logVal = alpha * (kotlin.math.ln(r) - (r - 1.0))
+        return kotlin.math.exp(logVal).coerceIn(0.0, 1.0)
+    }
+
+    /**
+     * Calcola il fattore di compensazione o penalizzazione derivante dal deficit idrico
+     * pregresso dell'orizzonte radicale profondo (7-28 cm).
+     *
+     * Se il suolo profondo ha subito un forte deficit (< 0.12 m³/m³), parte dell'acqua piovana
+     * viene assorbita per ricaricare la matrice pedologica prima di rendersi disponibile
+     * per la biomassa fungina (fattore riduttivo fino a 0.70). Se il suolo profondo ha mantenuto
+     * un'ottima riserva idrica (0.20..0.35 m³/m³), funge da volano idrico compensando brevi
+     * periodi asciutti superficiali (bonus fino a 1.10).
+     *
+     * @param historicalDeepSoil Media dell'umidità volumetrica profonda pregressa in m³/m³.
+     * @return Moltiplicatore continuo normalizzato nell'intervallo [0.70, 1.15].
+     */
+    fun deepSoilMoistureCompensation(historicalDeepSoil: Double?): Double {
+        if (historicalDeepSoil == null) return 1.0
+        return when {
+            historicalDeepSoil < 0.12 -> 0.70
+            historicalDeepSoil in 0.12..0.20 -> 0.70 + 0.30 * smoothstep(0.12, 0.20, historicalDeepSoil)
+            historicalDeepSoil in 0.20..0.35 -> 1.0 + 0.10 * smoothstep(0.20, 0.28, historicalDeepSoil)
+            else -> 1.0
+        }.coerceIn(0.70, 1.15)
+    }
+
+    /**
+     * Calcola la precipitazione efficace biologicamente attiva tramite convoluzione fenologica continua.
+     *
+     * Sostituisce la somma piatta nella finestra rigida [10 gg - 2 gg] integrando le precipitazioni
+     * passate ponderate secondo il kernel di latenza unimodale della specie e modulate dalla
+     * compensazione del deficit idrico profondo (7-28 cm).
+     *
+     * @param dayIndex Indice del giorno target all'interno di [allData].
+     * @param allData Serie temporale completa dei giorni elaborati.
+     * @param species Specie fungina target con i relativi parametri fenologici.
+     * @return Precipitazione efficace ponderata in mm.
+     */
+    fun calculateEffectiveRainfall(
+        dayIndex: Int,
+        allData: List<ProcessedDay>,
+        species: MushroomSpecies = SPECIES_CATALOG[0]
+    ): Double {
+        if (dayIndex <= 0 || allData.isEmpty()) return 0.0
+
+        val hysteresisWindowStart = max(0, dayIndex - 5)
+        val recentWindow = allData.subList(hysteresisWindowStart, dayIndex)
+        val hasChillingTrauma = recentWindow.any { it.minTemp < species.toleratedTempMin }
+        val effectiveTauPeak = if (hasChillingTrauma) species.phenologyLatencyPeakDays + 1.5 else species.phenologyLatencyPeakDays
+
+        var weightedRain = 0.0
+        val pastDeepSoilList = mutableListOf<Double>()
+        for (i in 0 until dayIndex) {
+            val tau = (dayIndex - i).toDouble()
+            val precip = allData[i].totalPrecip.toDouble()
+            if (precip > 0.0) {
+                val weight = phenologyKernel(
+                    tauDays = tau,
+                    tauPeak = effectiveTauPeak,
+                    alpha = species.phenologyShapeAlpha
+                )
+                weightedRain += precip * weight
+            }
+            allData[i].avgSoilMoisture7To28cm?.toDouble()?.let { pastDeepSoilList.add(it) }
+        }
+        val avgPastDeepSoil = if (pastDeepSoilList.isNotEmpty()) pastDeepSoilList.average() else null
+        val comp = deepSoilMoistureCompensation(avgPastDeepSoil)
+        return (weightedRain * comp).coerceAtLeast(0.0)
+    }
+
+    /**
+     * Calcola l'inibizione continua da freddo notturno per penalizzare le notti
+     * sotto la soglia di tolleranza o ideale.
+     *
+     * @param minTemp Temperatura minima in °C
+     * @param species Specie micologica target
+     * @return Moltiplicatore continuo nell'intervallo [0.3, 1.0]
+     */
+    fun nocturnalChillingInhibition(minTemp: Float, species: MushroomSpecies): Double {
+        val idealMin = species.idealTempMin.toDouble()
+        val toleratedMin = species.toleratedTempMin.toDouble()
+        if (minTemp >= idealMin) return 1.0
+        if (minTemp <= toleratedMin) return 0.3
+        
+        return 0.3 + 0.7 * smoothstep(toleratedMin, idealMin, minTemp.toDouble())
+    }
+
+    /**
+     * Calcola il punteggio meteorologico composito (0..100) per una specifica data.
+     *
+     * Integra le quattro componenti continue ponderate secondo [EcologicalWeightsConfig]:
+     * - Idratazione da precipitazioni con inerzia fenologica continua f(tau) ([EcologicalWeightsConfig.rainWeight]%)
+     * - Regime termico medio recente ([EcologicalWeightsConfig.tempWeight]%)
+     * - Umidità relativa aria/suolo multi-orizzonte ([EcologicalWeightsConfig.humidityWeight]%)
+     * - Shock termico induttivo con latenza biologica differita ([EcologicalWeightsConfig.thermalShockWeight]%)
+     *
+     * @param dayIndex Indice del giorno bersaglio all'interno della lista cronologica [allData].
+     * @param allData Serie temporale completa dei dati meteorologici giornalieri [ProcessedDay].
+     * @param spunHyphalDensity Densità ifale sotterranea SPUN in m/cm³, se disponibile.
+     * @param species Profilo ecologico della specie target [MushroomSpecies].
      * @param config Configurazione tipizzata dei pesi e delle finestre climatiche [EcologicalWeightsConfig].
      * @return Punteggio meteorologico intero normalizzato nell'intervallo [0, 100].
      */
@@ -335,23 +486,28 @@ object MushroomAlgorithms {
         allData: List<ProcessedDay>,
         spunHyphalDensity: Float? = null,
         species: MushroomSpecies = SPECIES_CATALOG[0],
-        config: EcologicalWeightsConfig = EcologicalWeightsConfig.DEFAULT
+        config: EcologicalWeightsConfig = EcologicalWeightsConfig.PHENOLOGICAL
     ): Int {
         if (dayIndex < 0 || dayIndex >= allData.size) return 0
 
-        // Calcolo continuo della pioggia cumulata (finestra da rainWindowDays a rainLagDays giorni fa)
-        val rainStart = max(0, dayIndex - config.rainWindowDays)
-        val rainEnd = max(0, dayIndex - config.rainLagDays)
-        val rainWindow = if (rainStart < rainEnd && rainEnd <= allData.size) {
-            allData.subList(rainStart, rainEnd)
+        // Calcolo della componente idrica (convoluzione fenologica f(tau) o finestra legacy)
+        val effectiveRain: Double
+        if (config.usePhenologicalInertia) {
+            effectiveRain = calculateEffectiveRainfall(dayIndex, allData, species)
         } else {
-            emptyList()
+            val rainStart = max(0, dayIndex - config.rainWindowDays)
+            val rainEnd = max(0, dayIndex - config.rainLagDays)
+            val rainWindow = if (rainStart < rainEnd && rainEnd <= allData.size) {
+                allData.subList(rainStart, rainEnd)
+            } else {
+                emptyList()
+            }
+            effectiveRain = rainWindow.sumOf { it.totalPrecip.toDouble() }
         }
-        val totalRainLast10Days = rainWindow.sumOf { it.totalPrecip.toDouble() }
-        var rainScore = rainScoreSmooth(totalRainLast10Days, species) * config.rainWeight
+        var rainScore = rainScoreSmooth(effectiveRain, species) * config.rainWeight
 
         // Modulatore biologico SPUN: rete ifale densa (>5.0 m/cm3) amplifica la risposta a piogge moderate
-        if (spunHyphalDensity != null && spunHyphalDensity >= 5.0f && totalRainLast10Days >= config.minRainForShockMm) {
+        if (spunHyphalDensity != null && spunHyphalDensity >= 5.0f && effectiveRain >= config.minRainForShockMm) {
             rainScore = min(config.rainWeight, rainScore + 6.0)
         } else if (spunHyphalDensity != null && spunHyphalDensity < 2.5f) {
             rainScore = max(0.0, rainScore - 4.0)
@@ -369,7 +525,14 @@ object MushroomAlgorithms {
         } else {
             0.0
         }
-        val tempScore = tempScoreSmooth(avgTempLast5Days, species) * config.tempWeight
+        val minTempRecent = if (tempWindow.isNotEmpty()) tempWindow.minOf { it.minTemp.toDouble() } else avgTempLast5Days
+        val nocturnalInhibition = nocturnalChillingInhibition(minTempRecent.toFloat(), species)
+        
+        val currentDay = if (dayIndex < allData.size) allData[dayIndex] else allData.lastOrNull()
+        val dtr = if (currentDay != null) (currentDay.maxTemp - currentDay.minTemp).toDouble() else 0.0
+        val dtrPenalty = if (dtr > 15.0) 0.8 else 1.0
+
+        val tempScore = tempScoreSmooth(avgTempLast5Days, species) * config.tempWeight * nocturnalInhibition * dtrPenalty
 
         // Calcolo continuo dell'umidità relativa e idratazione suolo (finestra humidityWindowDays giorni fino a oggi)
         val humStart = max(0, dayIndex - config.humidityWindowDays)
@@ -404,19 +567,46 @@ object MushroomAlgorithms {
 
         // Calcolo continuo dello shock termico induttivo dei primordi
         var shockScore = 0.0
-        if (dayIndex > 4 && totalRainLast10Days >= config.minRainForShockMm) {
-            val tempBefore = allData[dayIndex - 4].avgTemp
-            val tempAfter = allData[dayIndex - 1].avgTemp
-            val drop = (tempBefore - tempAfter).toDouble()
-            val minDrop = if (spunHyphalDensity != null && spunHyphalDensity >= 5.0f) {
-                config.spunAssistedThermalDropMin
-            } else {
-                config.standardThermalDropMin
+        val minDrop = if (spunHyphalDensity != null && spunHyphalDensity >= 5.0f) {
+            config.spunAssistedThermalDropMin
+        } else {
+            config.standardThermalDropMin
+        }
+
+        if (config.usePhenologicalInertia) {
+            if (dayIndex >= 2 && effectiveRain >= config.minRainForShockMm) {
+                var bestShock = 0.0
+                for (j in 2 until dayIndex) {
+                    val tempBefore = allData[max(0, j - 3)].avgTemp
+                    val tempAfter = allData[j].avgTemp
+                    val drop = (tempBefore - tempAfter).toDouble()
+                    if (drop > minDrop) {
+                        val tau = (dayIndex - j).toDouble()
+                        val phenoWeight = phenologyKernel(
+                            tauDays = tau,
+                            tauPeak = species.phenologyLatencyPeakDays,
+                            alpha = species.phenologyShapeAlpha
+                        )
+                        val dropFactor = ((drop - minDrop) / config.shockDropSaturationSpan).coerceIn(0.0, 1.0)
+                        val rainFactor = (effectiveRain / config.shockRainSaturationMm).coerceIn(0.0, 1.0)
+                        val candidateShock = config.thermalShockWeight * dropFactor * rainFactor * phenoWeight
+                        if (candidateShock > bestShock) {
+                            bestShock = candidateShock
+                        }
+                    }
+                }
+                shockScore = bestShock
             }
-            if (drop > minDrop) {
-                val dropFactor = ((drop - minDrop) / config.shockDropSaturationSpan).coerceIn(0.0, 1.0)
-                val rainFactor = (totalRainLast10Days / config.shockRainSaturationMm).coerceIn(0.0, 1.0)
-                shockScore = config.thermalShockWeight * dropFactor * rainFactor
+        } else {
+            if (dayIndex > 4 && effectiveRain >= config.minRainForShockMm) {
+                val tempBefore = allData[dayIndex - 4].avgTemp
+                val tempAfter = allData[dayIndex - 1].avgTemp
+                val drop = (tempBefore - tempAfter).toDouble()
+                if (drop > minDrop) {
+                    val dropFactor = ((drop - minDrop) / config.shockDropSaturationSpan).coerceIn(0.0, 1.0)
+                    val rainFactor = (effectiveRain / config.shockRainSaturationMm).coerceIn(0.0, 1.0)
+                    shockScore = config.thermalShockWeight * dropFactor * rainFactor
+                }
             }
         }
 
@@ -424,24 +614,37 @@ object MushroomAlgorithms {
     }
 
     /**
-     * Determina la fase fenologica di sviluppo miceliare e fruttificazione a partire dalla serie storica recente.
+     * Valuta in dettaglio la fase fenologica di crescita fungina e il relativo moltiplicatore continuo.
+     *
+     * Supera la finestra rigida a 10 giorni parametrando la progressione biologica sulla specifica
+     * latenza di picco della specie ([species.phenologyLatencyPeakDays]) e forma del kernel [species.phenologyShapeAlpha].
      *
      * @param processedData Serie temporale dei giorni elaborati contenente lo storico meteo.
-     * @return Stringa descrittiva della fase fenologica corrente (es. Idratazione, Incubazione primordi, Buttata attiva).
+     * @param species Specie micologica target [MushroomSpecies].
+     * @param dayIndex Indice del giorno target (default 14).
+     * @return Istanza strutturata di [GrowthPhaseEvaluation].
      */
-    fun calculateGrowthPhase(processedData: List<ProcessedDay>): String {
-        val todayIndex = 14
-        if (processedData.size <= todayIndex) {
-            return "Fase: Dati insufficienti per il calcolo fenologico."
+    fun evaluateGrowthPhase(
+        processedData: List<ProcessedDay>,
+        species: MushroomSpecies = SPECIES_CATALOG[0],
+        dayIndex: Int = 14
+    ): GrowthPhaseEvaluation {
+        val effectiveToday = min(dayIndex, processedData.size - 1)
+        if (effectiveToday < 0 || processedData.isEmpty()) {
+            return GrowthPhaseEvaluation(
+                phaseText = "Fase: Dati insufficienti per il calcolo fenologico.",
+                multiplier = 0.25,
+                stage = GrowthStage.WAITING_FOR_RAIN
+            )
         }
 
         var triggerDayIndex = -1
-        for (i in todayIndex downTo 0) {
-            if (i < processedData.size && processedData[i].totalPrecip >= 12.0f) {
+        for (i in effectiveToday downTo 0) {
+            if (processedData[i].totalPrecip >= 12.0f) {
                 triggerDayIndex = i
                 break
             }
-            if (i >= 2 && i < processedData.size) {
+            if (i >= 2) {
                 val threeDayRain = processedData[i].totalPrecip +
                         processedData[i - 1].totalPrecip +
                         processedData[i - 2].totalPrecip
@@ -453,25 +656,80 @@ object MushroomAlgorithms {
         }
 
         if (triggerDayIndex == -1) {
-            return "Fase: Crescita assente (in attesa di precipitazioni)."
+            return GrowthPhaseEvaluation(
+                phaseText = "Fase: Crescita assente (in attesa di precipitazioni).",
+                multiplier = 0.25,
+                stage = GrowthStage.WAITING_FOR_RAIN
+            )
         }
 
-        val daysSinceTrigger = todayIndex - triggerDayIndex
+        val daysSinceTrigger = effectiveToday - triggerDayIndex
+        val tauPeak = species.phenologyLatencyPeakDays
+        val hydrationThreshold = max(2, (0.35 * tauPeak).roundToInt())
+        val incubationThreshold = max(hydrationThreshold + 1, (0.75 * tauPeak).roundToInt())
+        val fruitingThreshold = max(incubationThreshold + 1, (1.35 * tauPeak).roundToInt())
+
+        val kernelVal = phenologyKernel(
+            tauDays = daysSinceTrigger.toDouble(),
+            tauPeak = tauPeak,
+            alpha = species.phenologyShapeAlpha
+        )
+
         return when {
-            daysSinceTrigger <= 3 -> {
-                "Fase: Idratazione miceliare (piogge recenti $daysSinceTrigger giorni fa)."
+            daysSinceTrigger <= hydrationThreshold -> {
+                val mult = (0.35 + 0.15 * (daysSinceTrigger.toDouble() / hydrationThreshold)).coerceIn(0.35, 0.50)
+                GrowthPhaseEvaluation(
+                    phaseText = "Fase: Idratazione miceliare (piogge recenti $daysSinceTrigger giorni fa).",
+                    multiplier = mult,
+                    daysSinceTrigger = daysSinceTrigger,
+                    stage = GrowthStage.MYCELIAL_HYDRATION
+                )
             }
-            daysSinceTrigger <= 7 -> {
-                val daysToFruiting = 8 - daysSinceTrigger
-                "Fase: Incubazione primordi (differenziazione in $daysToFruiting-${daysToFruiting + 2} giorni)."
+            daysSinceTrigger <= incubationThreshold -> {
+                val daysToFruiting = max(1, (tauPeak - daysSinceTrigger).roundToInt())
+                val mult = (0.50 + 0.35 * kernelVal).coerceIn(0.50, 0.85)
+                GrowthPhaseEvaluation(
+                    phaseText = "Fase: Incubazione primordi (differenziazione in circa $daysToFruiting giorni).",
+                    multiplier = mult,
+                    daysSinceTrigger = daysSinceTrigger,
+                    stage = GrowthStage.PRIMORDIA_INCUBATION
+                )
             }
-            daysSinceTrigger <= 14 -> {
-                "Fase: Buttata attiva (finestra ottimale di raccolta)."
+            daysSinceTrigger <= fruitingThreshold -> {
+                val mult = (0.85 + 0.15 * kernelVal).coerceIn(0.85, 1.00)
+                GrowthPhaseEvaluation(
+                    phaseText = "Fase: Buttata attiva (finestra ottimale di raccolta).",
+                    multiplier = mult,
+                    daysSinceTrigger = daysSinceTrigger,
+                    stage = GrowthStage.ACTIVE_FRUITING
+                )
             }
             else -> {
-                "Fase: Flusso in esaurimento (in attesa di nuove piogge)."
+                val mult = (0.70 * kernelVal).coerceIn(0.30, 0.70)
+                GrowthPhaseEvaluation(
+                    phaseText = "Fase: Flusso in esaurimento (in attesa di nuove piogge).",
+                    multiplier = mult,
+                    daysSinceTrigger = daysSinceTrigger,
+                    stage = GrowthStage.WANING
+                )
             }
         }
+    }
+
+    /**
+     * Determina la fase fenologica di sviluppo miceliare e fruttificazione a partire dalla serie storica recente.
+     *
+     * @param processedData Serie temporale dei giorni elaborati contenente lo storico meteo.
+     * @param species Profilo ecologico della specie target [MushroomSpecies].
+     * @param dayIndex Indice del giorno target all'interno di [processedData] (default 14).
+     * @return Stringa descrittiva della fase fenologica corrente (es. Idratazione, Incubazione primordi, Buttata attiva).
+     */
+    fun calculateGrowthPhase(
+        processedData: List<ProcessedDay>,
+        species: MushroomSpecies = SPECIES_CATALOG[0],
+        dayIndex: Int = 14
+    ): String {
+        return evaluateGrowthPhase(processedData, species, dayIndex).phaseText
     }
 
     /**
@@ -1034,7 +1292,18 @@ object MushroomAlgorithms {
     ): Int {
         val weightedWeatherScore = 100.0 * Math.pow(weatherScore / 100.0, config.weatherExponent)
         val combined = weightedWeatherScore * habitatScore * altitudeScore * seasonalityScore * terrainModifier
-        return combined.toInt().coerceIn(0, 100)
+        val rawProb = combined.coerceAtLeast(0.0)
+        
+        val pKnee = config.probabilityKneeThreshold
+        val pMax = config.probabilityMaxAsymptote
+        
+        val calibratedProb = if (rawProb > pKnee) {
+            pKnee + (pMax - pKnee) * kotlin.math.tanh((rawProb - pKnee) / (pMax - pKnee))
+        } else {
+            rawProb
+        }
+        
+        return calibratedProb.toInt().coerceIn(0, 100)
     }
 
     /**
@@ -1124,7 +1393,7 @@ object MushroomAlgorithms {
                 label = "Umidità relativa",
                 formattedValue = String.format(Locale.ITALIAN, "%.0f%%", avgHumidity),
                 level = humLevel,
-                detail = "Sensori suolo e aria"
+                detail = "Modellazione agrometeo (aria 2m & suolo ERA5-Land)"
             )
         )
 
@@ -1222,12 +1491,17 @@ object MushroomAlgorithms {
         val cleanPhase = growthPhaseText.replace("Fase: ", "").trim()
         val phaseName = cleanPhase.substringBefore(" (")
         val phaseDetail = cleanPhase.substringAfter("(", "").replace(")", "").ifEmpty { "Cronologia e latenza piogge" }
+        val phaseLevel = when {
+            cleanPhase.contains("ottimale") || cleanPhase.contains("attiva") -> FactorLevel.FAVORABLE
+            cleanPhase.contains("Incubazione") || cleanPhase.contains("Idratazione") -> FactorLevel.NEUTRAL
+            else -> FactorLevel.ADVERSE
+        }
         factors.add(
             Factor(
                 id = FactorId.MYCELIAL_PHASE,
                 label = "Stato miceliare",
                 formattedValue = phaseName,
-                level = if (cleanPhase.contains("ottimale") || cleanPhase.contains("attiva") || cleanPhase.contains("Idratazione")) FactorLevel.FAVORABLE else FactorLevel.NEUTRAL,
+                level = phaseLevel,
                 detail = phaseDetail
             )
         )
@@ -1310,6 +1584,7 @@ object MushroomAlgorithms {
      * @param elevation Quota altimetrica in metri.
      * @param month Mese dell'anno (0..11).
      * @param spunHyphalDensity Densità ifale sotterranea SPUN, se disponibile.
+     * @param terrainModifier Modificatore orografico del versante ed esposizione (default 1.0).
      * @return Lista di [DailyOutlook] per ciascun giorno previsionale.
      */
     fun calculateDailyOutlooks(
@@ -1319,7 +1594,9 @@ object MushroomAlgorithms {
         habitatScore: Double = 1.0,
         elevation: Float = 800f,
         month: Int = 9,
-        spunHyphalDensity: Float? = null
+        spunHyphalDensity: Float? = null,
+        terrainModifier: Double = 1.0,
+        config: EcologicalWeightsConfig = EcologicalWeightsConfig.PHENOLOGICAL
     ): List<DailyOutlook> {
         if (processedDays.isEmpty()) return emptyList()
         val altScore = calculateSpeciesAltitudeScore(elevation, species).score
@@ -1327,8 +1604,8 @@ object MushroomAlgorithms {
         val result = mutableListOf<DailyOutlook>()
 
         for (i in startIndex until processedDays.size) {
-            val weatherScore = calculateWeatherScore(i, processedDays, spunHyphalDensity, species)
-            val prob = dailyGrowthProbability(weatherScore, habitatScore, altScore, seasonScore)
+            val weatherScore = calculateWeatherScore(i, processedDays, spunHyphalDensity, species, config)
+            val prob = dailyGrowthProbability(weatherScore, habitatScore, altScore, seasonScore, terrainModifier, config)
             result.add(DailyOutlook.fromProcessedDay(processedDays[i], prob))
         }
         return result

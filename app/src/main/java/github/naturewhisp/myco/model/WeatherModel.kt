@@ -66,5 +66,7 @@ data class ProcessedDay(
     val weatherCode: Int?,
     val avgSoilMoisture0To7cm: Float? = null,
     val avgSoilMoisture7To28cm: Float? = null,
-    val totalEvapotranspiration: Float? = null
+    val totalEvapotranspiration: Float? = null,
+    val minTemp: Float = avgTemp,
+    val maxTemp: Float = avgTemp
 )

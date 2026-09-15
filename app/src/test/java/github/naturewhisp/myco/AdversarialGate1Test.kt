@@ -67,7 +67,13 @@ class AdversarialGate1Test {
         } else {
             0.0
         }
-        val tempScore = MushroomAlgorithms.tempScoreSmooth(avgTempLast5Days, species) * 30.0
+        val minTempRecent = if (tempWindow.isNotEmpty()) {
+            tempWindow.minOf { it.minTemp.toDouble() }
+        } else {
+            avgTempLast5Days
+        }
+        val inhibition = MushroomAlgorithms.nocturnalChillingInhibition(minTempRecent.toFloat(), species)
+        val tempScore = MushroomAlgorithms.tempScoreSmooth(avgTempLast5Days, species) * inhibition * 30.0
 
         val humStart = max(0, dayIndex - 3)
         val humEnd = min(allData.size, dayIndex + 1)
@@ -185,11 +191,24 @@ class AdversarialGate1Test {
                 EcologicalWeightsConfig.DEFAULT
             )
 
-            assertEquals(
-                "Iteration $i mismatch for W=$weatherScore, H=$habitatScore, A=$altitudeScore, S=$seasonalityScore, T=$terrainModifier",
-                legacyProb,
-                refactoredProb
-            )
+            val weightedWeatherScore = 100.0 * Math.pow(weatherScore / 100.0, 1.2)
+            val combined = weightedWeatherScore * habitatScore * altitudeScore * seasonalityScore * terrainModifier
+            val rawProb = combined.coerceAtLeast(0.0)
+
+            if (rawProb <= 70.0) {
+                assertEquals(
+                    "Iteration $i mismatch for <= 70 (W=$weatherScore, H=$habitatScore, A=$altitudeScore, S=$seasonalityScore, T=$terrainModifier)",
+                    legacyProb,
+                    refactoredProb
+                )
+            } else {
+                val expectedCapped = 70.0 + 22.0 * kotlin.math.tanh((rawProb - 70.0) / 22.0)
+                assertEquals(
+                    "Iteration $i mismatch for > 70 (W=$weatherScore, H=$habitatScore, A=$altitudeScore, S=$seasonalityScore, T=$terrainModifier)",
+                    expectedCapped.toInt().coerceIn(0, 100),
+                    refactoredProb
+                )
+            }
         }
     }
 

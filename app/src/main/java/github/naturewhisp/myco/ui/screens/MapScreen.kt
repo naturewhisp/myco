@@ -103,7 +103,7 @@ fun MapScreen(
             heatmapData = viewModel.heatmapData,
             showHeatmap = viewModel.showHeatmap,
             userLocation = viewModel.userLocation,
-            deviceHeading = viewModel.deviceHeading,
+            deviceHeading = if (viewModel.isCompassSupported) viewModel.deviceHeading else null,
             mapOrientationDegrees = viewModel.mapRotationDegrees,
             isMapCenteredOnUser = viewModel.isMapCenteredOnUser,
             centerOnPointTrigger = viewModel.centerOnPointTrigger,

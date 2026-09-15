@@ -329,7 +329,7 @@ fun HomeScreen(
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = viewModel.loadingText.ifEmpty { "Interrogazione sensori ambientali in corso..." },
+                        text = viewModel.loadingText.ifEmpty { "Interrogazione agrometeo e orografia DEM..." },
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 13.sp
                     )

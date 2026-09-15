@@ -207,15 +207,27 @@ class MushroomViewModel(
     var centerOnPointTrigger by mutableStateOf(0)
         private set
 
+    private fun isCompassGeospatiallyValid(): Boolean {
+        if (currentLocationIsGps) return true
+        val uLoc = userLocation ?: return false
+        val sLoc = selectedLatLng ?: return false
+        val dist = github.naturewhisp.myco.utils.MushroomAlgorithms.haversineDistanceKm(sLoc.first, sLoc.second, uLoc.latitude, uLoc.longitude)
+        return dist <= 0.05
+    }
+
     val isCompassSupported: Boolean
-        get() = orientationProvider?.isSupported() ?: false
+        get() = (orientationProvider?.isSupported() ?: false) && isCompassGeospatiallyValid()
 
     val mapRotationDegrees: Float
         get() = when (mapOrientationMode) {
             MapOrientationMode.NORTH_UP -> 0f
             MapOrientationMode.HEADING_UP -> {
-                val azimuth = deviceHeading?.azimuthDegrees ?: 0f
-                (360f - azimuth) % 360f
+                if (isCompassGeospatiallyValid()) {
+                    val azimuth = deviceHeading?.azimuthDegrees ?: 0f
+                    (360f - azimuth) % 360f
+                } else {
+                    0f
+                }
             }
         }
 
@@ -411,7 +423,8 @@ class MushroomViewModel(
             habitatScore = habScore,
             elevation = lastElevation,
             month = lastCurrentMonth,
-            spunHyphalDensity = lastSpunData?.hyphalDensity
+            spunHyphalDensity = lastSpunData?.hyphalDensity,
+            terrainModifier = if (calculationMode == "WEATHER_ONLY") 1.0 else terrainEval.modifier
         )
 
         val fav = favoriteLocations.firstOrNull {
@@ -1007,16 +1020,14 @@ class MushroomViewModel(
                 val calendar = Calendar.getInstance()
                 val currentMonth = calendar.get(Calendar.MONTH) // 0-indexed
                 val seasonalityScore = MushroomAlgorithms.calculateSpeciesSeasonalityScore(currentMonth, selectedSpecies)
-                val growthPhaseVal = MushroomAlgorithms.calculateGrowthPhase(processedDays)
+                val growthPhaseEval = MushroomAlgorithms.evaluateGrowthPhase(processedDays, selectedSpecies, todayIndex)
+                val growthPhaseVal = growthPhaseEval.phaseText
                 val moonPhase = MushroomAlgorithms.getMoonPhase()
 
-                // Rain window calculation (last 10 days to 2 days ago)
-                val rainStart = max(0, todayIndex - 10)
-                val rainEnd = max(0, todayIndex - 2)
-                val rainWindow = processedDays.subList(rainStart, rainEnd)
-                val totalRainLast10Days = rainWindow.sumOf { it.totalPrecip.toDouble() }
-                val rainStatus = MushroomAlgorithms.getRainStatus(totalRainLast10Days)
-                val rainTextVal = "Pioggia: ${totalRainLast10Days.toInt()}mm (${rainStatus.label})"
+                // Rain calculation with phenological integration
+                val effectiveRain = MushroomAlgorithms.calculateEffectiveRainfall(todayIndex, processedDays, selectedSpecies)
+                val rainStatus = MushroomAlgorithms.getRainStatus(effectiveRain)
+                val rainTextVal = "Pioggia: ${effectiveRain.toInt()}mm (${rainStatus.label})"
 
                 // Temp window calculation (last 5 days)
                 val tempStart = max(0, todayIndex - 5)
@@ -1177,7 +1188,7 @@ class MushroomViewModel(
                                     altitudeText = altitudeScore.text,
                                     seasonalityScore = seasonalityScore.score,
                                     seasonalityText = seasonalityScore.text,
-                                    totalRain = totalRainLast10Days,
+                                    totalRain = effectiveRain,
                                     futureTrend = futureTrend,
                                     spunEcmText = spunData?.ecmText,
                                     spunHyphalText = spunData?.hyphalText
@@ -1193,7 +1204,7 @@ class MushroomViewModel(
                                 altitudeText = altitudeScore.text,
                                 seasonalityScore = seasonalityScore.score,
                                 seasonalityText = seasonalityScore.text,
-                                totalRain = totalRainLast10Days,
+                                totalRain = effectiveRain,
                                 futureTrend = futureTrend,
                                 spunEcmText = spunData?.ecmText,
                                 spunHyphalText = spunData?.hyphalText
@@ -1212,7 +1223,7 @@ class MushroomViewModel(
                         altitudeText = altitudeScore.text,
                         seasonalityScore = seasonalityScore.score,
                         seasonalityText = seasonalityScore.text,
-                        totalRain = totalRainLast10Days,
+                        totalRain = effectiveRain,
                         futureTrend = futureTrend,
                         spunEcmText = spunData?.ecmText,
                         spunHyphalText = spunData?.hyphalText

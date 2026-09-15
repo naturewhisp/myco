@@ -56,7 +56,9 @@ data class MushroomSpecies(
     val fruitingPeriodDescription: String,
     val activeMonths: List<Int>,
     val toxicLookAlikes: List<String> = emptyList(),
-    val edibilityWarning: String? = null
+    val edibilityWarning: String? = null,
+    val phenologyLatencyPeakDays: Double = 11.0,
+    val phenologyShapeAlpha: Double = 4.0
 ) {
     /**
      * Indica se la specie rappresenta il modello baseline polifito generale.
@@ -86,7 +88,9 @@ val SPECIES_CATALOG: List<MushroomSpecies> = listOf(
         preferredCanopyTypes = listOf("fagus", "castanea", "quercus", "picea", "pinus"),
         fruitingPeriodDescription = "Tarda primavera e autunno (Maggio-Novembre)",
         activeMonths = listOf(4, 5, 8, 9, 10),
-        edibilityWarning = "Verificare sempre la commestibilità con un ispettorato micologico accreditato."
+        edibilityWarning = "Verificare sempre la commestibilità con un ispettorato micologico accreditato.",
+        phenologyLatencyPeakDays = 11.0,
+        phenologyShapeAlpha = 4.0
     ),
     MushroomSpecies(
         id = "boletus_edulis",
@@ -106,7 +110,9 @@ val SPECIES_CATALOG: List<MushroomSpecies> = listOf(
         fruitingPeriodDescription = "Fine estate e autunno inoltrato",
         activeMonths = listOf(7, 8, 9, 10),
         toxicLookAlikes = listOf("Tylopilus felleus (Porcino del fiele, amaro)", "Rubroboletus satanas (Boletus satanas, tossico)"),
-        edibilityWarning = "Verificare carne bianca immutabile e assenza di pori rossi o sapori amari."
+        edibilityWarning = "Verificare carne bianca immutabile e assenza di pori rossi o sapori amari.",
+        phenologyLatencyPeakDays = 11.0,
+        phenologyShapeAlpha = 4.0
     ),
     MushroomSpecies(
         id = "boletus_aereus",
@@ -126,7 +132,9 @@ val SPECIES_CATALOG: List<MushroomSpecies> = listOf(
         fruitingPeriodDescription = "Estate e primo autunno in boschi caldi e asciutti",
         activeMonths = listOf(5, 6, 7, 8, 9),
         toxicLookAlikes = listOf("Tylopilus felleus (amaro)", "Rubroboletus satanas (tossico)"),
-        edibilityWarning = "Carne bianca immutabile, cappello scuro bruno-nerastro con riflessi bronzei."
+        edibilityWarning = "Carne bianca immutabile, cappello scuro bruno-nerastro con riflessi bronzei.",
+        phenologyLatencyPeakDays = 9.0,
+        phenologyShapeAlpha = 4.0
     ),
     MushroomSpecies(
         id = "boletus_pinophilus",
@@ -146,7 +154,9 @@ val SPECIES_CATALOG: List<MushroomSpecies> = listOf(
         fruitingPeriodDescription = "Primavera precoce e autunno montano",
         activeMonths = listOf(4, 5, 8, 9, 10),
         toxicLookAlikes = listOf("Tylopilus felleus (amaro)"),
-        edibilityWarning = "Cuticola rugosa color rosso-vinato o granata con reticolo marcato sul gambo."
+        edibilityWarning = "Cuticola rugosa color rosso-vinato o granata con reticolo marcato sul gambo.",
+        phenologyLatencyPeakDays = 12.0,
+        phenologyShapeAlpha = 4.0
     ),
     MushroomSpecies(
         id = "boletus_reticulatus",
@@ -166,7 +176,9 @@ val SPECIES_CATALOG: List<MushroomSpecies> = listOf(
         fruitingPeriodDescription = "Maggio-Giugno e ripresa a Settembre",
         activeMonths = listOf(4, 5, 8, 9),
         toxicLookAlikes = listOf("Tylopilus felleus (amaro)"),
-        edibilityWarning = "Cuticola asciutta e finemente vellutata, frequentemente screpolata dalla siccità."
+        edibilityWarning = "Cuticola asciutta e finemente vellutata, frequentemente screpolata dalla siccità.",
+        phenologyLatencyPeakDays = 8.0,
+        phenologyShapeAlpha = 4.0
     ),
     MushroomSpecies(
         id = "cantharellus_cibarius",
@@ -186,7 +198,9 @@ val SPECIES_CATALOG: List<MushroomSpecies> = listOf(
         fruitingPeriodDescription = "Estate umida e autunno in presenza di muschi",
         activeMonths = listOf(5, 6, 7, 8, 9, 10),
         toxicLookAlikes = listOf("Omphalotus olearius (fungo dell'olivo, tossico grave)", "Hygrophoropsis aurantiaca (falso gallinaccio)"),
-        edibilityWarning = "Presenta pseudolamelle (pliche venose decorrenti) e profumo fruttato; non ha mai lamelle fitte né cresce su ceppaie di olivo."
+        edibilityWarning = "Presenta pseudolamelle (pliche venose decorrenti) e profumo fruttato; non ha mai lamelle fitte né cresce su ceppaie di olivo.",
+        phenologyLatencyPeakDays = 14.0,
+        phenologyShapeAlpha = 3.5
     ),
     MushroomSpecies(
         id = "amanita_caesarea",
@@ -206,7 +220,9 @@ val SPECIES_CATALOG: List<MushroomSpecies> = listOf(
         fruitingPeriodDescription = "Estate inoltrata e primo autunno su suoli drenati",
         activeMonths = listOf(6, 7, 8, 9),
         toxicLookAlikes = listOf("Amanita muscaria (tossica)", "Amanita phalloides (mortale allo stadio di ovolo chiuso)"),
-        edibilityWarning = "VIETATA la raccolta allo stadio di ovolo chiuso (art. 5 DPR 376/1995): rischio mortale di confusione con Amanita phalloides."
+        edibilityWarning = "VIETATA la raccolta allo stadio di ovolo chiuso (art. 5 DPR 376/1995): rischio mortale di confusione con Amanita phalloides.",
+        phenologyLatencyPeakDays = 8.0,
+        phenologyShapeAlpha = 4.5
     ),
     MushroomSpecies(
         id = "hydnum_repandum",
@@ -226,7 +242,9 @@ val SPECIES_CATALOG: List<MushroomSpecies> = listOf(
         fruitingPeriodDescription = "Autunno tardivo resistente alle prime brinate",
         activeMonths = listOf(8, 9, 10, 11),
         toxicLookAlikes = listOf("Hydnum albidum (amaro se vecchio)"),
-        edibilityWarning = "Imenoforo ad aculei facilmente asportabili; togliere gli aculei dai campioni adulti prima della cottura."
+        edibilityWarning = "Imenoforo ad aculei facilmente asportabili; togliere gli aculei dai campioni adulti prima della cottura.",
+        phenologyLatencyPeakDays = 13.0,
+        phenologyShapeAlpha = 4.0
     ),
     MushroomSpecies(
         id = "macrolepiota_procera",
@@ -246,7 +264,9 @@ val SPECIES_CATALOG: List<MushroomSpecies> = listOf(
         fruitingPeriodDescription = "Dalla tarda estate all'autunno in radure soleggiate",
         activeMonths = listOf(6, 7, 8, 9, 10),
         toxicLookAlikes = listOf("Lepiota helveola e piccole lepiote (velenose/mortali)", "Chlorophyllum molybdites (tossico)"),
-        edibilityWarning = "Consumare solo il cappello ben cotto. Scartare tassativamente esemplari con cappello inferiore a 10 cm."
+        edibilityWarning = "Consumare solo il cappello ben cotto. Scartare tassativamente esemplari con cappello inferiore a 10 cm.",
+        phenologyLatencyPeakDays = 6.0,
+        phenologyShapeAlpha = 4.0
     ),
     MushroomSpecies(
         id = "armillaria_mellea",
@@ -266,6 +286,8 @@ val SPECIES_CATALOG: List<MushroomSpecies> = listOf(
         fruitingPeriodDescription = "Autunno inoltrato a cespi alla base dei tronchi",
         activeMonths = listOf(8, 9, 10),
         toxicLookAlikes = listOf("Hypholoma fasciculare (falso chiodino, tossico amaro)", "Galerina marginata (mortale)"),
-        edibilityWarning = "Tossico da crudo: necessita di pre-bollitura prolungata (almeno 20 min) gettando l'acqua di cottura."
+        edibilityWarning = "Tossico da crudo: necessita di pre-bollitura prolungata (almeno 20 min) gettando l'acqua di cottura.",
+        phenologyLatencyPeakDays = 10.0,
+        phenologyShapeAlpha = 4.0
     )
 )

@@ -41,12 +41,20 @@ data class EcologicalWeightsConfig(
     val standardThermalDropMin: Double = 3.0,
     val spunAssistedThermalDropMin: Double = 2.0,
     val shockDropSaturationSpan: Double = 3.0,
-    val shockRainSaturationMm: Double = 25.0
+    val shockRainSaturationMm: Double = 25.0,
+    val usePhenologicalInertia: Boolean = false,
+    val probabilityKneeThreshold: Double = 70.0,
+    val probabilityMaxAsymptote: Double = 92.0
 ) {
     companion object {
         /**
-         * Istanza predefinita con i parametri biologici calibrati sul genere *Boletus* e macromiceti temperati.
+         * Istanza predefinita baseline con finestra rigida [10 gg - 2 gg].
          */
-        val DEFAULT = EcologicalWeightsConfig()
+        val DEFAULT = EcologicalWeightsConfig(usePhenologicalInertia = false)
+
+        /**
+         * Configurazione biologica avanzata basata su inerzia fenologica continua f(tau).
+         */
+        val PHENOLOGICAL = EcologicalWeightsConfig(usePhenologicalInertia = true)
     }
 }

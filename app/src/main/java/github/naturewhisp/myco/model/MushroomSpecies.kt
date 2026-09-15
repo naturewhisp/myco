@@ -59,7 +59,9 @@ data class MushroomSpecies(
     val edibilityWarning: String? = null,
     val phenologyLatencyPeakDays: Double = 11.0,
     val phenologyShapeAlpha: Double = 4.0,
-    val optimalTemp: Float = (idealTempMin + idealTempMax) / 2.0f
+    val optimalTemp: Float = (idealTempMin + idealTempMax) / 2.0f,
+    val optimalBasalAreaM2Ha: Float = 32.0f,
+    val hurdleStrictness: Double = 1.0
 ) {
     /**
      * Indica se la specie rappresenta il modello baseline polifito generale.
@@ -268,7 +270,9 @@ val SPECIES_CATALOG: List<MushroomSpecies> = listOf(
         toxicLookAlikes = listOf("Lepiota helveola e piccole lepiote (velenose/mortali)", "Chlorophyllum molybdites (tossico)"),
         edibilityWarning = "Consumare solo il cappello ben cotto. Scartare tassativamente esemplari con cappello inferiore a 10 cm.",
         phenologyLatencyPeakDays = 6.0,
-        phenologyShapeAlpha = 4.0
+        phenologyShapeAlpha = 4.0,
+        optimalBasalAreaM2Ha = 10.0f,
+        hurdleStrictness = 0.3
     ),
     MushroomSpecies(
         id = "armillaria_mellea",
@@ -291,5 +295,55 @@ val SPECIES_CATALOG: List<MushroomSpecies> = listOf(
         edibilityWarning = "Tossico da crudo: necessita di pre-bollitura prolungata (almeno 20 min) gettando l'acqua di cottura.",
         phenologyLatencyPeakDays = 10.0,
         phenologyShapeAlpha = 4.0
+    ),
+    MushroomSpecies(
+        id = "lactarius_deliciosus",
+        binomialName = "Lactarius deliciosus (L.) Gray",
+        vernacularName = "Sanguinello / Fungo del pino",
+        category = EcologicalCategory.ECTOMYCORRHIZAL,
+        minElevation = 200,
+        maxElevation = 1700,
+        idealElevationMin = 400,
+        idealElevationMax = 1300,
+        idealTempMin = 10.0f,
+        idealTempMax = 18.0f,
+        toleratedTempMin = 6.0f,
+        toleratedTempMax = 22.0f,
+        minRainAccumulation = 25.0f,
+        preferredCanopyTypes = listOf("pinus"),
+        fruitingPeriodDescription = "Inizio autunno in pinete montane e collinari",
+        activeMonths = listOf(8, 9, 10, 11),
+        toxicLookAlikes = listOf("Lactarius torminosus (Peveraccio delle coliche, tossico grave)"),
+        edibilityWarning = "Verificare lattice color carota/arancio immutabile o che vira al rosso/verde; scartare specie a lattice bianco acre.",
+        phenologyLatencyPeakDays = 12.0,
+        phenologyShapeAlpha = 4.0,
+        optimalTemp = 13.5f,
+        optimalBasalAreaM2Ha = 20.0f,
+        hurdleStrictness = 1.0
+    ),
+    MushroomSpecies(
+        id = "morchella_esculenta",
+        binomialName = "Morchella esculenta (L.) Pers.",
+        vernacularName = "Spugnola comune",
+        category = EcologicalCategory.SAPROTROPHIC,
+        minElevation = 100,
+        maxElevation = 1500,
+        idealElevationMin = 200,
+        idealElevationMax = 1000,
+        idealTempMin = 10.0f,
+        idealTempMax = 18.0f,
+        toleratedTempMin = 5.0f,
+        toleratedTempMax = 22.0f,
+        minRainAccumulation = 30.0f,
+        preferredCanopyTypes = listOf("fraxinus", "ulmus", "populus", "radure", "frassino", "olmo"),
+        fruitingPeriodDescription = "Fruttificazione primaverile (Marzo-Maggio) su suoli alcalini e radure",
+        activeMonths = listOf(2, 3, 4),
+        toxicLookAlikes = listOf("Gyromitra esculenta (Falsa spugnola, mortale da cruda, contiene giromitrina)"),
+        edibilityWarning = "Tossica da cruda (contiene emolisine termolabili): necessita di cottura prolungata (almeno 20-25 min) o preventiva essiccazione.",
+        phenologyLatencyPeakDays = 7.0,
+        phenologyShapeAlpha = 4.0,
+        optimalTemp = 14.0f,
+        optimalBasalAreaM2Ha = 15.0f,
+        hurdleStrictness = 0.5
     )
 )

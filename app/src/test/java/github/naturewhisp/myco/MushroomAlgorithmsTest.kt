@@ -1,6 +1,7 @@
 package github.naturewhisp.myco
 
 import github.naturewhisp.myco.model.DailyData
+import github.naturewhisp.myco.model.EcologicalCategory
 import github.naturewhisp.myco.model.EcologicalWeightsConfig
 import github.naturewhisp.myco.model.FactorId
 import github.naturewhisp.myco.model.FactorLevel
@@ -676,5 +677,138 @@ class MushroomAlgorithmsTest {
             "Il condizionamento termico T_d-20 ottimale (14°C) deve produrre un punteggio superiore a un pregresso torrido (32°C): $scoreOptimal vs $scoreHeatwave",
             scoreOptimal > scoreHeatwave
         )
+    }
+
+    @Test
+    fun testHurdleOccurrenceProbability_GatingAndContinuity() {
+        val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+        val macrolepiota = SPECIES_CATALOG.first { it.id == "macrolepiota_procera" }
+
+        // 1. Stazione completamente incompatibile (H = 0, A = 0) -> p_hurdle = 0.0
+        assertEquals(0.0, MushroomAlgorithms.hurdleOccurrenceProbability(0.0, 0.0, edulis), 0.001)
+
+        // 2. Specie ectomicorrizica (edulis): habitat scarso (es. campo aperto H = 0.10) -> penalità severa
+        val pLowHabitat = MushroomAlgorithms.hurdleOccurrenceProbability(0.10, 1.0, edulis)
+        assertTrue("Hurdle per edulis in campo aperto (H=0.10) deve essere basso (<= 0.15): $pLowHabitat", pLowHabitat <= 0.15)
+
+        // 3. Specie ectomicorrizica (edulis): habitat eccellente (H = 0.85, A = 1.0) -> barriera superata (p >= 0.95)
+        val pOptimal = MushroomAlgorithms.hurdleOccurrenceProbability(0.85, 1.0, edulis)
+        assertTrue("Hurdle per edulis in bosco favorevole deve superare 0.95: $pOptimal", pOptimal >= 0.95)
+
+        // 4. Continuità e monotonicità: al crescere dell'idoneità stazionale, p_hurdle cresce monotonicamente
+        var prevP = 0.0
+        for (step in 0..20) {
+            val hab = step / 20.0
+            val p = MushroomAlgorithms.hurdleOccurrenceProbability(hab, 1.0, edulis)
+            assertTrue("Monotonicità violata a hab=$hab: $p < $prevP", p >= prevP - 1e-6)
+            prevP = p
+        }
+
+        // 5. Specie saprofita praticola (macrolepiota): in prato (H = 0.10), supera agevolmente la barriera
+        val pMacroMeadow = MushroomAlgorithms.hurdleOccurrenceProbability(0.10, 1.0, macrolepiota)
+        assertTrue("Macrolepiota in prato (H=0.10) deve superare la barriera hurdle (>= 0.90): $pMacroMeadow", pMacroMeadow >= 0.90)
+    }
+
+    @Test
+    fun testStandDensityResponseUnimodal_PeakAtOptimalG() {
+        val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+        val deliciosus = SPECIES_CATALOG.first { it.id == "lactarius_deliciosus" }
+        val macrolepiota = SPECIES_CATALOG.first { it.id == "macrolepiota_procera" }
+
+        // 1. Verifica conversione canopy -> Area Basimetrica G
+        assertEquals(0.0, MushroomAlgorithms.canopyCoverToBasalArea(0.0), 0.01)
+        val gOpen = MushroomAlgorithms.canopyCoverToBasalArea(0.45)
+        assertTrue("Canopy 0.45 deve corrispondere a G compreso tra 18 e 22 m²/ha: $gOpen", gOpen in 18.0..22.0)
+        val gModerate = MushroomAlgorithms.canopyCoverToBasalArea(0.70)
+        assertTrue("Canopy 0.70 deve corrispondere a G compreso tra 31 e 35 m²/ha: $gModerate", gModerate in 31.0..35.0)
+
+        // 2. Boletus edulis: il picco unimodale è intorno a canopyCover 0.68..0.72 (G ~ 32 m²/ha)
+        val scoreEdulisPeak = MushroomAlgorithms.standDensityResponseUnimodal(0.70, edulis)
+        val scoreEdulisDense = MushroomAlgorithms.standDensityResponseUnimodal(0.95, edulis)
+        val scoreEdulisSparse = MushroomAlgorithms.standDensityResponseUnimodal(0.15, edulis)
+
+        assertTrue("Picco edulis deve essere molto vicino a 1.0: $scoreEdulisPeak", scoreEdulisPeak >= 0.99)
+        assertTrue("Popolamento sovraffollato/chiuso (0.95) deve avere resa inferiore al picco (0.70): $scoreEdulisDense < $scoreEdulisPeak", scoreEdulisDense < scoreEdulisPeak)
+        assertTrue("Popolamento rado (0.15) deve avere resa inferiore al picco (0.70): $scoreEdulisSparse < $scoreEdulisPeak", scoreEdulisSparse < scoreEdulisPeak)
+
+        // 3. Lactarius deliciosus: preferisce pinete più aperte e soleggiate (G_opt = 20 m²/ha, canopy ~ 0.45)
+        val scoreDeliciosusPeak = MushroomAlgorithms.standDensityResponseUnimodal(0.45, deliciosus)
+        val scoreDeliciosusDense = MushroomAlgorithms.standDensityResponseUnimodal(0.85, deliciosus)
+        assertTrue("Lactarius deliciosus al picco (0.45) deve essere vicino a 1.0: $scoreDeliciosusPeak", scoreDeliciosusPeak >= 0.99)
+        assertTrue("Lactarius deliciosus in bosco fitto (0.85) deve avere resa inferiore a pineta aperta (0.45): $scoreDeliciosusDense < $scoreDeliciosusPeak", scoreDeliciosusDense < scoreDeliciosusPeak)
+
+        // 4. Specie saprofita (macrolepiota): stand density non vincolante (restituisce 1.0)
+        assertEquals(1.0, MushroomAlgorithms.standDensityResponseUnimodal(0.10, macrolepiota), 0.001)
+        assertEquals(1.0, MushroomAlgorithms.standDensityResponseUnimodal(0.85, macrolepiota), 0.001)
+    }
+
+    @Test
+    fun testEvaluateSpeciesHabitat_SaprotrophicVsEctomycorrhizal() {
+        val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+        val macrolepiota = SPECIES_CATALOG.first { it.id == "macrolepiota_procera" }
+
+        // 1. In assenza di alberi (forestCount = 0):
+        val habEdulisNoForest = MushroomAlgorithms.evaluateSpeciesHabitat(forestCount = 0, species = edulis)
+        val habMacroNoForest = MushroomAlgorithms.evaluateSpeciesHabitat(forestCount = 0, species = macrolepiota)
+
+        assertTrue("Edulis senza bosco deve avere habitat basso (<= 0.15): ${habEdulisNoForest.score}", habEdulisNoForest.score <= 0.15)
+        assertTrue("Macrolepiota senza bosco (prato) deve avere habitat favorevole (>= 0.85): ${habMacroNoForest.score}", habMacroNoForest.score >= 0.85)
+
+        // 2. Con alberi ospiti specifici:
+        val habEdulisWithHost = MushroomAlgorithms.evaluateSpeciesHabitat(
+            forestCount = 10,
+            specificElementsCount = 3,
+            species = edulis
+        )
+        assertTrue("Presenza alberi specifici per edulis deve potenziare il punteggio: ${habEdulisWithHost.score}", habEdulisWithHost.score >= 0.95)
+        assertTrue("La descrizione bonus deve menzionare alberi ospiti: ${habEdulisWithHost.bonusText}", habEdulisWithHost.bonusText.contains("ospiti") || habEdulisWithHost.bonusText.contains("ottimali"))
+    }
+
+    @Test
+    fun testTwoStageHurdleModel_DailyGrowthProbabilityGating() {
+        val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+
+        // A parità di meteo eccellente (W = 90, S = 1.0, T = 1.0):
+        // Con stazione inidonea (H = 0.0):
+        val probNoHabitat = MushroomAlgorithms.dailyGrowthProbability(
+            weatherScore = 90,
+            habitatScore = 0.0,
+            altitudeScore = 1.0,
+            seasonalityScore = 1.0,
+            terrainModifier = 1.0,
+            config = EcologicalWeightsConfig.PHENOLOGICAL,
+            species = edulis
+        )
+        assertEquals("Con habitat nullo, il modello Hurdle deve bloccare la probabilità a 0", 0, probNoHabitat)
+
+        // Con habitat ottimale (H = 1.0, A = 1.0):
+        val probOptimal = MushroomAlgorithms.dailyGrowthProbability(
+            weatherScore = 90,
+            habitatScore = 1.0,
+            altitudeScore = 1.0,
+            seasonalityScore = 1.0,
+            terrainModifier = 1.0,
+            config = EcologicalWeightsConfig.PHENOLOGICAL,
+            species = edulis
+        )
+        assertTrue("Con habitat ottimale e meteo 90, la probabilità deve essere favorevole (>= 75%): $probOptimal", probOptimal >= 75)
+    }
+
+    @Test
+    fun testSpeciesCatalog_NewSpeciesIntegrity() {
+        val deliciosus = SPECIES_CATALOG.firstOrNull { it.id == "lactarius_deliciosus" }
+        assertNotNull("Lactarius deliciosus deve essere presente nel catalogo", deliciosus)
+        assertEquals("Sanguinello / Fungo del pino", deliciosus!!.vernacularName)
+        assertEquals(EcologicalCategory.ECTOMYCORRHIZAL, deliciosus.category)
+        assertTrue("Lactarius deliciosus deve essere associato a Pinus", deliciosus.preferredCanopyTypes.contains("pinus"))
+        assertEquals(20.0f, deliciosus.optimalBasalAreaM2Ha, 0.01f)
+        assertTrue("Deve avere avvertenze tossiche", deliciosus.toxicLookAlikes.isNotEmpty())
+
+        val morchella = SPECIES_CATALOG.firstOrNull { it.id == "morchella_esculenta" }
+        assertNotNull("Morchella esculenta deve essere presente nel catalogo", morchella)
+        assertEquals("Spugnola comune", morchella!!.vernacularName)
+        assertEquals(EcologicalCategory.SAPROTROPHIC, morchella.category)
+        assertTrue("Morchella deve fruttificare in primavera", morchella.activeMonths.contains(3)) // Aprile (indice 3)
+        assertNotNull("Morchella deve avere avvertenza di cottura prolungata", morchella.edibilityWarning)
     }
 }

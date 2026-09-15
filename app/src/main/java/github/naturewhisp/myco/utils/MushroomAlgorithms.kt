@@ -1,6 +1,7 @@
 package github.naturewhisp.myco.utils
 
 import github.naturewhisp.myco.model.DailyOutlook
+import github.naturewhisp.myco.model.EcologicalCategory
 import github.naturewhisp.myco.model.EcologicalWeightsConfig
 import github.naturewhisp.myco.model.Factor
 import github.naturewhisp.myco.model.FactorId
@@ -8,6 +9,7 @@ import github.naturewhisp.myco.model.FactorLevel
 import github.naturewhisp.myco.model.MushroomSpecies
 import github.naturewhisp.myco.model.ProcessedDay
 import github.naturewhisp.myco.model.SPECIES_CATALOG
+import github.naturewhisp.myco.model.SpunData
 import github.naturewhisp.myco.model.TerrainAspectConfig
 import github.naturewhisp.myco.model.TerrainAspectData
 import github.naturewhisp.myco.model.TerrainAspectEvaluation
@@ -54,6 +56,23 @@ data class RainStatus(val score: Int, val label: String)
  * @property label Etichetta qualitativa (es. "Ideale", "Troppo freddo").
  */
 data class TempStatus(val score: Int, val label: String)
+
+/**
+ * Valutazione biotica e strutturale dell'habitat stazionale specifica per taxon micologico.
+ *
+ * @property score Punteggio finale normalizzato dell'habitat [0.10..1.00].
+ * @property baseText Descrizione qualitativa dell'idoneità forestale o praticola.
+ * @property bonusText Descrizione di eventuali essenze arboree simbionti o reti SPUN rilevate.
+ * @property basalAreaM2Ha Area basimetrica equivalente stimata in m²/ha.
+ * @property standDensityScore Modificatore biometrico unimodale della densità del popolamento (CTFC).
+ */
+data class SpeciesHabitatEvaluation(
+    val score: Double,
+    val baseText: String,
+    val bonusText: String,
+    val basalAreaM2Ha: Float,
+    val standDensityScore: Double
+)
 
 /**
  * Fasi biologiche evolutive del ciclo di fruttificazione macrofungina.
@@ -1421,16 +1440,234 @@ object MushroomAlgorithms {
     }
 
     /**
+     * Converte la frazione di copertura chiome [canopyCover] in Area Basimetrica equivalente $G$ (in m²/ha).
+     *
+     * Basata sulle relazioni dendrometriche dei boschi temperati e mediterranei europei (CTFC / de-Miguel et al. 2014):
+     * - Copertura chiome 0.0 (prato/campo aperto): 0 m²/ha
+     * - Copertura chiome 0.45 (bosco rado/aperto): ~18-20 m²/ha
+     * - Copertura chiome 0.70 (bosco gestito a densità media): ~32-35 m²/ha
+     * - Copertura chiome 0.85-0.95 (bosco denso/chiuso non diradato): ~42-50 m²/ha
+     *
+     * @param canopyCover Frazione di copertura arborea [0.0, 1.0].
+     * @return Area basimetrica stimata in m²/ha.
+     */
+    fun canopyCoverToBasalArea(canopyCover: Double): Double {
+        val c = canopyCover.coerceIn(0.0, 1.0)
+        if (c <= 0.001) return 0.0
+        return 50.0 * Math.pow(c, 1.15)
+    }
+
+    /**
+     * Calcola la risposta ecologica continua e unimodale alla densità del popolamento arboreo e all'Area Basimetrica $G$
+     * (de-Miguel et al. 2014, Bonet et al. 2012 - CTFC).
+     *
+     * Nei popolamenti forestali, la produttività di sporocarpi segue la relazione empirica unimodale:
+     * $$\ln(\text{yield}) \propto b_1 \ln(G) - b_2 \sqrt{G}$$
+     * con massimo al valore ottimale specifico della specie ($G_{\text{opt}} \approx 32\text{ m}^2/\text{ha}$ per Boletus edulis,
+     * $G_{\text{opt}} \approx 20\text{ m}^2/\text{ha}$ per Lactarius deliciosus).
+     *
+     * Popolamenti troppo radi ($G < 15\text{ m}^2/\text{ha}$) dispongono di radici ospiti insufficienti, mentre
+     * popolamenti troppo densi ($G > 50\text{ m}^2/\text{ha}$) soffrono di eccessiva intercettazione idrica delle fronde,
+     * oscuramento e forte competizione radicale.
+     *
+     * @param canopyCover Frazione di copertura chiome [0.0, 1.0].
+     * @param species Profilo ecologico della specie target [MushroomSpecies].
+     * @return Moltiplicatore continuo normalizzato nell'intervallo [0.65, 1.00].
+     */
+    fun standDensityResponseUnimodal(
+        canopyCover: Double,
+        species: MushroomSpecies = SPECIES_CATALOG[0]
+    ): Double {
+        if (species.category == EcologicalCategory.SAPROTROPHIC) {
+            return 1.0
+        }
+        val g = canopyCoverToBasalArea(canopyCover)
+        val gOpt = species.optimalBasalAreaM2Ha.toDouble()
+        if (g <= 0.5 || gOpt <= 0.5) return 0.65
+
+        val u = kotlin.math.sqrt(g / gOpt)
+        val deltaPhi = 2.0 * (kotlin.math.ln(u) - u + 1.0)
+        val gamma = 0.75
+        val factor = 0.65 + 0.35 * kotlin.math.exp(gamma * deltaPhi)
+
+        return factor.coerceIn(0.65, 1.0)
+    }
+
+    /**
+     * Calcola la probabilità di presenza biologica stazionale (Stadio 1 del Modello Hurdle, de-Miguel et al. 2014).
+     *
+     * Modella la barriera logistica di presenza/assenza della specie:
+     * $$p_{\text{hurdle}} = \frac{1}{1 + \exp\left(-\gamma \cdot (H_{\text{eff}} \cdot A - H_{\text{crit}})\right)}$$
+     *
+     * Per specie ectomicorriziche con alta selettività (es. Boletus edulis, Lactarius deliciosus),
+     * l'assenza di copertura boschiva (habitatScore < 0.20) o una quota fuori tolleranza biologica
+     * abbatte la probabilità di comparsa verso zero indipendentemente dall'accumulo piovoso.
+     * Per specie saprofite (es. Macrolepiota procera, Morchella esculenta), le aree aperte o i prati
+     * non costituiscono una barriera limitante, garantendo una transizione favorevole.
+     *
+     * @param habitatScore Punteggio dell'habitat vegetazionale / boschivo (0.0..1.0).
+     * @param altitudeScore Punteggio dell'idoneità altimetrica della stazione (0.0..1.0).
+     * @param species Profilo biologico della specie micologica target [MushroomSpecies].
+     * @return Moltiplicatore continuo normalizzato nell'intervallo [0.0, 1.0].
+     */
+    fun hurdleOccurrenceProbability(
+        habitatScore: Double,
+        altitudeScore: Double,
+        species: MushroomSpecies = SPECIES_CATALOG[0]
+    ): Double {
+        val effectiveHab = if (species.category == EcologicalCategory.SAPROTROPHIC) {
+            max(habitatScore, 0.85)
+        } else {
+            habitatScore
+        }
+
+        val stationSuitability = (effectiveHab * altitudeScore).coerceIn(0.0, 1.0)
+        if (stationSuitability <= 0.001) return 0.0
+
+        val sigma = (0.35 * species.hurdleStrictness).coerceIn(0.05, 0.50)
+        val beta = 2.5
+        val ratio = stationSuitability / sigma
+        val exponent = -Math.pow(ratio, beta)
+
+        return (1.0 - kotlin.math.exp(exponent)).coerceIn(0.0, 1.0)
+    }
+
+    /**
+     * Valuta in modo integrato e puro l'idoneità stazionale dell'habitat in funzione della specie,
+     * della gilda ecologica, delle essenze arboree e della densità dendrometrica delle chiome.
+     *
+     * @param forestCount Conteggio elementi boschivi rilevati dal radar Overpass.
+     * @param specificElementsCount Conteggio alberi ospiti o essenze specifiche target.
+     * @param spunData Dati micorrizici SPUN regionali, se disponibili.
+     * @param species Specie micologica target [MushroomSpecies].
+     * @param canopyCover Frazione di copertura chiome [0.0, 1.0], se già stimata.
+     * @return Risultato tipizzato [SpeciesHabitatEvaluation].
+     */
+    fun evaluateSpeciesHabitat(
+        forestCount: Int,
+        specificElementsCount: Int = 0,
+        spunData: SpunData? = null,
+        species: MushroomSpecies = SPECIES_CATALOG[0],
+        canopyCover: Double? = null
+    ): SpeciesHabitatEvaluation {
+        val effectiveCanopy = canopyCover ?: when {
+            forestCount >= 15 -> 0.85
+            forestCount >= 5 -> 0.70
+            forestCount >= 1 -> 0.45
+            else -> 0.10
+        }
+        val basalArea = canopyCoverToBasalArea(effectiveCanopy).toFloat()
+        val standScore = standDensityResponseUnimodal(effectiveCanopy, species)
+
+        val rawScore: Double
+        val baseText: String
+        var bonusText = "Nessuna essenza specifica o dato vegetativo rilevato."
+
+        when (species.category) {
+            EcologicalCategory.SAPROTROPHIC -> {
+                when {
+                    forestCount in 1..8 -> {
+                        rawScore = 1.0
+                        baseText = "Habitat: Margini boschivi e radure (ottimale per specie umicola)."
+                    }
+                    forestCount == 0 -> {
+                        rawScore = 0.90
+                        baseText = "Habitat: Praticolo e pascoli aperti (favorevole per specie umicola)."
+                    }
+                    else -> {
+                        rawScore = 0.75
+                        baseText = "Habitat: Bosco fitto (meno favorevole per specie eliofile da radura)."
+                    }
+                }
+                if (specificElementsCount > 0) {
+                    bonusText = "Bonus: Rilevate radure e microhabitat idonei per ${species.vernacularName}!"
+                }
+            }
+            EcologicalCategory.PARASITIC -> {
+                when {
+                    forestCount > 10 -> {
+                        rawScore = 1.0
+                        baseText = "Habitat: Bosco con abbondante necromassa e substrato lignicolo."
+                    }
+                    forestCount > 0 -> {
+                        rawScore = 0.85
+                        baseText = "Habitat: Presenza di formazioni arboree e ceppaie adatte."
+                    }
+                    else -> {
+                        rawScore = 0.20
+                        baseText = "Habitat: Assenza di formazioni arboree o ceppaie per specie lignicola."
+                    }
+                }
+                if (specificElementsCount > 0) {
+                    bonusText = "Bonus: Rilevate essenze ospiti e ceppaie idonee!"
+                }
+            }
+            EcologicalCategory.ECTOMYCORRHIZAL -> {
+                when {
+                    forestCount > 15 -> {
+                        rawScore = 1.0
+                        baseText = "Habitat: Ideale (punto immerso in area boschiva)."
+                    }
+                    forestCount > 4 -> {
+                        rawScore = 0.95
+                        baseText = "Habitat: Promettente (vicinanza a boschi e foreste)."
+                    }
+                    forestCount > 0 -> {
+                        rawScore = 0.65
+                        baseText = "Habitat: Misto (presenza di formazioni arboree sparse)."
+                    }
+                    else -> {
+                        rawScore = 0.10
+                        baseText = "Habitat: Non ideale (assenza di boschi o alberi ospiti)."
+                    }
+                }
+
+                var bonusMult = 1.0
+                if (specificElementsCount > 0) {
+                    bonusMult = 1.15
+                    bonusText = "Bonus: Rilevati alberi ospiti (${species.preferredCanopyTypes.firstOrNull() ?: "simbionti"}) ottimali!"
+                }
+
+                if (spunData != null) {
+                    if (spunData.ecmRichness >= 50.0f) {
+                        bonusMult = max(bonusMult, 1.15)
+                        bonusText = if (specificElementsCount > 0) {
+                            "Bonus: Alberi e simbiosi EcM SPUN ottimali (${spunData.ecmRichness.toInt()} specie)!"
+                        } else {
+                            "Bonus SPUN: Rete ectomicorrizica eccellente (${spunData.ecmRichness.toInt()} specie)!"
+                        }
+                    } else if (spunData.ecmRichness < 15.0f && forestCount > 0) {
+                        bonusMult *= 0.80
+                    }
+                }
+
+                val combinedScore = (rawScore * bonusMult * standScore).coerceIn(0.10, 1.0)
+                return SpeciesHabitatEvaluation(
+                    score = combinedScore,
+                    baseText = baseText,
+                    bonusText = bonusText,
+                    basalAreaM2Ha = basalArea,
+                    standDensityScore = standScore
+                )
+            }
+        }
+
+        val finalScore = (rawScore * standScore).coerceIn(0.10, 1.0)
+        return SpeciesHabitatEvaluation(
+            score = finalScore,
+            baseText = baseText,
+            bonusText = bonusText,
+            basalAreaM2Ha = basalArea,
+            standDensityScore = standScore
+        )
+    }
+
+    /**
      * Calcola la probabilità giornaliera continua combinata di fruttificazione (0..100%).
      *
-     * Applica la formula canonica calibrata descritta in AGENTS.md:
-     * $$P = 100 \times \left(\frac{W}{100}\right)^{1.2} \times H \times A \times S \times T$$
-     * dove:
-     * - $W$ = punteggio meteo ponderato tramite [config.weatherExponent]
-     * - $H$ = moltiplicatore habitat boschivo (0.10..1.00)
-     * - $A$ = moltiplicatore altimetrico continuo per specie (0.40..1.00)
-     * - $S$ = moltiplicatore stagionale fenologico (0.10..1.00)
-     * - $T$ = modificatore orografico del versante ed esposizione (0.50..1.10)
+     * Integra il Modello Hurdle a Due Stadi (de-Miguel et al. 2014) con calibrazione asintotica:
+     * - Stadio 1: Barriera di presenza/assenza logistica dell'habitat stazionale $p_{\text{hurdle}}$
+     * - Stadio 2: Carpogenesi ed emissione sporocarpica condizionata all'afflusso meteorologico
      *
      * @param weatherScore Punteggio meteorologico calcolato (0..100).
      * @param habitatScore Punteggio vegetazionale / boschivo (0.0..1.0).
@@ -1438,6 +1675,7 @@ object MushroomAlgorithms {
      * @param seasonalityScore Risposta fenologica stagionale del mese corrente (0.0..1.0).
      * @param terrainModifier Modificatore continuo del versante, pendenza ed esposizione orografica (default 1.0).
      * @param config Configurazione dei pesi ed esponenti ecologici [EcologicalWeightsConfig].
+     * @param species Specie micologica target [MushroomSpecies] per il modello Hurdle (se null, usa prodotto baseline).
      * @return Probabilità percentuale complessiva normalizzata nell'intervallo [0, 100].
      */
     fun dailyGrowthProbability(
@@ -1446,11 +1684,21 @@ object MushroomAlgorithms {
         altitudeScore: Double,
         seasonalityScore: Double,
         terrainModifier: Double = 1.0,
-        config: EcologicalWeightsConfig = EcologicalWeightsConfig.DEFAULT
+        config: EcologicalWeightsConfig = EcologicalWeightsConfig.DEFAULT,
+        species: MushroomSpecies? = null
     ): Int {
         val weightedWeatherScore = 100.0 * Math.pow(weatherScore / 100.0, config.weatherExponent)
-        val combined = weightedWeatherScore * habitatScore * altitudeScore * seasonalityScore * terrainModifier
-        val rawProb = combined.coerceAtLeast(0.0)
+        
+        val rawProb = if (species != null && config.usePhenologicalInertia) {
+            // Modello Hurdle a Due Stadi (de-Miguel et al. 2014)
+            val pHurdle = hurdleOccurrenceProbability(habitatScore, altitudeScore, species)
+            val combined = weightedWeatherScore * pHurdle * seasonalityScore * terrainModifier
+            combined.coerceAtLeast(0.0)
+        } else {
+            // Formulazione moltiplicativa classica pura (piena invarianza e retrocompatibilità per oracolo)
+            val combined = weightedWeatherScore * habitatScore * altitudeScore * seasonalityScore * terrainModifier
+            combined.coerceAtLeast(0.0)
+        }
         
         val pKnee = config.probabilityKneeThreshold
         val pMax = config.probabilityMaxAsymptote
@@ -1786,7 +2034,7 @@ object MushroomAlgorithms {
 
         for (i in startIndex until processedDays.size) {
             val weatherScore = calculateWeatherScore(i, processedDays, spunHyphalDensity, species, config, canopyCover)
-            val prob = dailyGrowthProbability(weatherScore, habitatScore, altScore, seasonScore, terrainModifier, config)
+            val prob = dailyGrowthProbability(weatherScore, habitatScore, altScore, seasonScore, terrainModifier, config, species = species)
             result.add(DailyOutlook.fromProcessedDay(effectiveDays[i], prob))
         }
         return result

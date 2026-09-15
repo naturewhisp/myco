@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import github.naturewhisp.myco.model.DailyOutlook
 import github.naturewhisp.myco.model.EcologicalCategory
+import github.naturewhisp.myco.model.EcologicalWeightsConfig
 import github.naturewhisp.myco.model.Factor
 import github.naturewhisp.myco.model.GeocodeResult
 import github.naturewhisp.myco.platform.android.HeatmapData
@@ -316,6 +317,7 @@ class MushroomViewModel(
     private var lastFinalHabitatScore: Double = 1.0
     private var lastHabitatBaseText: String = ""
     private var lastForestCount: Int = 0
+    private var lastSpecificForestCount: Int = 0
     private var lastElevation: Float = 800f
     private var lastSpunData: SpunData? = null
     private var lastLat: Double = 41.8902
@@ -378,7 +380,19 @@ class MushroomViewModel(
             canopyCover = estimatedCanopy
         )
 
-        val habScore = if (calculationMode == "WEATHER_ONLY") 1.0 else lastFinalHabitatScore
+        // Ricalcolo ecologico dinamico dell'habitat per la specifica specie target (FEAT-15)
+        val speciesHab = MushroomAlgorithms.evaluateSpeciesHabitat(
+            forestCount = lastForestCount,
+            specificElementsCount = lastSpecificForestCount,
+            spunData = lastSpunData,
+            species = species,
+            canopyCover = estimatedCanopy
+        )
+        lastFinalHabitatScore = speciesHab.score
+        lastHabitatBaseText = speciesHab.baseText
+        habitatBonusText = speciesHab.bonusText
+
+        val habScore = if (calculationMode == "WEATHER_ONLY") 1.0 else speciesHab.score
         val altMult = if (calculationMode == "WEATHER_ONLY") 1.0 else altScore.score
         val seasonMult = if (calculationMode == "WEATHER_ONLY") 1.0 else seasonScore.score
 
@@ -404,7 +418,9 @@ class MushroomViewModel(
             habitatScore = habScore,
             altitudeScore = altMult,
             seasonalityScore = seasonMult,
-            terrainModifier = if (calculationMode == "WEATHER_ONLY") 1.0 else terrainEval.modifier
+            terrainModifier = if (calculationMode == "WEATHER_ONLY") 1.0 else terrainEval.modifier,
+            config = EcologicalWeightsConfig.PHENOLOGICAL,
+            species = species
         )
         todayProbability = prob
 
@@ -417,8 +433,8 @@ class MushroomViewModel(
             avgTemp = avgTemp,
             totalRain = totalRain,
             avgHumidity = avgHum,
-            habitatScore = lastFinalHabitatScore,
-            habitatText = lastHabitatBaseText,
+            habitatScore = habScore,
+            habitatText = speciesHab.baseText,
             elevation = lastElevation,
             month = lastCurrentMonth,
             growthPhaseText = lastGrowthPhaseVal,
@@ -981,51 +997,30 @@ class MushroomViewModel(
                     else -> displayName
                 }
 
-                // Calculate Habitat Score
+                // Calculate Habitat Score using Species-Aware Ecological Evaluation (FEAT-15)
                 val forestCount = habitat?.elements?.size ?: 0
-                val habitatScore: Double
-                val habitatBaseText: String
-                when {
-                    forestCount > 15 -> {
-                        habitatScore = 1.0
-                        habitatBaseText = "Habitat: Ideale (punto immerso in area boschiva)."
-                    }
-                    forestCount > 4 -> {
-                        habitatScore = 0.95
-                        habitatBaseText = "Habitat: Promettente (vicinanza a boschi e foreste)."
-                    }
-                    forestCount > 0 -> {
-                        habitatScore = 0.6
-                        habitatBaseText = "Habitat: Misto (presenza di aree verdi sparse)."
-                    }
-                    else -> {
-                        habitatScore = 0.1
-                        habitatBaseText = "Habitat: Non ideale (assenza di boschi nelle vicinanze)."
-                    }
-                }
-
-                var finalHabitatScore = habitatScore
-                var habitatBonusTextVal = "Bonus: Nessun dato vegetativo aggiuntivo rilevato."
                 val specificForestCount = habitatBonus?.elements?.size ?: 0
-                if (specificForestCount > 0) {
-                    finalHabitatScore = min(1.0, habitatScore * 1.15)
-                    habitatBonusTextVal = "Bonus: Rilevati alberi ottimali! Punteggio habitat potenziato."
+                lastForestCount = forestCount
+                lastSpecificForestCount = specificForestCount
+
+                val initialCanopy = when {
+                    selectedSpecies.category == EcologicalCategory.SAPROTROPHIC && selectedSpecies.preferredCanopyTypes.any { it.contains("prat") || it.contains("radur") } -> 0.10
+                    forestCount > 15 -> 0.85
+                    forestCount > 4 -> 0.70
+                    forestCount > 0 -> 0.45
+                    else -> 0.20
                 }
 
-                // Modulazione scientifica SPUN: certifica se il sottosuolo ospita la comunità ectomicorrizica adatta
-                if (spunData != null) {
-                    if (spunData.ecmRichness >= 50.0f) {
-                        finalHabitatScore = min(1.0, finalHabitatScore * 1.15)
-                        habitatBonusTextVal = if (specificForestCount > 0) {
-                            "Bonus: Alberi e simbiosi EcM SPUN ottimali (${spunData.ecmRichness.toInt()} specie)!"
-                        } else {
-                            "Bonus SPUN: Rete ectomicorrizica eccellente (${spunData.ecmRichness.toInt()} specie)!"
-                        }
-                    } else if (spunData.ecmRichness < 15.0f && forestCount > 0) {
-                        // Penalizza boschi con microflora micorrizica scarsa
-                        finalHabitatScore = max(0.2, finalHabitatScore * 0.8)
-                    }
-                }
+                val initialHabEval = MushroomAlgorithms.evaluateSpeciesHabitat(
+                    forestCount = forestCount,
+                    specificElementsCount = specificForestCount,
+                    spunData = spunData,
+                    species = selectedSpecies,
+                    canopyCover = initialCanopy
+                )
+                val finalHabitatScore = initialHabEval.score
+                val habitatBaseText = initialHabEval.baseText
+                val habitatBonusTextVal = initialHabEval.bonusText
 
                 // Process weather
                 val processedDays = MushroomAlgorithms.processWeatherData(weather)

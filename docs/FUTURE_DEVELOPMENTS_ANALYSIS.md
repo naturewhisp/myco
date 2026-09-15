@@ -709,6 +709,15 @@ $$\text{Priority Score} = (\text{Impatto} \times 2) - \text{Sforzo} \quad (\text
 | **TASK-02**| Storage | Isolamento namespace chiavi cache e clear selettivo | 3 | 1 | **5.0** | **P2** | 2 SP / **S** | v1.1 | **COMPLETATO** (v1.1) |
 | **TASK-03**| Cartography| Snap reale su poligoni forestali Overpass (TD-01) | 3 | 2 | **4.0** | **P2** | 3 SP / **S** | v1.2 | **COMPLETATO** (v1.2) |
 | **TASK-04**| Localization| Estrazione stringhe UI in `strings.xml` (TD-17) | 4 | 3 | **5.0** | **P2** | 5 SP / **M** | v1.2 | **COMPLETATO** (v1.2) |
+| **FEAT-08**| Science | Inerzia biologica continua e convoluzione fenologica $\tau_{\text{peak}}$ | 5 | 3 | **7.0** | **P1** | 5 SP / **M** | v1.2 | **COMPLETATO** (v1.2) |
+| **FEAT-09**| Science | Isteresi da freddo notturno e modulazione DTR | 4 | 2 | **6.0** | **P2** | 3 SP / **S** | v1.2 | **COMPLETATO** (v1.2) |
+| **FEAT-10**| Science | Dinamica idraulica van Genuchten e damping anossia | 5 | 3 | **7.0** | **P1** | 5 SP / **M** | v1.2 | **COMPLETATO** (v1.2) |
+| **FEAT-11**| Science | Microclima di canopia e buffering De Frenne ($C_f$) | 4 | 2 | **6.0** | **P2** | 3 SP / **S** | v1.2 | **COMPLETATO** (v1.2) |
+| **FEAT-12**| Science | Modello termico cardinale CTMI e finestre $P_{d-26}$ / $T_{d-20}$ | 5 | 3 | **7.0** | **P1** | 5 SP / **M** | v1.2 | **COMPLETATO** (v1.2) |
+| **FEAT-13**| Science | Modello Hurdle a due stadi ($p_{\text{hurdle}}$ Weibull vs $P_{\text{cond}}$) | 5 | 3 | **7.0** | **P1** | 5 SP / **M** | v1.2 | **COMPLETATO** (v1.2) |
+| **FEAT-14**| Science | Risposta unimodale dell'area basimetrica $G$ (CTFC Bonet/de-Miguel) | 4 | 2 | **6.0** | **P2** | 3 SP / **S** | v1.2 | **COMPLETATO** (v1.2) |
+| **FEAT-15**| Science | Valutazione dinamica per specie dell'habitat (`evaluateSpeciesHabitat`) | 5 | 3 | **7.0** | **P1** | 5 SP / **M** | v1.2 | **COMPLETATO** (v1.2) |
+| **FEAT-16**| Taxonomy | Espansione catalogo con *Lactarius deliciosus* e *Morchella esculenta* | 4 | 2 | **6.0** | **P2** | 3 SP / **S** | v1.2 | **COMPLETATO** (v1.2) |
 | **KMP-01** | Architecture| Riorganizzazione Gradle in multi-modulo `:core` KMP | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v2.0 | *Pianificato* |
 | **KMP-02** | Mobile UI | Implementazione client iOS con Compose Multiplatform / SwiftUI | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v2.0 | *Pianificato* |
 | **FEAT-05**| Hardware | Sensore barometrico nativo e telemetria sonde BLE | 3 | 4 | **2.0** | **P3** | 8 SP / **M** | v2.0 | *Pianificato* |
@@ -792,11 +801,15 @@ gantt
   10. [x] **Dinamica Idraulica van Genuchten & Anti-Asfissia (FEAT-10)**: **COMPLETATO** (v1.2) — Rimodellazione biofisica continua di `soilMoistureScoreSmooth` secondo la curva idrodinamica di van Genuchten e la porosità aerifera residua ($\varepsilon_a < 10\%$). Penalizzazione asfittica progressiva e severa ($0.38 \dots 0.44 \dots 0.52\text{ m}^3/\text{m}^3$) fino al fondo biologico di $0.15$ per saturazione dei macropori superficiali e $0.20$ profonda. Feedback diagnostico in `FactorId.SOIL_MOISTURE` ("Ristagno/asfissia" / "Stress idrico/secco") e test unitari dedicati (83 test totali).
   11. [x] **Canopy Buffering & Microclima Forestale (FEAT-11)**: **COMPLETATO** (v1.2) — Modellazione biometeorologica continua del microclima di sottobosco secondo De Frenne et al. (Nature Ecol. Evol. 2019/2021) e intercettazione chiome CTFC/Bonet et al. Attenuazione massime estive (cooling offset), isolamento radiativo notturno contro il freddo aperto, restringimento DTR ed evaporazione throughfall. Integrazione dinamica Overpass `forestCount` e test dedicati (87 test totali).
   12. [x] **Modello Termico Cardinale CTMI & Finestre Fenologiche Decennali (FEAT-12)**: **COMPLETATO** (v1.2) — Implementazione del modello termico cardinale con flessione (CTMI di Rosso et al., 1993 / Yan & Hunt, 1999) con cinetica asimmetrica enzimatica. Integrazione delle risultanze empiriche decennali di Brejon Lamartinière & Hoffman (2025/2026): estensione della ricarica idrica preventiva a 26 giorni ($P_{d-26}$) con `past_days = 28` in Open-Meteo, indicizzazione temporale dinamica nel ViewModel, e condizionamento termico di medio termine a 20 giorni ($T_{d-20}$) calibrato sull'ottimo di $13.5^\circ\text{C}$ per *Boletus edulis*. Suite estesa a 91 test (100% pass).
+  13. [x] **Modello Hurdle a Due Stadi (FEAT-13)**: **COMPLETATO** (v1.2) — Scomposizione biometeorologica della probabilità di fruttificazione in occorrenza stazionale binaria (Hurdle $p_{\text{hurdle}}$ calcolato via CDF di Weibull con $\beta=2.5$ e $\sigma = 0.35 \cdot \text{hurdleStrictness}$) e resa condizionale $P_{\text{cond}}$, escludendo habitat non idonei per micorrizici senza penalizzare i saprotrofi prativi.
+  14. [x] **Risposta Unimodale Area Basimetrica Stand $G$ (FEAT-14)**: **COMPLETATO** (v1.2) — Derivazione continua dell'area basimetrica forestale da canopy cover ($G \approx 50 \cdot C_f^{1.15}$) e applicazione della curva a campana asimmetrica CTFC (Bonet et al. 2012, de-Miguel et al. 2014) centrata su $G_{\text{opt}}$ specifico della specie ($32\text{ m}^2/\text{ha}$ per *Boletus edulis*, $20\text{ m}^2/\text{ha}$ per *Lactarius deliciosus*).
+  15. [x] **Valutazione Dinamica dell'Habitat per Specie (FEAT-15)**: **COMPLETATO** (v1.2) — Riprogettazione ecologica di `evaluateSpeciesHabitat`, che differenzia specie ectomicorriziche, saprotrofe prative (*Macrolepiota procera*) e lignicole, ricalcolando dinamicamente il punteggio dell'habitat al cambio specie in `MushroomViewModel.recalculateForSpecies`.
+  16. [x] **Espansione Catalogo Tassonomico & Sosia (FEAT-16)**: **COMPLETATO** (v1.2) — Inclusione di *Lactarius deliciosus* (sanguinello) e *Morchella esculenta* (spugnola), con metadati completi, latenze fenologiche differenziate, requisiti di area basimetrica e allarmi sosia tossici (*Lactarius torminosus*, *Gyromitra esculenta*).
 
 * **Criteri di Rilascio v1.2**:
   - Calcolo dell'heatmap in meno di 50 ms su dispositivo mobile medio di riferimento (raggiunto: $< 2\text{ ms}$).
   - Ricalcolo dinamico istantaneo dell'heatmap e dei fattori ecologici su selezione nuova specie.
-  - Zero warning diagnostici (`0 errors, 0 warnings`) e 100% test passing su suite estesa (91 test).
+  - Zero warning diagnostici (`0 errors, 0 warnings`) e 100% test passing su suite estesa (96 test unitari).
   - Validazione e verifica funzionale superata su Google Pixel 10 Pro fisico.
 
 ---

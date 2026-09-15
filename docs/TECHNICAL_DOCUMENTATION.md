@@ -25,7 +25,7 @@
    - 3.4 Predisposizione al Porting iOS e Roadmap Multiplatform
 4. [Pipeline di Calcolo ed Inferenza Micologica](#4-pipeline-di-calcolo-ed-inferenza-micologica)
    - 4.1 Catalogo Tassonomico e Profili Ecologici
-   - 4.2 Formula Unificata di Calibrazione della Probabilità
+   - 4.2 Formula Unificata di Calibrazione della Probabilità e Modello Hurdle a Due Stadi
    - 4.3 Curve di Risposta Biologica Continue
    - 4.4 Shock Termico Induttivo dei Primordi
    - 4.5 Modellazione Orografica DEM a 5 Punti & Insolazione
@@ -353,34 +353,57 @@ In conformità a `docs/IOS_ARCHITECTURE.md`, Myco è predisposta per il riutiliz
 ## 4. Pipeline di Calcolo ed Inferenza Micologica
 
 ### 4.1 Catalogo Tassonomico e Profili Ecologici
-La stima della probabilità di fruttificazione è differenziata in base alle caratteristiche biologiche di 10 profili micologici (`MushroomSpecies.kt`):
+La stima della probabilità di fruttificazione è differenziata in base alle caratteristiche biologiche di 12 profili micologici (`MushroomSpecies.kt`), parametrizzati con ottimi di area basimetrica ($G_{\text{opt}}$) e severità dell'hurdle ecologico:
 
-1. **Modello Generale Polifito** (`general`): Modello standard per la stima cumulativa del bosco misto collinare/montano.
-2. **Porcino comune** (*Boletus edulis*): Simbionte ectomicorrizico di faggio, abete rosso, castagno e pino; altitudine 300–1800 m s.l.m., temperatura ideale 13–20°C, pioggia target 35 mm.
-3. **Porcino nero / Bronzino** (*Boletus aereus*): Termofilo collinare (50–1000 m s.l.m., 18–26°C), predilige querce, lecci e castagni; richiede 20 mm di pioggia.
-4. **Porcino rosso** (*Boletus pinophilus*): Microtermo montano (300–1900 m s.l.m., 11–19°C), associato a pino silvestre, mirtillo e faggio; pioggia target 30 mm.
-5. **Porcino estatino** (*Boletus reticulatus*): Mesofilo precoce (100–1400 m s.l.m., 16–24°C), tipico di querce e castagneti asciutti; pioggia target 25 mm.
-6. **Finferlo / Gallinaccio** (*Cantharellus cibarius*): Ectomicorrizico igrofilo (200–1700 m s.l.m.), necessita di abbondanti piogge (40 mm target) e suoli coperti da muschio.
-7. **Ovolo buono** (*Amanita caesarea*): Fortemente termofilo (50–900 m s.l.m., 18–26°C), predilige boschi aperti di quercia e castagno esposti a mezzogiorno (*solatìo*).
-8. **Steccherino dorato** (*Hydnum repandum*): Specie tardo-autunnale e resistente alle prime gelate (200–1500 m s.l.m., 8–16°C), boschi misti di latifoglie e conifere.
-9. **Mazza di tamburo** (*Macrolepiota procera*): Saprotrofo praticolo delle radure, pascoli e margini boschivi; non dipende da alberi simbionti ma da lettiera e calore.
-10. **Chiodino** (*Armillaria mellea*): Parassita e saprotrofo lignicolo autunnale; cresce su ceppaie di latifoglie con temperature fresche (10–18°C).
+1. **Modello Generale Polifito** (`general`): Modello standard per la stima cumulativa del bosco misto collinare/montano ($G_{\text{opt}} = 30\text{ m}^2/\text{ha}$).
+2. **Porcino comune** (*Boletus edulis*): Simbionte ectomicorrizico di faggio, abete rosso, castagno e pino; altitudine 300–1800 m s.l.m., temperatura ideale 13–20°C, pioggia target 35 mm, $G_{\text{opt}} = 32\text{ m}^2/\text{ha}$, latenza $\tau_{\text{peak}} = 11.0\text{ gg}$.
+3. **Porcino nero / Bronzino** (*Boletus aereus*): Termofilo collinare (50–1000 m s.l.m., 18–26°C), predilige querce, lecci e castagni; richiede 20 mm di pioggia, $G_{\text{opt}} = 26\text{ m}^2/\text{ha}$, latenza $\tau_{\text{peak}} = 9.0\text{ gg}$.
+4. **Porcino rosso** (*Boletus pinophilus*): Microtermo montano (300–1900 m s.l.m., 11–19°C), associato a pino silvestre, mirtillo e faggio; pioggia target 30 mm, $G_{\text{opt}} = 28\text{ m}^2/\text{ha}$, latenza $\tau_{\text{peak}} = 12.0\text{ gg}$.
+5. **Porcino estatino** (*Boletus reticulatus*): Mesofilo precoce (100–1400 m s.l.m., 16–24°C), tipico di querce e castagneti asciutti; pioggia target 25 mm, $G_{\text{opt}} = 25\text{ m}^2/\text{ha}$, latenza $\tau_{\text{peak}} = 8.0\text{ gg}$.
+6. **Finferlo / Gallinaccio** (*Cantharellus cibarius*): Ectomicorrizico igrofilo (200–1700 m s.l.m.), necessita di abbondanti piogge (40 mm target) e suoli coperti da muschio, $G_{\text{opt}} = 35\text{ m}^2/\text{ha}$, latenza $\tau_{\text{peak}} = 14.0\text{ gg}$.
+7. **Ovolo buono** (*Amanita caesarea*): Fortemente termofilo (50–900 m s.l.m., 18–26°C), predilige boschi aperti e caldi di quercia e castagno esposti a mezzogiorno (*solatìo*), $G_{\text{opt}} = 22\text{ m}^2/\text{ha}$, latenza $\tau_{\text{peak}} = 9.0\text{ gg}$.
+8. **Steccherino dorato** (*Hydnum repandum*): Specie tardo-autunnale e resistente alle prime gelate (200–1500 m s.l.m., 8–16°C), boschi misti di latifoglie e conifere, $G_{\text{opt}} = 30\text{ m}^2/\text{ha}$, latenza $\tau_{\text{peak}} = 13.0\text{ gg}$.
+9. **Mazza di tamburo** (*Macrolepiota procera*): Saprotrofo praticolo delle radure, pascoli e margini boschivi; non dipende da alberi simbionti ma da lettiera, azoto organico e calore ($G_{\text{opt}} = 10\text{ m}^2/\text{ha}$, hurdle strictness ridotta $0.30$, latenza $\tau_{\text{peak}} = 6.0\text{ gg}$).
+10. **Chiodino** (*Armillaria mellea*): Parassita e saprotrofo lignicolo autunnale; cresce su ceppaie di latifoglie con temperature fresche (10–18°C), $G_{\text{opt}} = 28\text{ m}^2/\text{ha}$, latenza $\tau_{\text{peak}} = 10.0\text{ gg}$.
+11. **Sanguinello / Lattario delizioso** (*Lactarius deliciosus*): Ectomicorrizico specifico di pini a due aghi (*Pinus sylvestris*, *Pinus nigra*, *Pinus pinaster*); predilige pinete giovani, soleggiate e aperte ($G_{\text{opt}} \approx 20\text{ m}^2/\text{ha}$), altitudine 200–1600 m s.l.m., temperatura ideale 10–18°C, pioggia target 25 mm, latenza $\tau_{\text{peak}} = 12.0\text{ gg}$. Sosia tossico: *Lactarius torminosus* (peveraccio falso).
+12. **Spugnola comune / Morchella** (*Morchella esculenta*): Ascomicete saprotrofo primaverile a ciclo precoce (marzo–maggio); tipico di radure umide, golene, boschi ripariali di frassino e olmo, terreni basici o bruciati. Non vincolato a densa copertura arborea ($G_{\text{opt}} \approx 15\text{ m}^2/\text{ha}$), tollera temperature fresche (8–17°C), pioggia target 20 mm, latenza $\tau_{\text{peak}} = 7.0\text{ gg}$. Sosia velenoso mortale da crudo: *Gyromitra esculenta* (falsa spugnola, ricca di giromitrina).
 
-### 4.2 Formula Unificata di Calibrazione della Probabilità
-In conformità a `AGENTS.md` (Sezione 4.7), la probabilità di fruttificazione grezza $P_{\text{raw}}$ viene calcolata moltiplicando la componente meteorologica pesata per i fattori moltiplicatori ecologici continui:
+### 4.2 Formula Unificata di Calibrazione della Probabilità e Modello Hurdle a Due Stadi
+Nei modelli quantitativi biometrici della fruttificazione fungina (de-Miguel et al. 2014, Bonet et al. 2012 / CTFC, Martinez de Aragon et al. 2007), la comparsa dei carpofori è governata da un processo stocastico a due stadi separati (*Zero-Inflated Hurdle Process*):
+1. **Stadio 1 (Hurdle di Occorrenza / Presenza, $p_{\text{hurdle}} \in [0.0, 1.0]$):** Valuta se le condizioni stazionali (simbionti forestali, altitudine e substrato) permettono al micelio di oltrepassare la barriera dell'insediamento e formare primordi.
+2. **Stadio 2 (Intensità Condizionale di Carpogenesi, $P_{\text{cond}}$):** Valuta l'entità quantitativa della fruttificazione condizionata al superamento dell'hurdle ecologico, guidata dai fattori meteorologici e fenologici dinamici.
+
+#### A. Calibrazione Continua della Resa Condizionale ($P_{\text{cond}}$)
+La probabilità condizionale grezza $P_{\text{raw}}$ viene calcolata moltiplicando la componente meteorologica pesata per i fattori ecologici continui:
 
 $$P_{\text{raw}} = \max\left(0.0,\; 100 \times \left(\frac{W}{100}\right)^{1.2} \times H \times A \times S \times T\right)$$
 
-Per riflettere l'incertezza ecologica inosservabile (pressione antropica, parassitismo, microclima locale) ed evitare una distribuzione in cui si raggiunga garantitamente il 100%, i valori eccellenti vengono compressi tramite una funzione asintotica smooth con soglia (*knee-point*) $P_{\text{knee}} = 70.0$ e tetto massimo teorico $P_{\max} = 92.0$. La probabilità finale calibrata $P_{\text{calibrated}}$ viene definita come:
+Per riflettere l'incertezza ecologica inosservabile (pressione antropica, parassitismo, microclima locale) ed evitare una distribuzione in cui si raggiunga garantitamente il 100%, i valori eccellenti vengono compressi tramite una funzione asintotica smooth con soglia (*knee-point*) $P_{\text{knee}} = 70.0$ e tetto massimo teorico $P_{\max} = 92.0$:
 
-$$P_{\text{calibrated}} = \begin{cases} P_{\text{raw}} & \text{se } P_{\text{raw}} \le 70.0 \\ 70.0 + 22.0 \cdot \tanh\left(\frac{P_{\text{raw}} - 70.0}{22.0}\right) & \text{se } P_{\text{raw}} > 70.0 \end{cases}$$
+$$P_{\text{cond}} = \begin{cases} P_{\text{raw}} & \text{se } P_{\text{raw}} \le 70.0 \\ 70.0 + 22.0 \cdot \tanh\left(\frac{P_{\text{raw}} - 70.0}{22.0}\right) & \text{se } P_{\text{raw}} > 70.0 \end{cases}$$
 
 Dove:
-* **$W \in [0, 100]$:** Punteggio meteorologico combinato. L'esponente **$1.2$** introduce una risposta biologica super-lineare: condizioni meteo mediocri vengono attenuate, mentre la coincidenza di piogge ideali e temperature ottimali viene premiata in modo esponenziale.
-* **$H \in [0.10, 1.00]$:** Punteggio dell'habitat forestale e micorrizico (OSM e SPUN).
+* **$W \in [0, 100]$:** Punteggio meteorologico combinato (con esponente di sensitività **$1.2$**).
+* **$H \in [0.10, 1.00]$:** Punteggio dell'habitat forestale e micorrizico (`evaluateSpeciesHabitat`).
 * **$A \in [0.40, 1.00]$:** Punteggio altitudinale specifico della specie (`calculateSpeciesAltitudeScore`).
 * **$S \in [0.10, 1.00]$:** Punteggio fenologico stagionale del mese in corso (`calculateSpeciesSeasonalityScore`).
 * **$T \in [0.50, 1.10]$:** Modificatore continuo del versante orografico (pendenza ed esposizione solare).
+
+#### B. Modello Hurdle di Occorrenza con CDF di Weibull ($p_{\text{hurdle}}$, `hurdleOccurrenceProbability`)
+In modalità fenologica avanzata (`usePhenologicalInertia = true`), per le singole specie target la probabilità finale è il prodotto dei due stadi:
+
+$$P_{\text{calibrated}} = p_{\text{hurdle}} \times P_{\text{cond}}$$
+
+La probabilità di superamento dell'hurdle $p_{\text{hurdle}}$ è modellata tramite la distribuzione cumulativa di Weibull:
+$$p_{\text{hurdle}} = 1 - \exp\left(-\left(\frac{x}{\sigma}\right)^\beta\right)$$
+
+dove:
+* $x = H^{0.60} \times A^{0.40}$ rappresenta l'indice di idoneità stazionale combinata (habitat ed altitudine);
+* $\beta = 2.5$ garantisce una transizione $C^\infty$ sigmoide senza cuspide e con intercetta naturale $F(0) = 0.0$;
+* $\sigma = 0.35 \cdot \text{hurdleStrictness}$ calibra la selettività della specie:
+  - Per specie **ectomicorriziche obbligate** (*Boletus edulis*, $\text{strictness} = 1.0 \implies \sigma = 0.35$), terreni privi di alberi simbionti ($H \le 0.15$) producono $p_{\text{hurdle}} < 0.05$, escludendo categoricamente la fruttificazione su prati o centri urbani.
+  - Per specie **saprotrofe prative** (*Macrolepiota procera*, $\text{strictness} = 0.30 \implies \sigma = 0.105$), l'hurdle su prato aperto ($H \approx 0.85$) si apre completamente ($p_{\text{hurdle}} = 1.0$).
+* In assenza di specie attiva (modello generale) o con configurazione standard, $p_{\text{hurdle}} \equiv 1.0$ preservando la retrocompatibilità del modello moltiplicativo di baseline.
 
 ### 4.3 Curve di Risposta Biologica Continue
 Tutte le variabili ambientali sono modellate mediante funzioni continue definite nell'intervallo $[0.0, 1.0]$, eliminando qualsiasi gradino discontinuo.
@@ -476,6 +499,29 @@ I dati meteorologici macroclimatici convenzionali (Open-Meteo, ERA5-Land a 2 met
 * **Umidità Relativa Sub-Canopy:** Contenimento dei venti ed evaporazione interna aumentano l'umidità dell'aria fino a $+6\%$:
   $$\text{RH}_{\text{subcanopy}} = \min\left(100.0,\; \text{RH} + C_f \cdot 6.0 \cdot \left(1.0 - \frac{\text{RH}}{100.0}\right)\right)$$
 * La copertura canopica $C_f$ viene stimata dinamicamente da `MushroomViewModel` integrando la consistenza boschiva OSM (`forestCount`) e la nicchia della specie ($C_f = 0.85$ per bosco denso; $C_f = 0.10$ per saprotrofi prativi come *Macrolepiota procera*).
+
+#### F. Densità del Popolamento Boschivo, Area Basimetrica ($G$) e Valutazione Dinamica dell'Habitat (`standDensityResponseUnimodal`, `canopyCoverToBasalArea`, `evaluateSpeciesHabitat`)
+La resa carpogenica nei popolamenti forestali non segue una funzione monotona crescente rispetto alla biomassa legnosa: radure o tagli rasi (*clearcuts*) privano i funghi ectomicorrizici di fotosintati dall'apparato radicale, mentre popolamenti iper-densi, chiusi e non gestiti soffrono di ristagno di umidità fredda, competizione radicale estrema e soffocamento della lettiera (Bonet et al. 2012, de-Miguel et al. 2014, Martinez de Aragon et al. 2007).
+
+1. **Stima Continua dell'Area Basimetrica Stand ($G$, $\text{m}^2/\text{ha}$, `canopyCoverToBasalArea`):**
+   A partire dalla frazione di copertura canopica $C_f \in [0.0, 1.0]$, l'area basimetrica equivalente $G$ viene derivata mediante relazione alometrica continua:
+   $$G = 50.0 \cdot C_f^{1.15}$$
+   Un bosco chiuso maturo ($C_f \approx 0.80 \dots 0.90$) corrisponde a $G \approx 38 \dots 44\text{ m}^2/\text{ha}$, un popolamento diradato ad accrescimento favorevole a $G \approx 20 \dots 32\text{ m}^2/\text{ha}$, e una radura a $G \le 5\text{ m}^2/\text{ha}$.
+
+2. **Risposta Unimodale Biometrica CTFC (`standDensityResponseUnimodal`):**
+   La risposta carpogenica segue la formulazione unimodale a campana asimmetrica:
+   $$\Delta\phi(G) = 2 \cdot (\ln u - u + 1) \le 0 \quad \text{con } u = \sqrt{\frac{G}{G_{\text{opt}}}}$$
+   $$\text{multiplier} = 0.65 + 0.35 \cdot \exp(0.5 \cdot \Delta\phi)$$
+   * Quando $G = G_{\text{opt}}$, $u = 1.0 \implies \Delta\phi = 0.0 \implies \text{multiplier} = 1.0$ (picco unitario).
+   * Per popolamenti eccessivamente densi ($G \gg G_{\text{opt}}$) o degradati/aperti ($G \ll G_{\text{opt}}$), il moltiplicatore decade dolcemente e in modo continuo verso il baseline $0.65$.
+   * $G_{\text{opt}}$ è calibrato specificamente per ciascun taxon (`MushroomSpecies.optimalBasalAreaM2Ha`): $32\text{ m}^2/\text{ha}$ per *Boletus edulis*, $20\text{ m}^2/\text{ha}$ per *Lactarius deliciosus* (pinete giovani e luminose), $10\text{ m}^2/\text{ha}$ per *Macrolepiota procera*.
+
+3. **Valutazione Dinamica per Specie dell'Habitat (`evaluateSpeciesHabitat`):**
+   L'indice di habitat non è più calcolato staticamente in modo polifito, ma si adatta dinamicamente all'ecologia del fungo selezionato:
+   * **Specie Ectomicorriziche (*Boletus*, *Lactarius*, *Cantharellus*):** Richiedono la presenza di formazioni boschive e premiano la presenza di generi arborei simbionti specifici rilevati da OSM Overpass (`specificElementsCount`), modulando il punteggio con la densità $G$ e la biomassa SPUN.
+   * **Specie Saprotrofe Pratiche (*Macrolepiota procera*):** Non dipendono da alberi simbionti; beneficiano della lettiera erbacea e del margine boschivo, ottenendo un punteggio elevato ($H \approx 0.85$) anche in campi aperti e pascoli privi di copertura canopica.
+   * **Specie Lignicole (*Armillaria mellea*):** Premiano la presenza di latifoglie mature e ceppaie in boschi montani/collinari.
+   * In `MushroomViewModel.recalculateForSpecies`, ogni selezione o cambio di specie attiva innesca immediatamente la rivalutazione dell'habitat per la nuova specie, aggiornando la dashboard dei fattori e l'outlook fenologico.
 
 ### 4.4 Shock Termico Induttivo dei Primordi e DTR (Diurnal Temperature Range)
 I carpofori della maggior parte dei funghi micorrizici necessitano di uno shock induttivo (*cold shock*) per avviare la fruttificazione, consistente in un brusco abbassamento delle temperature a seguito di temporali estivi o autunnali (`MushroomAlgorithms.kt:280`):

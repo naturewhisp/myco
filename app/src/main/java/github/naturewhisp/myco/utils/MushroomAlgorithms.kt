@@ -583,7 +583,7 @@ object MushroomAlgorithms {
         allData: List<ProcessedDay>,
         spunHyphalDensity: Float? = null,
         species: MushroomSpecies = SPECIES_CATALOG[0],
-        config: EcologicalWeightsConfig = EcologicalWeightsConfig.PHENOLOGICAL,
+        config: EcologicalWeightsConfig = EcologicalWeightsConfig.DEFAULT,
         canopyCover: Double? = null
     ): Int {
         if (dayIndex < 0 || dayIndex >= allData.size) return 0
@@ -2032,7 +2032,7 @@ object MushroomAlgorithms {
         month: Int = 9,
         spunHyphalDensity: Float? = null,
         terrainModifier: Double = 1.0,
-        config: EcologicalWeightsConfig = EcologicalWeightsConfig.PHENOLOGICAL,
+        config: EcologicalWeightsConfig = EcologicalWeightsConfig.DEFAULT,
         canopyCover: Double? = null
     ): List<DailyOutlook> {
         if (processedDays.isEmpty()) return emptyList()

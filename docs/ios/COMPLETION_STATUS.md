@@ -4,7 +4,7 @@ Aggiornamento: 13 settembre 2026. Branch: `ios-native`.
 
 ## Implementazione consegnata
 
-- Core Kotlin Multiplatform con dominio scientifico, 10 specie, fattori, previsioni, facade `MycoAnalysisEngine`, parser SPUN e raster heatmap.
+- Core Kotlin Multiplatform con dominio scientifico, 12 specie, fattori, previsioni, facade `MycoAnalysisEngine`, parser SPUN e raster heatmap.
 - Client SwiftUI iOS 18+ con ricerca `MKLocalSearch`, GPS one-shot e tracking separati, heading validato, Registry, selettore specie, Forecast, MapKit, indicazioni Apple Maps e palette light/dark/system.
 - Pipeline ambientale concorrente Open-Meteo/DEM/Overpass con cancellazione anti-stale, mapping verso il core, risultati parziali dichiarati e fallback su cache SwiftData.
 - Asset SPUN condiviso col pacchetto Android, decompressione zlib/deflate Apple e bridge verso `KotlinByteArray`.

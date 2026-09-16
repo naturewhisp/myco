@@ -9,9 +9,9 @@ import kotlin.test.assertTrue
 class ScientificParityTest {
     @Test
     fun speciesCatalogMatchesAndroidBaseline() {
-        assertEquals(10, SpeciesCatalog.all.size)
+        assertEquals(12, SpeciesCatalog.all.size)
         assertEquals(
-            listOf("general", "boletus_edulis", "boletus_aereus", "boletus_pinophilus", "boletus_reticulatus", "cantharellus_cibarius", "amanita_caesarea", "hydnum_repandum", "macrolepiota_procera", "armillaria_mellea"),
+            listOf("general", "boletus_edulis", "boletus_aereus", "boletus_pinophilus", "boletus_reticulatus", "cantharellus_cibarius", "amanita_caesarea", "hydnum_repandum", "macrolepiota_procera", "armillaria_mellea", "lactarius_deliciosus", "morchella_esculenta"),
             SpeciesCatalog.all.map { it.id },
         )
         assertTrue(SpeciesCatalog.byId("amanita_caesarea").toxicLookAlikes.any { "phalloides" in it })
@@ -20,7 +20,7 @@ class ScientificParityTest {
     @Test
     fun canonicalProbabilityFormulaMatchesGoldenMaster() {
         assertEquals(0, MycoAlgorithms.growthProbability(0, 1.0, 1.0, 1.0, 1.0))
-        assertEquals(100, MycoAlgorithms.growthProbability(100, 1.0, 1.0, 1.0, 1.0))
+        assertEquals(89, MycoAlgorithms.growthProbability(100, 1.0, 1.0, 1.0, 1.0))
         assertEquals(58, MycoAlgorithms.growthProbability(80, 0.9, 0.9, 0.9, 1.05))
         assertEquals(8, MycoAlgorithms.growthProbability(85, 0.1, 1.0, 1.0, 1.0))
     }

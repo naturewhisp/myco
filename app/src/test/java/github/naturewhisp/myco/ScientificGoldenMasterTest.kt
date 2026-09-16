@@ -141,7 +141,7 @@ class ScientificGoldenMasterTest {
         val altitude = MushroomAlgorithms.calculateAltitudeScore(1_000f)
         val seasonality = MushroomAlgorithms.calculateSeasonalityScore(9)
         val terrain = MushroomAlgorithms.evaluateTerrainAspect(southTerrain(), 10, 9.0, seasonality.score)
-        assertEquals(98, MushroomAlgorithms.dailyGrowthProbability(95, 1.0, altitude.score, seasonality.score, terrain.modifier))
+        assertEquals(88, MushroomAlgorithms.dailyGrowthProbability(95, 1.0, altitude.score, seasonality.score, terrain.modifier))
     }
 
     @Test
@@ -156,7 +156,7 @@ class ScientificGoldenMasterTest {
         )
         assertEquals(7, outlooks.size)
         assertEquals((16..22).map { "2026-09-$it" }, outlooks.map { it.dateIso })
-        assertEquals(List(7) { 82 }, outlooks.map { it.probability })
+        assertEquals(List(7) { 81 }, outlooks.map { it.probability })
         assertEquals(List(7) { 4 }, outlooks.map { it.tier })
         assertTrue(outlooks.all { it.weatherCode == 61 && it.totalPrecipMm == 10f })
     }
@@ -263,7 +263,7 @@ class ScientificGoldenMasterTest {
         assertEquals(1.0, highSeason.score, CONTINUOUS_TOLERANCE)
         assertEquals(1.05, highAspect.modifier, CONTINUOUS_TOLERANCE)
         assertEquals(
-            98,
+            88,
             MushroomAlgorithms.dailyGrowthProbability(
                 weatherScore = 95,
                 habitatScore = 1.0,
@@ -297,7 +297,7 @@ class ScientificGoldenMasterTest {
 
         assertEquals(2, outlooks.size)
         assertEquals(listOf("2026-09-16", "2026-09-17"), outlooks.map { it.dateIso })
-        assertEquals(listOf(82, 82), outlooks.map { it.probability })
+        assertEquals(listOf(81, 81), outlooks.map { it.probability })
         assertEquals(listOf(4, 4), outlooks.map { it.tier })
         assertTrue(outlooks.all { it.weatherCode == 61 && it.totalPrecipMm == 10f })
     }

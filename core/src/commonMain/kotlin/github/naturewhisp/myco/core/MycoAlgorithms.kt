@@ -27,7 +27,14 @@ object MycoAlgorithms {
             rainScore = max(0.0, rainScore - 4.0)
         }
 
-        val tempScore = temperatureResponse(windows.averageTempWindowC, species) * 30.0
+        val minTempRecent = if (windows.temperature.isNotEmpty()) {
+            windows.temperature.minOf { it.avgTemp }
+        } else {
+            windows.averageTempWindowC
+        }
+        val nocturnalInhibition = nocturnalChillingInhibition(minTempRecent, species)
+
+        val tempScore = temperatureResponse(windows.averageTempWindowC, species) * 30.0 * nocturnalInhibition
 
         val humidityScore = if (windows.averageSoil0To7 != null || windows.averageSoil7To28 != null) {
             val soil = soilMoistureResponse(windows.averageSoil0To7, windows.averageSoil7To28, windows.averageEt0)
@@ -55,8 +62,24 @@ object MycoAlgorithms {
         altitudeScore: Double,
         seasonalityScore: Double,
         terrainModifier: Double,
-    ): Int = (100.0 * (weatherScore / 100.0).pow(1.2) * habitatScore * altitudeScore *
-        seasonalityScore * terrainModifier).toInt().coerceIn(0, 100)
+    ): Int {
+        val raw = 100.0 * (weatherScore / 100.0).pow(1.2) * habitatScore * altitudeScore *
+            seasonalityScore * terrainModifier
+        val calibrated = if (raw > 70.0) {
+            70.0 + 22.0 * kotlin.math.tanh((raw - 70.0) / 22.0)
+        } else {
+            raw
+        }
+        return calibrated.toInt().coerceIn(0, 100)
+    }
+
+    fun nocturnalChillingInhibition(minTemp: Double, species: MushroomSpecies): Double {
+        val idealMin = species.idealTempMin
+        val toleratedMin = species.toleratedTempMin
+        if (minTemp >= idealMin) return 1.0
+        if (minTemp <= toleratedMin) return 0.3
+        return 0.3 + 0.7 * smoothstep(toleratedMin, idealMin, minTemp)
+    }
 
     fun temperatureResponse(temp: Double, species: MushroomSpecies): Double = when {
         temp < species.toleratedTempMin || temp > species.toleratedTempMax -> 0.0

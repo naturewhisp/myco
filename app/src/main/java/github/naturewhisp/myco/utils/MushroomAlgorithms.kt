@@ -14,6 +14,7 @@ import github.naturewhisp.myco.model.TerrainAspectConfig
 import github.naturewhisp.myco.model.TerrainAspectData
 import github.naturewhisp.myco.model.TerrainAspectEvaluation
 import github.naturewhisp.myco.model.WeatherResponse
+import github.naturewhisp.myco.core.MycoAlgorithms as SharedMycoAlgorithms
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
@@ -582,7 +583,7 @@ object MushroomAlgorithms {
         allData: List<ProcessedDay>,
         spunHyphalDensity: Float? = null,
         species: MushroomSpecies = SPECIES_CATALOG[0],
-        config: EcologicalWeightsConfig = EcologicalWeightsConfig.PHENOLOGICAL,
+        config: EcologicalWeightsConfig = EcologicalWeightsConfig.DEFAULT,
         canopyCover: Double? = null
     ): Int {
         if (dayIndex < 0 || dayIndex >= allData.size) return 0
@@ -1687,6 +1688,15 @@ object MushroomAlgorithms {
         config: EcologicalWeightsConfig = EcologicalWeightsConfig.DEFAULT,
         species: MushroomSpecies? = null
     ): Int {
+        if (config == EcologicalWeightsConfig.DEFAULT) {
+            return SharedMycoAlgorithms.growthProbability(
+                weatherScore,
+                habitatScore,
+                altitudeScore,
+                seasonalityScore,
+                terrainModifier,
+            )
+        }
         val weightedWeatherScore = 100.0 * Math.pow(weatherScore / 100.0, config.weatherExponent)
         
         val rawProb = if (species != null && config.usePhenologicalInertia) {
@@ -2022,7 +2032,7 @@ object MushroomAlgorithms {
         month: Int = 9,
         spunHyphalDensity: Float? = null,
         terrainModifier: Double = 1.0,
-        config: EcologicalWeightsConfig = EcologicalWeightsConfig.PHENOLOGICAL,
+        config: EcologicalWeightsConfig = EcologicalWeightsConfig.DEFAULT,
         canopyCover: Double? = null
     ): List<DailyOutlook> {
         if (processedDays.isEmpty()) return emptyList()

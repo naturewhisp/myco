@@ -1,5 +1,6 @@
 package github.naturewhisp.myco.utils
 
+import github.naturewhisp.myco.core.HeatmapEngine
 import github.naturewhisp.myco.model.EcologicalCategory
 import github.naturewhisp.myco.model.HeatmapRaster
 import github.naturewhisp.myco.model.HeatmapRenderConfig
@@ -25,6 +26,7 @@ import kotlin.math.max
  * con la futura versione mobile iOS, conformemente ad AGENTS.md.
  */
 object HeatmapGenerator {
+    private val sharedHeatmapEngine = HeatmapEngine()
 
     /**
      * Genera la superficie raster pura [HeatmapRaster] (100% Kotlin agnostico da Android/iOS).
@@ -220,6 +222,9 @@ object HeatmapGenerator {
         isDark: Boolean = false,
         config: HeatmapRenderConfig = HeatmapRenderConfig.DEFAULT
     ): Int {
+        if (config == HeatmapRenderConfig.DEFAULT) {
+            return sharedHeatmapEngine.color(probability, isDark)
+        }
         if (probability < config.cutoffThreshold) return 0 // Trasparente per assenza di attività miceliare significativa
 
         // Pigmenti minerali botanici calibrati per contrasto e armonia naturale

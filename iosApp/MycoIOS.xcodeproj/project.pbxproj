@@ -1,0 +1,81 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000071 /* spun_italy.bin in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000070 /* spun_italy.bin */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A10000000000000000000010 /* MycoIOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MycoIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000070 /* spun_italy.bin */ = {isa = PBXFileReference; lastKnownFileType = file; name = spun_italy.bin; path = ../app/src/main/assets/spun/spun_italy.bin; sourceTree = SOURCE_ROOT; };
+		B10000000000000000000010 /* MycoIOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MycoIOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C10000000000000000000010 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Shared.xcconfig; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		A10000000000000000000021 /* MycoIOS */ = {isa = PBXFileSystemSynchronizedRootGroup; path = MycoIOS; sourceTree = "<group>"; };
+		B10000000000000000000021 /* MycoIOSTests */ = {isa = PBXFileSystemSynchronizedRootGroup; path = MycoIOSTests; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXContainerItemProxy section */
+		B10000000000000000000050 /* PBXContainerItemProxy */ = {isa = PBXContainerItemProxy; containerPortal = A10000000000000000000050 /* Project object */; proxyType = 1; remoteGlobalIDString = A10000000000000000000030; remoteInfo = MycoIOS; };
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXGroup section */
+		A10000000000000000000020 = {isa = PBXGroup; children = (A10000000000000000000021 /* MycoIOS */, B10000000000000000000021 /* MycoIOSTests */, C10000000000000000000010 /* Shared.xcconfig */, A10000000000000000000070 /* spun_italy.bin */, A10000000000000000000022 /* Products */, ); sourceTree = "<group>"; };
+		A10000000000000000000022 /* Products */ = {isa = PBXGroup; children = (A10000000000000000000010 /* MycoIOS.app */, B10000000000000000000010 /* MycoIOSTests.xctest */, ); name = Products; sourceTree = "<group>"; };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A10000000000000000000030 /* MycoIOS */ = {isa = PBXNativeTarget; buildConfigurationList = A10000000000000000000040 /* Build configuration list for PBXNativeTarget "MycoIOS" */; buildPhases = (A10000000000000000000034 /* Build MycoCore */, A10000000000000000000031 /* Sources */, A10000000000000000000032 /* Frameworks */, A10000000000000000000033 /* Resources */, ); buildRules = (); dependencies = (); fileSystemSynchronizedGroups = (A10000000000000000000021 /* MycoIOS */, ); name = MycoIOS; productName = MycoIOS; productReference = A10000000000000000000010 /* MycoIOS.app */; productType = "com.apple.product-type.application"; };
+		B10000000000000000000030 /* MycoIOSTests */ = {isa = PBXNativeTarget; buildConfigurationList = B10000000000000000000040 /* Build configuration list for PBXNativeTarget "MycoIOSTests" */; buildPhases = (B10000000000000000000031 /* Sources */, B10000000000000000000032 /* Frameworks */, B10000000000000000000033 /* Resources */, ); buildRules = (); dependencies = (B10000000000000000000051 /* PBXTargetDependency */, ); fileSystemSynchronizedGroups = (B10000000000000000000021 /* MycoIOSTests */, ); name = MycoIOSTests; productName = MycoIOSTests; productReference = B10000000000000000000010 /* MycoIOSTests.xctest */; productType = "com.apple.product-type.bundle.unit-test"; };
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A10000000000000000000050 /* Project object */ = {isa = PBXProject; attributes = { BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 2660; LastUpgradeCheck = 2660; TargetAttributes = { A10000000000000000000030 = { CreatedOnToolsVersion = 26.6; }; B10000000000000000000030 = { CreatedOnToolsVersion = 26.6; TestTargetID = A10000000000000000000030; }; }; }; buildConfigurationList = A10000000000000000000051 /* Build configuration list for PBXProject "MycoIOS" */; compatibilityVersion = "Xcode 16.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, it, Base, ); mainGroup = A10000000000000000000020; minimizedProjectReferenceProxies = 1; preferredProjectObjectVersion = 77; productRefGroup = A10000000000000000000022 /* Products */; projectDirPath = ""; projectRoot = ""; targets = (A10000000000000000000030 /* MycoIOS */, B10000000000000000000030 /* MycoIOSTests */, ); };
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A10000000000000000000033 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000071 /* spun_italy.bin in Resources */, ); runOnlyForDeploymentPostprocessing = 0; };
+		B10000000000000000000033 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A10000000000000000000034 /* Build MycoCore */ = {isa = PBXShellScriptBuildPhase; alwaysOutOfDate = 1; buildActionMask = 2147483647; files = (); inputPaths = (); name = "Build MycoCore"; outputPaths = (); runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = "if [ \"YES\" = \"$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED\" ]; then\n    echo \"Skipping Gradle invocation because the IDE already built MycoCore\"\n    exit 0\nfi\n\nis_java_17() {\n    candidate_home=\"$1\"\n    [ -x \"$candidate_home/bin/java\" ] || return 1\n    candidate_version=$(\"$candidate_home/bin/java\" -version 2>&1)\n    case \"$candidate_version\" in\n        *'version \"17.'*|*'version \"17\"'*) return 0 ;;\n        *) return 1 ;;\n    esac\n}\n\nresolved_java_home=\"\"\nif is_java_17 \"${JAVA_HOME:-}\"; then\n    resolved_java_home=\"$JAVA_HOME\"\nfi\n\nif [ -z \"$resolved_java_home\" ]; then\n    java_home_candidate=$(/usr/libexec/java_home -v 17 2>/dev/null) || true\n    if is_java_17 \"$java_home_candidate\"; then\n        resolved_java_home=\"$java_home_candidate\"\n    fi\nfi\n\nif [ -z \"$resolved_java_home\" ]; then\n    for java_home_candidate in \\\n        /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \\\n        /usr/local/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home\n    do\n        if is_java_17 \"$java_home_candidate\"; then\n            resolved_java_home=\"$java_home_candidate\"\n            break\n        fi\n    done\nfi\n\nif [ -z \"$resolved_java_home\" ]; then\n    brew_command=\"\"\n    if command -v brew >/dev/null 2>&1; then\n        brew_command=$(command -v brew)\n    elif [ -x /opt/homebrew/bin/brew ]; then\n        brew_command=/opt/homebrew/bin/brew\n    elif [ -x /usr/local/bin/brew ]; then\n        brew_command=/usr/local/bin/brew\n    fi\n\n    if [ -n \"$brew_command\" ]; then\n        brew_prefix=$(\"$brew_command\" --prefix openjdk@17 2>/dev/null) || true\n        java_home_candidate=\"$brew_prefix/libexec/openjdk.jdk/Contents/Home\"\n        if is_java_17 \"$java_home_candidate\"; then\n            resolved_java_home=\"$java_home_candidate\"\n        fi\n    fi\nfi\n\nif [ -z \"$resolved_java_home\" ]; then\n    echo \"error: JDK 17 is required to build MycoCore. Install it with: brew install openjdk@17\"\n    exit 1\nfi\n\nJAVA_HOME=\"$resolved_java_home\"\nexport JAVA_HOME\necho \"Using JDK 17 from $JAVA_HOME\"\n\"$JAVA_HOME/bin/java\" -version\n\ncd \"$SRCROOT/..\"\n./gradlew :core:embedAndSignAppleFrameworkForXcode --no-daemon --max-workers=1\n"; showEnvVarsInLog = 0; };
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A10000000000000000000031 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		B10000000000000000000031 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A10000000000000000000032 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		B10000000000000000000032 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B10000000000000000000051 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A10000000000000000000030 /* MycoIOS */; targetProxy = B10000000000000000000050 /* PBXContainerItemProxy */; };
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A10000000000000000000060 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; "EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_NO_COMMON_BLOCKS = YES; GCC_TREAT_WARNINGS_AS_ERRORS = YES; GCC_WARN_64_TO_32_BIT_CONVERSION = YES; GCC_WARN_UNDECLARED_SELECTOR = YES; GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE; GCC_WARN_UNUSED_FUNCTION = YES; GCC_WARN_UNUSED_VARIABLE = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; SDKROOT = iphoneos; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_TREAT_WARNINGS_AS_ERRORS = YES; SWIFT_VERSION = 6.0; }; name = Debug; };
+		A10000000000000000000061 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; "EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_NO_COMMON_BLOCKS = YES; GCC_TREAT_WARNINGS_AS_ERRORS = YES; GCC_WARN_64_TO_32_BIT_CONVERSION = YES; GCC_WARN_UNDECLARED_SELECTOR = YES; GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE; GCC_WARN_UNUSED_FUNCTION = YES; GCC_WARN_UNUSED_VARIABLE = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; SDKROOT = iphoneos; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O"; SWIFT_TREAT_WARNINGS_AS_ERRORS = YES; SWIFT_VERSION = 6.0; }; name = Release; };
+		A10000000000000000000062 /* Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = C10000000000000000000010 /* Shared.xcconfig */; buildSettings = { ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; ENABLE_USER_SCRIPT_SANDBOXING = NO; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = Myco; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.weather"; INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Myco usa la posizione mentre l'app è aperta per analizzare meteo, quota e habitat dell'area selezionata."; INFOPLIST_KEY_UILaunchScreen_Generation = YES; INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"; IPHONEOS_DEPLOYMENT_TARGET = 18.0; MARKETING_VERSION = 0.1.0; OTHER_LDFLAGS = "$(inherited) -framework MycoCore"; PRODUCT_BUNDLE_IDENTIFIER = github.naturewhisp.myco.ios; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_STRICT_CONCURRENCY = complete; TARGETED_DEVICE_FAMILY = 1; }; name = Debug; };
+		A10000000000000000000063 /* Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = C10000000000000000000010 /* Shared.xcconfig */; buildSettings = { ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; ENABLE_USER_SCRIPT_SANDBOXING = NO; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = Myco; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.weather"; INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Myco usa la posizione mentre l'app è aperta per analizzare meteo, quota e habitat dell'area selezionata."; INFOPLIST_KEY_UILaunchScreen_Generation = YES; INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"; IPHONEOS_DEPLOYMENT_TARGET = 18.0; MARKETING_VERSION = 0.1.0; OTHER_LDFLAGS = "$(inherited) -framework MycoCore"; PRODUCT_BUNDLE_IDENTIFIER = github.naturewhisp.myco.ios; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_STRICT_CONCURRENCY = complete; TARGETED_DEVICE_FAMILY = 1; }; name = Release; };
+		B10000000000000000000062 /* Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = C10000000000000000000010 /* Shared.xcconfig */; buildSettings = { BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = github.naturewhisp.myco.ios.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_STRICT_CONCURRENCY = complete; TARGETED_DEVICE_FAMILY = 1; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MycoIOS.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MycoIOS"; }; name = Debug; };
+		B10000000000000000000063 /* Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = C10000000000000000000010 /* Shared.xcconfig */; buildSettings = { BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = github.naturewhisp.myco.ios.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_STRICT_CONCURRENCY = complete; TARGETED_DEVICE_FAMILY = 1; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MycoIOS.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MycoIOS"; }; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A10000000000000000000040 /* Build configuration list for PBXNativeTarget "MycoIOS" */ = {isa = XCConfigurationList; buildConfigurations = (A10000000000000000000062 /* Debug */, A10000000000000000000063 /* Release */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		B10000000000000000000040 /* Build configuration list for PBXNativeTarget "MycoIOSTests" */ = {isa = XCConfigurationList; buildConfigurations = (B10000000000000000000062 /* Debug */, B10000000000000000000063 /* Release */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A10000000000000000000051 /* Build configuration list for PBXProject "MycoIOS" */ = {isa = XCConfigurationList; buildConfigurations = (A10000000000000000000060 /* Debug */, A10000000000000000000061 /* Release */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = A10000000000000000000050 /* Project object */;
+}

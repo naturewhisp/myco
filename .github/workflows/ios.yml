@@ -1,0 +1,59 @@
+name: iOS
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Print toolchain versions
+        run: |
+          xcodebuild -version
+          swift --version
+          xcrun --sdk iphonesimulator --show-sdk-version
+          ./gradlew --version
+      - name: Select an available iPhone Simulator
+        run: |
+          SIMULATOR_ID="$(xcrun simctl list devices available -j | python3 -c '
+          import json
+          import sys
+
+          devices = [
+              device
+              for runtime_devices in json.load(sys.stdin)["devices"].values()
+              for device in runtime_devices
+              if device.get("isAvailable") and device["name"].startswith("iPhone")
+          ]
+          preferred = next((device for device in devices if device["name"] == "iPhone 16 Pro"), None)
+          selected = preferred or next(iter(devices), None)
+          if selected is None:
+              raise SystemExit("No available iPhone Simulator destination")
+          print(selected["udid"])
+          ' )"
+          echo "MYCO_SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
+          xcrun simctl list devices available
+      - name: Build and test iOS
+        run: |
+          xcodebuild \
+            -project iosApp/MycoIOS.xcodeproj \
+            -scheme MycoIOS \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$MYCO_SIMULATOR_ID" \
+            build test \
+            CODE_SIGNING_ALLOWED=NO

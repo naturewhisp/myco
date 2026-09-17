@@ -377,6 +377,7 @@ class MushroomViewModel(
             days,
             lastSpunData?.hyphalDensity,
             species,
+            config = EcologicalWeightsConfig.PHENOLOGICAL,
             canopyCover = estimatedCanopy
         )
 
@@ -459,7 +460,8 @@ class MushroomViewModel(
             month = lastCurrentMonth,
             spunHyphalDensity = lastSpunData?.hyphalDensity,
             terrainModifier = if (calculationMode == "WEATHER_ONLY") 1.0 else terrainEval.modifier,
-            canopyCover = estimatedCanopy
+            canopyCover = estimatedCanopy,
+            config = EcologicalWeightsConfig.PHENOLOGICAL
         )
 
         val fav = favoriteLocations.firstOrNull {

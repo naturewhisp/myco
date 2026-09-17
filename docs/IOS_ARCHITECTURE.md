@@ -2,6 +2,8 @@
 
 Questo documento definisce l'architettura tecnica, le interfacce di sistema e la guida di porting per lo sviluppo della versione **iOS** (iPhone e iPad) dell'applicazione **Myco**.
 
+> Stato settembre 2026: il client iOS 18+ e il core deterministico KMP descritti qui sono implementati. I sottostanti snippet storici restano riferimenti semantici; l'inventario operativo aggiornato è in `docs/ios/COMPLETION_STATUS.md`.
+
 ---
 
 ## 1. Visione Architetturale: Ports & Adapters (Architettura Esagonale)
@@ -45,15 +47,15 @@ graph TD
         A_UI[Jetpack Compose M3 + OsmDroid]
     end
 
-    subgraph "iOS Adapters (Futuri / iosMain)"
-        I_AP[IosAssetProvider - NSBundle Resources]
-        I_KV[IosUserDefaultsStorage - NSUserDefaults]
-        I_CS[IosSqliteCacheStore - SQLite3 C-API / SQLDelight]
-        I_AI[IosAiEngine - Apple Intelligence / CoreML]
-        I_NAV[IosPlatformNavigator - Apple Maps URL / MKMapItem]
-        I_LOC[IosLocationProvider - CoreLocation CLLocationManager]
-        I_ORI[IosOrientationProvider - CoreLocation CLHeading]
-        I_UI[Compose Multiplatform iOS o SwiftUI + MapKit]
+    subgraph "iOS Adapters (Swift nativo)"
+        I_AP[Bundle Data -> core ByteArray]
+        I_KV[PreferencesStore - UserDefaults]
+        I_CS[CacheStore - SwiftData]
+        I_AI[Foundation Models + fallback deterministico]
+        I_NAV[AppleMapsNavigator - MKMapItem]
+        I_LOC[CoreLocationService - CLLocationManager]
+        I_ORI[CoreLocationService - CLHeading]
+        I_UI[SwiftUI + MapKit + Swift Charts]
     end
 
     R --> AP
@@ -81,25 +83,27 @@ graph TD
 
 ## 2. Matrice di Corrispondenza delle Componenti
 
-| Componente | Core Condiviso | Android Adapter | iOS Adapter (Futuro) |
+| Componente | Core Condiviso | Android Adapter | iOS Adapter |
 |---|---|---|---|
 | **Algoritmi di Fruttificazione** | `MushroomAlgorithms.kt` (100% condiviso) | - | - |
 | **Catalogo Specie & Fattori** | `MushroomSpecies.kt`, `Factor.kt` | - | - |
-| **Dati SPUN Micelio** | `SpunDataManager.kt` (parser binario zlib) | `AndroidAssetProvider` (`AssetManager`) | `IosAssetProvider` (`NSBundle.mainBundle`) |
-| **Raster Probabilità (Heatmap)** | `HeatmapRaster` (buffer grezzo 32-bit ARGB) | `HeatmapBitmapExtensions` $\to$ `Bitmap` | Bitmap bridge $\to$ `CGImage` / Skia `ImageBitmap` |
-| **Cache Dati & Rete** | `PlatformCacheStore` | `AndroidSqliteCacheStore` (`SQLiteOpenHelper`) | `IosSqliteCacheStore` (Native SQLite3 / SQLDelight) |
-| **Preferenze Utente** | `KeyValueStorage` | `AndroidSharedPreferencesStorage` | `IosUserDefaultsStorage` (`NSUserDefaults`) |
-| **AI Locale su Dispositivo** | `PlatformAiEngine` | Google AICore / Gemini Nano | Apple Intelligence / CoreML on-device |
+| **Dati SPUN Micelio** | `SpunDataManager.kt` (parser binario da portare) | `AndroidAssetProvider` (`AssetManager`) | `Bundle`/Foundation legge `Data`, il core riceve bytes |
+| **Raster Probabilità (Heatmap)** | `HeatmapRaster` (buffer grezzo 32-bit ARGB) | `HeatmapBitmapExtensions` $\to$ `Bitmap` | Swift adapter $\to$ `CGImage`/`MKOverlayRenderer` |
+| **Cache Dati & Rete** | Policy/contratti deterministici | `AndroidSqliteCacheStore` (`SQLiteOpenHelper`) | `CacheStore` (`SwiftData`) |
+| **Preferenze Utente** | Chiavi/semantica condivise dove utile | `AndroidSharedPreferencesStorage` | `PreferencesStore` (`UserDefaults`) |
+| **AI Locale su Dispositivo** | `PlatformAiEngine` e fallback deterministico | Google AICore / Gemini Nano | Foundation Models con availability check |
 | **Geolocalizzazione** | `PlatformLocationProvider` | Google Play Services Fused Location | Apple `CoreLocation` (`CLLocationManager`) |
 | **Bussola & Orientamento Mappa** | `PlatformOrientationProvider` | Android `SensorManager` (Rot. Vector) | Apple `CoreLocation` (`CLHeading`) |
-| **Navigazione Sentieri/Mappe** | `PlatformNavigator` | Android `Intent` (`geo:lat,lon`) | `maps://?ll=lat,lon&q=...` / `MKMapItem` |
-| **Interfaccia Utente (UI)** | StateFlow / ViewModel | Jetpack Compose Material 3 | Compose Multiplatform iOS o SwiftUI |
+| **Navigazione Sentieri/Mappe** | `PlatformNavigator` | Android `Intent` (`geo:lat,lon`) | `AppleMapsNavigator` / `MKMapItem` |
+| **Interfaccia Utente (UI)** | Nessuna UI nel core | Jetpack Compose Material 3 | SwiftUI nativo |
 
 ---
 
 ## 3. Implementazione degli Adapter iOS
 
-Grazie alla suddivisione modulare, gli adapter iOS si integrano in modo naturale e pulito tramite Kotlin/Native:
+> Nota di migrazione: gli snippet Kotlin/Native nelle sottosezioni 3.1–3.6 documentano i contratti originari, non l'implementazione target. L'ADR-001 li sostituisce con adapter Swift nativi in `iosApp/MycoIOS`; solo parser e calcoli deterministici entrano nel framework KMP.
+
+Grazie alla suddivisione modulare, i contratti restano utili come riferimento semantico mentre le implementazioni iOS usano i framework Apple:
 
 ### 3.1 `IosAssetProvider` (Caricamento Atlante Miceliare SPUN)
 Consente l'accesso allo stream binario di `spun_italy.bin` dal bundle principale di iOS:
@@ -271,8 +275,8 @@ class IosPlatformNavigator : PlatformNavigator {
 }
 ```
 
-### 3.6 `IosAiEngine` (Apple Intelligence & CoreML)
-Sintetizza il bollettino micologico su NPU Apple (Neural Engine) tramite modelli on-device CoreML / Apple Intelligence:
+### 3.6 `IosAiEngine` (Foundation Models)
+Sintetizza il bollettino micologico tramite Foundation Models quando disponibile, con fallback deterministico:
 ```kotlin
 class IosAiEngine : PlatformAiEngine {
     private val _status = MutableStateFlow(AiEngineStatus.READY)
@@ -281,7 +285,7 @@ class IosAiEngine : PlatformAiEngine {
     override fun isAvailable(): Boolean = true
 
     override suspend fun generateAdvancedSummary(prompt: String): String? {
-        // Invocazione adapter CoreML / Apple Foundation Models locale
+        // Invocazione adapter Foundation Models locale, protetta da availability check
         return null // Fallback automatico su MushroomAlgorithms.generateSummaryText() se non pronto
     }
 }
@@ -291,39 +295,27 @@ class IosAiEngine : PlatformAiEngine {
 
 ## 4. Scelta del Framework UI per iOS
 
-Per la versione iOS esistono due percorsi architetturali:
+La decisione è stata formalizzata in `docs/ios/ADR-001-IOS-NATIVE-ARCHITECTURE.md`: la UI iOS usa **SwiftUI nativo**, MapKit, CoreLocation, Foundation/URLSession e Swift Charts. Compose Multiplatform, MapLibre e un design system Material su iOS non fanno parte dell'architettura target.
 
-### Opzione A: Compose Multiplatform for iOS (Fortemente Raccomandata)
-- **Massima Coerenza e Produttività**:
-  - Riutilizzo diretto di oltre l'**85% del codice di presentazione**: `HomeScreen.kt`, `ForecastScreen.kt`, `ProbabilityBar.kt`, `DayRow.kt`, `FactorRow.kt`, `AnomalyNotice.kt`, tema `HerbariumTheme`, palette di colori e tipografia.
-  - Condivisione completa dei `ViewModel` basati su coroutine e `StateFlow`.
-  - Mappe gestite tramite `MapLibre Compose` (compatibile iOS/Metal) o UIKitView bridge.
-- **Distribuzione**: Pacchettizzazione `.ipa` standard tramite Xcode e pubblicazione su App Store / TestFlight.
-
-### Opzione B: Native SwiftUI con Kotlin Multiplatform XCFramework
-- **Vantaggi**:
-  - Esperienza utente 100% nativa con controlli SwiftUI di sistema e piena integrazione `MapKit`.
-  - Supporto nativo immediato per Widget iOS (lock screen e home screen con probabilità del giorno).
-- **Integrazione**:
-  - Il modulo Kotlin `:core` viene compilato in un binario `MycoCore.xcframework` consumato dall'applicazione Xcode.
+Il modulo Kotlin `:core` viene compilato come framework `MycoCore` consumato direttamente dall'applicazione Xcode. Contiene modelli e calcoli deterministici, parser SPUN portabile e contratto raster. View model, lifecycle, networking, storage e rendering restano Apple-native.
 
 ---
 
 ## 5. Blueprint di Modularizzazione Gradle (Roadmap Release v2.0)
 
-Durante la Fase 3, il progetto verrà organizzato secondo la struttura multiplatform standard:
+La Fase 3 ha introdotto la seguente struttura multiplatform incrementale:
 
 ```
 myco/
 ├── core/                  # Modulo Kotlin Multiplatform puro
 │   ├── build.gradle.kts
 │   └── src/
-│       ├── commonMain/    # Modelli, Algoritmi, SpunDataManager, CacheManager, Platform Ports
-│       ├── androidMain/   # AndroidAssetProvider, AndroidKeyValueStorage, AndroidSqliteCacheStore, AICore
-│       └── iosMain/       # IosAssetProvider, IosUserDefaultsStorage, IosLocationProvider, IosOrientationProvider
+│       ├── commonMain/    # Modelli, algoritmi, analisi, SPUN e raster deterministici
+│       ├── androidMain/   # Eventuali adapter strettamente necessari al core
+│       └── iosMain/       # Eventuali adapter Foundation strettamente necessari al core
 ├── app/                   # Applicazione Android nativa (Jetpack Compose, OsmDroid, AndroidManifest)
 │   └── build.gradle
-└── iosApp/                # Applicazione iOS (Progetto Xcode / Swift Package / Compose iOS Entrypoint)
-    ├── iosApp.xcodeproj
-    └── iosApp/
+└── iosApp/                # Applicazione iOS nativa SwiftUI
+    ├── MycoIOS.xcodeproj
+    └── MycoIOS/
 ```

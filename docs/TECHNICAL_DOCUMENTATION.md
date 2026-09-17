@@ -1,7 +1,7 @@
 # Documentazione Tecnica e Architetturale del Progetto Myco
 
 **Progetto:** Myco (`github.naturewhisp.myco`)  
-**Piattaforma:** Android (minSdk 31, targetSdk 36, compileSdk 36, Java 17) & iOS (Ready via Hexagonal Architecture)  
+**Piattaforma:** Android (minSdk 31, targetSdk 36, compileSdk 36, Java 17) & iOS 18+ (client SwiftUI nativo implementato)
 **Versione Documento:** 1.0.0  
 **Data:** 2026-09-09  
 **Stato:** Ufficiale / Architettura e Governance  
@@ -130,7 +130,7 @@ L'applicazione è strutturata secondo i canoni della **Clean Architecture** e de
 │     NETWORK LAYER      │   │   ALGORITHMS CORE   │  │   PLATFORM ADAPTERS  │
 │ Retrofit APIs, OkHttp  │   │ MushroomAlgorithms, │  │ Android (Sensors,    │
 │                        │   │  HeatmapGenerator   │  │ SharedPrefs, Fused)  │
-│                        │   │  (Pure Kotlin)      │  │ iOS (Futuro Core/UI) │
+│                        │   │  (Pure Kotlin)      │  │ iOS (SwiftUI nativo) │
 └────────────────────────┘   └─────────────────────┘  └──────────────────────┘
 ```
 
@@ -141,11 +141,11 @@ La base di codice è organizzata sotto il namespace principale `github.naturewhi
 | Package | File Principali | Responsabilità e Contratti |
 |---|---|---|
 | **Root** | `MainActivity.kt` | Single Activity (`ComponentActivity`), punto di ingresso dell'applicazione e configurazione della finestra a tutto schermo (*edge-to-edge*). |
-| `model` | `CitizenScienceModel.kt`<br>`DailyOutlook.kt`<br>`EcologicalWeightsConfig.kt`<br>`Factor.kt`<br>`GeocodingModel.kt`<br>`HeatmapModel.kt`<br>`HeatmapRenderConfig.kt`<br>`MushroomSpecies.kt`<br>`OverpassModel.kt`<br>`PlaceName.kt`<br>`ProbabilityTier.kt`<br>`SavedLocation.kt`<br>`SpunModel.kt`<br>`TerrainAspectConfig.kt`<br>`TerrainModel.kt`<br>`WeatherModel.kt` | **Dominio Puro:** Data classes, DTO per le API remote, strutture dati immutabili. `HeatmapRaster` definisce il buffer 32-bit grezzo agnostico. `MushroomSpecies` racchiude il catalogo tassonomico delle 10 specie con avvisi sosia tossici (`toxicLookAlikes`). `CitizenScienceModel` definisce il layer di crowdsourcing e DeepMaxent-TGB su DGGS Uber H3 (Risoluzione 7) con privacy differenziale. DTO arricchiti: `OverpassCenter` e `OverpassElement.coordinate` (unificazione nodi/ways), `ClosestCoverageResult` (stazione SPUN più vicina e distanza in km), `SavedLocation.savedAt`. Nessuna dipendenza dal framework Android. |
+| `model` | `CitizenScienceModel.kt`<br>`DailyOutlook.kt`<br>`EcologicalWeightsConfig.kt`<br>`Factor.kt`<br>`GeocodingModel.kt`<br>`HeatmapModel.kt`<br>`HeatmapRenderConfig.kt`<br>`MushroomSpecies.kt`<br>`OverpassModel.kt`<br>`PlaceName.kt`<br>`ProbabilityTier.kt`<br>`SavedLocation.kt`<br>`SpunModel.kt`<br>`TerrainAspectConfig.kt`<br>`TerrainModel.kt`<br>`WeatherModel.kt` | **Dominio Puro:** Data classes, DTO per le API remote, strutture dati immutabili. `HeatmapRaster` definisce il buffer 32-bit grezzo agnostico. `MushroomSpecies` racchiude il catalogo tassonomico delle 12 specie con avvisi sosia tossici (`toxicLookAlikes`). `CitizenScienceModel` definisce il layer di crowdsourcing e DeepMaxent-TGB su DGGS Uber H3 (Risoluzione 7) con privacy differenziale. DTO arricchiti: `OverpassCenter` e `OverpassElement.coordinate` (unificazione nodi/ways), `ClosestCoverageResult` (stazione SPUN più vicina e distanza in km), `SavedLocation.savedAt`. Nessuna dipendenza dal framework Android. |
 | `platform` | `AssetProvider.kt`<br>`InMemoryCacheStore.kt`<br>`KeyValueStorage.kt`<br>`PlatformAiEngine.kt`<br>`PlatformCacheStore.kt`<br>`PlatformLocationProvider.kt`<br>`PlatformNavigator.kt`<br>`PlatformOrientationProvider.kt`<br>`UserLocation.kt` | **Porte Agnostiche:** Interfacce del pattern esagonale che disaccoppiano l'accesso all'hardware, allo storage persistente e al file system. I contratti (`PlatformCacheStore` con `get` e `getIgnoreExpiry`, `KeyValueStorage`, `AssetProvider`, `PlatformAiEngine`, ecc.) e i modelli associati (`UserLocation`, `DeviceHeading`, `MapOrientationMode`, `CacheStats`) contengono 0 import di sistema. Include `InMemoryCacheStore` per test unitari e ambienti JVM. |
 | `platform.android` | `AndroidAssetProvider`<br>`AndroidLocationProvider.kt`<br>`AndroidPlatformNavigator`<br>`AndroidSensorOrientationProvider.kt`<br>`AndroidSharedPreferencesStorage`<br>`AndroidSqliteCacheStore.kt`<br>`HeatmapBitmapExtensions.kt` | **Adapter Android:** Implementazioni concrete collegate alle API di Google Play Services, Android `SensorManager`, `AssetManager`, `SharedPreferences` e database relazionale nativo `SQLiteOpenHelper` (`AndroidSqliteCacheStore` con supporto `getIgnoreExpiry`) per caching HTTP a bassissima latenza con indici geospaziali e temporali. Conversioni grafiche raster-to-bitmap. |
 | `network` | `ApiServices.kt`<br>`LocalAiService.kt`<br>`NetworkClient.kt` | Client HTTP Retrofit per Open-Meteo, Nominatim e Overpass API (con User-Agent parametrico e pre-allocazione dei client mirror); adapter locale Google AI Edge AICore per Gemini Nano. |
-| `repository` | `CacheManager.kt`<br>`MushroomRepository.kt`<br>`SpunDataManager.kt` | Aggregazione di fonti dati concorrenti, architettura di caching a doppio motore con supporto `getIgnoreExpiry` per modalità da campo offline, sniffer di prossimità SPUN su 11 stazioni sentinella (`findClosestCoveragePoint`), snapping reale su poligoni forestali OSM (`findNearestForest`), prefetch completo per uso offline (`prefetchCompleteLocation`), decompressione zlib dell'atlante SPUN. Constructor injection con default parameters per testabilità. |
+| `repository` | `CacheManager.kt`<br>`MushroomRepository.kt`<br>`SpunDataManager.kt` | Aggregazione di fonti dati concorrenti, architettura di caching a doppio motore con supporto `getIgnoreExpiry` per modalità da campo offline, sniffer di prossimità SPUN su 11 stazioni sentinella (`findClosestCoveragePoint`), snapping reale su poligoni forestali OSM (`findNearestForest`), prefetch completo per uso offline (`prefetchCompleteLocation`), decompressione zlib dell'atlante SPUN. Constructor injection con default parameters per testabilità. Il core KMP espone inoltre `EnvironmentalWindows` e `AnalysisResult` come contratti canonici condivisi. |
 | `ui.components` | `AnomalyNotice.kt`<br>`CompassRoseDial.kt`<br>`DayRow.kt`<br>`EmptyState.kt`<br>`FactorRow.kt`<br>`FieldNote.kt`<br>`HeatmapOverlay.kt`<br>`MapViewContainer.kt`<br>`MushroomComponents.kt`<br>`MycoDivider.kt`<br>`ProbabilityBar.kt`<br>`ProbabilityHeadline.kt`<br>`RenameFavoriteDialog.kt`<br>`SafetyDisclaimerDialog.kt`<br>`SpeciesSelectionSheet.kt`<br>`TrendCurve.kt`<br>`UserBearingOverlay.kt` | Componenti Compose modulari, atomici e riutilizzabili. Layout tabulari con protezione da starvation orizzontale. Modale di sicurezza micologica (`SafetyDisclaimerDialog`). Banner diagnostici (`HabitatAnomalyNotice`, `OutsideCoverageNotice` dinamico con distanza/stazione, `OfflineCacheNotice` da campo). Bridge AndroidView per OsmDroid MapView con gestione ciclo di vita. |
 | `ui.screens` | `ForecastScreen.kt`<br>`HomeScreen.kt`<br>`MapScreen.kt`<br>`MushroomApp.kt`<br>`SettingsScreen.kt` | Schermate principali di navigazione: registro fenologico giornaliero, tavola cartografica interattiva, impostazioni (con diagnostica storage e tool di prefetch offline asincrono con progress spinner) e scaffold applicativo. |
 | `ui.theme` | `Color.kt`<br>`MycoColors.kt`<br>`Shape.kt`<br>`Theme.kt`<br>`ThemePreference.kt`<br>`Type.kt` | Design System *Herbarium*: token cromatici botanici, tipografia editoriale (Newsreader, Inter, CodeTech) e persistenza del tema chiaro/scuro via DataStore. |
@@ -335,19 +335,29 @@ Le classi nel package `github.naturewhisp.myco.platform.android` collegano le po
 * `AndroidPlatformNavigator`: Costruisce e avvia un Intent nativo con schema URI `geo:lat,lon?q=lat,lon(label)`.
 * `LocalAiService`: Implementazione Android di `PlatformAiEngine` basata su Google AI Edge AICore (`com.google.ai.edge.aicore`).
 
-### 3.4 Predisposizione al Porting iOS e Roadmap Multiplatform
-In conformità a `docs/IOS_ARCHITECTURE.md`, Myco è predisposta per il riutilizzo del 100% della logica di calcolo su iOS. Il disaccoppiamento richiede unicamente la fornitura degli adapter specifici:
+### 3.4 Client iOS nativo e core Multiplatform
+La decisione registrata in `docs/ios/ADR-001-IOS-NATIVE-ARCHITECTURE.md` adotta SwiftUI e stack Apple nativi. Il riuso KMP è limitato al core deterministico; networking, persistenza, posizione, mappa, lifecycle e UI restano implementazioni specifiche di piattaforma.
 
-| Porta Piattaforma | Implementazione Android Attuale | Implementazione iOS Prevista |
+| Porta Piattaforma | Implementazione Android Attuale | Implementazione iOS |
 |---|---|---|
-| `AssetProvider` | `context.assets.open(path)` | `IosAssetProvider` (`NSBundle.mainBundle`) |
-| `KeyValueStorage` | `SharedPreferences` via KTX | `IosUserDefaultsStorage` (`NSUserDefaults`) |
-| `PlatformCacheStore` | `AndroidSqliteCacheStore` (SQLite nativo) | `IosSqliteCacheStore` (SQLite3 C-API / SQLDelight) |
-| `PlatformAiEngine` | Google AICore (Gemini Nano) | Apple Intelligence / CoreML on-device |
+| `AssetProvider` | `context.assets.open(path)` | `SpunBundleService` (`Bundle.main` + Apple Compression) |
+| `KeyValueStorage` | `SharedPreferences` via KTX | `PreferencesStore` (`UserDefaults`) |
+| `PlatformCacheStore` | `AndroidSqliteCacheStore` (SQLite nativo) | `CacheStore` SwiftData con TTL e fallback scaduto |
+| `PlatformAiEngine` | Google AICore (Gemini Nano) | Foundation Models con availability check e fallback deterministico |
 | `PlatformLocationProvider` | Google Play Services Fused Location | Apple `CoreLocation` (`CLLocationManager`) |
 | `PlatformOrientationProvider`| Android `SensorManager` (Rot. Vector) | Apple `CoreLocation` (`CLHeading` / magnetometro iPhone) |
-| `PlatformNavigator` | Android `Intent("geo:...")` | Apple Maps URL `maps://?ll=lat,lon&q=...` / `MKMapItem` |
-| **Interfaccia Grafica** | Jetpack Compose M3 (Android) | Compose Multiplatform for iOS o SwiftUI nativo |
+| `PlatformNavigator` | Android `Intent("geo:...")` | `MKMapItem` / Apple Maps |
+| **Interfaccia Grafica** | Jetpack Compose M3 (Android) | SwiftUI nativo + MapKit + Swift Charts |
+
+Il package applicativo iOS è sotto `iosApp/MycoIOS`: `Data` contiene ricerca MapKit, client Foundation/URLSession, cache SwiftData e luoghi salvati; `DomainAdapters` aggrega i DTO Open-Meteo nel modello KMP; `Platform` contiene UserDefaults, CoreLocation, Apple Maps, Foundation Models e il bridge SPUN; `App` ospita lo state holder cancellabile; `Features` contiene Registry, Forecast, selettore specie e mappa con heatmap. `OverpassClient` usa il raggio canonico di 1500 m e categorie habitat coerenti col core; `SavedPlacesStore` persiste coordinate a 3 decimali e mantiene al massimo 8 recenti; `SpunBundleService` è un actor che restituisce snapshot `Sendable`; `PersistenceBootstrap` conserva lo store SwiftData e degrada a in-memory senza reset distruttivi. `MycoViewModel` usa generazioni/cancellazione per prevenire risultati stantii e rende espliciti fallback offline e sorgenti mancanti. Il progetto usa gruppi sincronizzati col filesystem, iOS 18+, Swift 6 strict concurrency, asset icon, launch screen generata e privacy manifest.
+
+La build phase `Build MycoCore` individua e valida un JDK 17 già configurato o installato tramite Homebrew nei prefissi standard Apple Silicon e Intel, mantenendo invariato il comando Gradle di embedding del framework KMP.
+
+Le configurazioni applicative Xcode includono `iosApp/Config/Shared.xcconfig`; questo carica facoltativamente il file locale ignorato `Local.xcconfig`, nel quale ogni sviluppatore può impostare `DEVELOPMENT_TEAM` senza versionare dati di signing personali.
+
+Il modulo `:core` KMP è attivo con target Android, `iosArm64` e `iosSimulatorArm64`. Il framework statico `MycoCore` contiene catalogo delle 12 specie, tier e fattori, serie giornaliere, `EnvironmentalWindows`, formule biologiche (inclusa la formula saprotrofica senza floor artificiale), `MycoAnalysisEngine`, parser SPUN e `HeatmapRaster`. Fixture complete `AnalysisResult` Android/KMP e fixture reali SPUN supportano la parità dei dati; iOS consuma questi tipi direttamente. Android usa il modulo e delega al core formula canonica e palette standard, mantenendo temporaneamente facade Android compatibili per non alterare ViewModel, Retrofit/OkHttp, OsmDroid o AICore. Golden test, hash raster e test cross-platform bloccano variazioni scientifiche involontarie.
+
+Il client iOS completa il follow-up di parità applicativa: Foundation Models può scegliere solo un token di stile chiuso, mentre la nota scientifica e l'avvertenza sono renderizzate localmente; l'assenza del modello conserva la nota offline del core. SwiftUI espone stati accessibili e gli stati di autorizzazione, errore e indisponibilità di Core Location. Il tracking è vincolato al tab Mappa attivo e al disclaimer accettato; il Registro richiede soltanto un fix one-shot su azione dell'utente. Quando `CoreLocationService` è `stopped`, anche il ritorno dell'app in foreground mantiene il refresh passivo senza prompt o avvio hardware. La suite `MycoIOSTests` include copertura per API/client, mapping Open-Meteo, habitat Overpass, cache e bootstrap SwiftData, luoghi recenti, SPUN actor, conversione raster, policy Foundation Models, lifecycle Core Location, ricerca e anti-race del ViewModel. La copertura documentata non equivale ancora a una certificazione CI, device o distribuzione.
 
 ---
 

@@ -618,7 +618,7 @@ La sicurezza del raccoglitore è prioritaria. L'applicazione deve fornire salvag
 
 ## 6. Predisposizione Multiplatform e Mobile iOS (Allineamento con `docs/IOS_ARCHITECTURE.md`)
 
-Il documento `docs/IOS_ARCHITECTURE.md` specifica le linee guida per la realizzazione della versione mobile iOS (iPhone e iPad) condividendo il 100% della logica di business.
+Il documento `docs/ios/ADR-001-IOS-NATIVE-ARCHITECTURE.md` fissa la realizzazione della versione mobile iOS con SwiftUI e stack Apple nativi, condividendo tramite KMP soltanto la logica di dominio deterministica.
 
 ```mermaid
 graph TD
@@ -637,9 +637,9 @@ graph TD
         end
 
         subgraph "app:ios (iOS Mobile Application)"
-            I_UI[Compose Multiplatform iOS o SwiftUI]
-            I_MAP[MapLibre Compose / MapKit Viewer]
-            I_ADAPT[iOS Adapters: CoreLocation, NSUserDefaults, CoreML / Apple Intelligence]
+            I_UI[SwiftUI nativo + Swift Charts]
+            I_MAP[MapKit]
+            I_ADAPT[iOS Adapters: CoreLocation, UserDefaults, Foundation Models]
         end
 
         A_UI --> R
@@ -650,14 +650,31 @@ graph TD
 ```
 
 ### 6.1 Verifica di Portabilità del Core Condiviso
-* **Buffer Raster Pure Kotlin**: `HeatmapRaster` impiega già un `IntArray` 32-bit ARGB senza riferimenti ad `android.graphics.Bitmap`. Sulla versione iOS, questo buffer viene convertito direttamente in un'immagine Skia (`org.jetbrains.skia.Image.makeRaster`) o in un `CGImage` nativo Apple senza necessità di emulare Android.
-* **Indipendenza degli Algoritmi**: `MushroomAlgorithms.kt` non possiede alcuna dipendenza verso librerie Android o Java non portabili.
-* **Interfacce Port già Esistenti**: `AssetProvider`, `KeyValueStorage`, `PlatformNavigator`, `PlatformLocationProvider` e `PlatformOrientationProvider` in `github.naturewhisp.myco.platform` consentono un innesto plug-and-play di implementazioni per iOS (`IosUserDefaultsStorage`, `IosAssetProvider`, `IosLocationProvider`, `IosOrientationProvider`, `IosPlatformNavigator`).
+* **Buffer Raster Pure Kotlin**: `HeatmapRaster` usa un `IntArray` 32-bit ARGB senza riferimenti di piattaforma. iOS lo converte in `CGImage` e lo georeferenzia con un overlay MapKit; Android mantiene il proprio adapter grafico.
+* **Algoritmi Condivisi**: modelli, curve biologiche, probabilità canonica, facade di analisi, parser SPUN e generatore raster sono in `core/src/commonMain` senza API Java/Android/Apple.
+* **Adapter iOS Operativi**: `PreferencesStore`, `CoreLocationService`, `AppleMapsNavigator`, `FoundationModelService`, `SpunBundleService`, `CacheStore` e i client URLSession implementano il bordo Apple senza contaminare il core.
+* **Build locale iOS portabile**: la phase Xcode `Build MycoCore` valida Java 17 e risolve il JDK tramite `JAVA_HOME`, `java_home` o Homebrew sui prefissi standard Apple Silicon e Intel, senza richiedere symlink macchina-specifici.
+* **Signing iOS isolato**: le impostazioni condivise usano `Shared.xcconfig`, mentre il `DEVELOPMENT_TEAM` dello sviluppatore risiede nell'override `Local.xcconfig` escluso da Git.
 
-### 6.2 Azioni Preliminari Necessarie per la Modularizzazione KMP
+### 6.2 Stato della Modularizzazione KMP
 1. **Rimozione dei costruttori con `Context` nei Repository** (risolve TD-05).
 2. **Spostamento della classe `HeatmapData`** (che contiene il riferimento a `android.graphics.Bitmap`) dal package model del core al layer di presentazione Android (`ui/components` o `platform/android`).
-3. **Conversione del build script di Gradle** da Groovy DSL singolo (`app/build.gradle`) a multi-modulo con Kotlin DSL (`settings.gradle.kts`, `:core`, `:app`, `:iosApp`).
+3. **Completata l'estrazione deterministica**: `:core` produce framework Android/iPhone/simulatore e contiene dominio, algoritmi, analisi, SPUN e raster. L'app Android conserva facade compatibili ma usa il core per i percorsi standard; l'app iOS lo consuma tramite framework statico.
+
+### 6.3 Follow-up iOS completato e contratti di parità
+Il follow-up di implementazione ha consolidato la parità tra Android, KMP e iOS sui percorsi scientifici e di campo. In particolare:
+
+* `EnvironmentalWindows` è l'API canonica condivisa per le finestre ambientali; la formula saprotrofica non applica più un floor artificiale al risultato.
+* `AnalysisResult` dispone di fixture complete per Android/KMP e di fixture reali SPUN, così da verificare fattori, sorgenti mancanti e campionamento su dati rappresentativi.
+* L'acquisizione habitat iOS è allineata alle categorie del core: raggio operativo di 1500 m e query dedicate per habitat aperti/saprotrofici e copertura forestale/simbionti.
+* `SavedPlacesStore` usa identità geografiche arrotondate a 3 decimali e limita i luoghi recenti agli 8 elementi più nuovi, con migrazione dei duplicati storici.
+* Il parser SPUN iOS è isolato in `SpunBundleService` (actor); il confine espone snapshot `Sendable` e mantiene i riferimenti KMP non `Sendable` confinati all'actor.
+* Il bootstrap SwiftData è non distruttivo: conserva lo store esistente e usa un fallback in-memory quando l'apertura o la migrazione non è recuperabile, senza cancellare o ricostruire automaticamente i dati.
+* `MycoViewModel` applica token di generazione e controlli di cancellazione per impedire risultati stantii; i fallback offline e le sorgenti mancanti sono esplicitati nel modello e nella UI.
+* Le note narrative di Foundation Models passano da validazione deterministica e mantengono il testo del core quando il modello non è disponibile.
+* SwiftUI espone stati accessibili e stati di autorizzazione/errore di Core Location; il tracking e la richiesta del permesso GPS iniziano solo dopo l'accettazione dell'avvertenza e l'attivazione esplicita della Mappa o del comando one-shot. In modalità `stopped`, avvio e ritorno in foreground eseguono soltanto un refresh passivo e non possono richiedere autorizzazione o avviare location/heading. La suite iOS è stata ampliata con test per habitat, cache, persistenza, ricerca, concorrenza, SPUN, narrativa, conversione raster e lifecycle Core Location.
+
+Questo stato documenta l'implementazione e la copertura dei contratti; non certifica ancora CI verde, installazione su dispositivo, firma, TestFlight o readiness App Store.
 
 ---
 
@@ -715,11 +732,11 @@ $$\text{Priority Score} = (\text{Impatto} \times 2) - \text{Sforzo} \quad (\text
 | **FEAT-11**| Science | Microclima di canopia e buffering De Frenne ($C_f$) | 4 | 2 | **6.0** | **P2** | 3 SP / **S** | v1.2 | **COMPLETATO** (v1.2) |
 | **FEAT-12**| Science | Modello termico cardinale CTMI e finestre $P_{d-26}$ / $T_{d-20}$ | 5 | 3 | **7.0** | **P1** | 5 SP / **M** | v1.2 | **COMPLETATO** (v1.2) |
 | **FEAT-13**| Science | Modello Hurdle a due stadi ($p_{\text{hurdle}}$ Weibull vs $P_{\text{cond}}$) | 5 | 3 | **7.0** | **P1** | 5 SP / **M** | v1.2 | **COMPLETATO** (v1.2) |
-| **FEAT-14**| Science | Risposta unimodale dell'area basimetrica $G$ (CTFC Bonet/de-Miguel) | 4 | 2 | **6.0** | **P2** | 3 SP / **S** | v1.2 | **COMPLETATO** (v1.2) |
+| **FEAT-14**| Science | Risposta unimodale dell'area basimetrica $G$ (CTFC Bonet/de-miguel) | 4 | 2 | **6.0** | **P2** | 3 SP / **S** | v1.2 | **COMPLETATO** (v1.2) |
 | **FEAT-15**| Science | Valutazione dinamica per specie dell'habitat (`evaluateSpeciesHabitat`) | 5 | 3 | **7.0** | **P1** | 5 SP / **M** | v1.2 | **COMPLETATO** (v1.2) |
 | **FEAT-16**| Taxonomy | Espansione catalogo con *Lactarius deliciosus* e *Morchella esculenta* | 4 | 2 | **6.0** | **P2** | 3 SP / **S** | v1.2 | **COMPLETATO** (v1.2) |
-| **KMP-01** | Architecture| Riorganizzazione Gradle in multi-modulo `:core` KMP | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v2.0 | *Pianificato* |
-| **KMP-02** | Mobile UI | Implementazione client iOS con Compose Multiplatform / SwiftUI | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v2.0 | *Pianificato* |
+| **KMP-01** | Architecture| Riorganizzazione Gradle in multi-modulo `:core` KMP | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v2.0 | **COMPLETATO** — dominio, engine, SPUN e heatmap condivisi; gate scientifici e performance attivi |
+| **KMP-02** | Mobile UI | Implementazione client iOS SwiftUI nativo | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v2.0 | **IMPLEMENTAZIONE COMPLETATA** — Registry/Forecast/MapKit, finestre ambientali condivise, habitat 1500 m, SPUN actor-isolated, offline, preferiti, Foundation Models validati, accessibilità e hardening anti-race; CI, device, firma e distribuzione restano da verificare |
 | **FEAT-05**| Hardware | Sensore barometrico nativo e telemetria sonde BLE | 3 | 4 | **2.0** | **P3** | 8 SP / **M** | v2.0 | *Pianificato* |
 | **FEAT-06**| Weather | Overlay radar precipitativo animato su MapView | 3 | 3 | **3.0** | **P3** | 5 SP / **M** | v2.0 | *Pianificato* |
 | **FEAT-07**| AI Weather | Nowcasting predittivo WeatherNext 3 (Google DeepMind) per FEAT-06 | 4 | 4 | **4.0** | **P3** | 13 SP / **L** | Post v2.0 | *Valutazione (Subordinata a FEAT-06)* |
@@ -754,8 +771,8 @@ gantt
 
     section Fase 3: v2.0 Multiplatform iOS
     Modularizzazione Gradle KMP :core (KMP-01)  :crit, 2027-01-10, 21d
-    Adapter iOS (CoreLocation, NSUserDefaults, CoreML) :2027-02-01, 14d
-    UI Compose Multiplatform iOS / SwiftUI (KMP-02)   :crit, 2027-02-15, 28d
+    Adapter iOS (CoreLocation, UserDefaults, Foundation Models) :done, 2027-02-01, 14d
+    UI SwiftUI nativa (KMP-02)                 :crit, done, 2027-02-15, 28d
     Sensori Barometrici & Sonde BLE (FEAT-05)   :2027-03-01, 14d
     Radar Precipitativo Real-Time (FEAT-06)     :2027-03-10, 14d
     Release v2.0 iOS & Android                  :milestone, 2027-04-01, 0d
@@ -819,21 +836,21 @@ gantt
 *Obiettivo Primario*: Rilasciare la versione mobile nativa per iOS (iPhone e iPad) condividendo il 100% della logica di business e abilitare funzionalità hardware avanzate per raccoglitori professionisti sul campo.
 
 * **Deliverable e Interventi**:
-  1. **Riorganizzazione Gradle Multiplatform**: Scorporo del repository nei moduli `:core` (Kotlin Multiplatform puro con `commonMain`, `androidMain`, `iosMain`), `:app` (Android) e `:iosApp` (iOS).
-  2. **Implementazione iOS Adapters**:
+  1. [x] **Riorganizzazione Gradle Multiplatform**: **COMPLETATA** — `:core` (Kotlin Multiplatform puro con `commonMain`, `androidMain`, `iosMain`), `:app` (Android) e `:iosApp` (iOS).
+  2. [x] **Implementazione iOS Adapters**: **COMPLETATA** —
      - `IosAssetProvider` con accesso all'atlante SPUN tramite `NSBundle.mainBundle`.
-     - `IosUserDefaultsStorage` basato su `NSUserDefaults` per preferenze e preferiti.
-     - `IosLocationProvider` con Apple `CoreLocation` (`CLLocationManager`) e `IosOrientationProvider` con `CLHeading` per bussola hardware da campo.
-     - `IosPlatformNavigator` con apertura di coordinate su Apple Maps via `maps://` o `MKMapItem`.
-     - `IosAiEngine` con integrazione di modelli on-device tramite Apple Intelligence / CoreML.
-     - `IosSqliteCacheStore` basato su SQLite nativo C-API o SQLDelight.
-  3. **Interfaccia Grafica Mobile iOS**: Realizzazione dell'interfaccia utente con **Compose Multiplatform for iOS** (o SwiftUI nativo), ottimizzata per iPhone, navigazione fluida, gestione preferiti, widget per la schermata di blocco/home screen ed esportazione waypoint.
+     - `PreferencesStore` basato su `UserDefaults` per preferenze e disclaimer.
+     - `CoreLocationService` con Apple `CoreLocation` (`CLLocationManager`) e `CLHeading` per bussola hardware da campo.
+     - `AppleMapsNavigator` con apertura di coordinate via `MKMapItem`.
+     - `IosAiEngine` con Foundation Models, controllo di disponibilità e fallback deterministico.
+     - Cache strutturata basata su SwiftData o SQLite3 di sistema.
+  3. [x] **Interfaccia Grafica Mobile iOS**: **IMPLEMENTATA** con **SwiftUI nativo**, MapKit e Swift Charts, includendo Registry/Forecast, gestione preferiti, stati accessibili e diagnostica offline. Widget ed esportazione waypoint restano evolutive separate.
   4. **Altimetria Barometrica Nativa**: Lettura del barometro di bordo (`CMAltimeter` su iOS, `Sensor.TYPE_PRESSURE` su Android) per calibrazione della quota e allarmi meteo rapidi.
   5. **Integrazione Sonde BLE di Terze Parti**: Supporto per la connessione con sonde di umidità e temperatura del terreno Bluetooth via `CoreBluetooth`.
 
 * **Criteri di Rilascio v2.0**:
-  - Applicazione mobile per iOS pacchettizzata come `.ipa` e distribuita tramite TestFlight / App Store.
-  - Condivisione verificata di oltre l'85-90% del codice logico, dei modelli e dell'interfaccia tra le piattaforme.
+  - Parità verificata del core scientifico deterministico; le interfacce restano native e indipendenti per piattaforma.
+  - Verifica operativa ancora necessaria per build CI, installazione su dispositivo, firma, pacchettizzazione `.ipa` e distribuzione TestFlight/App Store.
 
 ---
 
@@ -903,4 +920,3 @@ Un microservizio serverless leggero (ospitato su Cloud Run con container Python/
 3. Aggrega i percentili ensemble ($p_{10}, p_{50}, p_{90}$) per la cella richiesta.
 4. Restituisce al client mobile un payload GeoJSON vettoriale ultra-compatto ($< 15\text{ KB}$) o un set di tile raster semi-trasparenti pronte per il layer OsmDroid/MapLibre.
 5. Mantiene una cache edge territoriale di 30 minuti per servire istantaneamente richieste provenienti dalla medesima vallata montano-forestale.
-

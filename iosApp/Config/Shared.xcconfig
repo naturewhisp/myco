@@ -1,0 +1,3 @@
+// Shared iOS build settings. Developer-specific signing belongs in the optional
+// Local.xcconfig file, which is intentionally excluded from Git.
+#include? "Local.xcconfig"

@@ -385,13 +385,13 @@ Nei modelli quantitativi biometrici della fruttificazione fungina (de-Miguel et 
 2. **Stadio 2 (Intensità Condizionale di Carpogenesi, $P_{\text{cond}}$):** Valuta l'entità quantitativa della fruttificazione condizionata al superamento dell'hurdle ecologico, guidata dai fattori meteorologici e fenologici dinamici.
 
 #### A. Calibrazione Continua della Resa Condizionale ($P_{\text{cond}}$)
-La probabilità condizionale grezza $P_{\text{raw}}$ viene calcolata moltiplicando la componente meteorologica pesata per i fattori ecologici continui:
+La probabilità condizionale grezza $P_{\text{raw}}$ viene calcolata moltiplicando la componente meteorologica pesata per i fattori ecologici continui, l'eventuale hurdle di occorrenza e il moltiplicatore fenologico della fase di crescita ($\Phi_{\text{phase}}$):
 
-$$P_{\text{raw}} = \max\left(0.0,\; 100 \times \left(\frac{W}{100}\right)^{1.2} \times H \times A \times S \times T\right)$$
+$$P_{\text{raw}} = \max\left(0.0,\; 100 \times \left(\frac{W}{100}\right)^{1.2} \times H \times A \times S \times T \times p_{\text{hurdle}} \times \Phi_{\text{phase}}\right)$$
 
 Per riflettere l'incertezza ecologica inosservabile (pressione antropica, parassitismo, microclima locale) ed evitare una distribuzione in cui si raggiunga garantitamente il 100%, i valori eccellenti vengono compressi tramite una funzione asintotica smooth con soglia (*knee-point*) $P_{\text{knee}} = 70.0$ e tetto massimo teorico $P_{\max} = 92.0$:
 
-$$P_{\text{cond}} = \begin{cases} P_{\text{raw}} & \text{se } P_{\text{raw}} \le 70.0 \\ 70.0 + 22.0 \cdot \tanh\left(\frac{P_{\text{raw}} - 70.0}{22.0}\right) & \text{se } P_{\text{raw}} > 70.0 \end{cases}$$
+$$P_{\text{calibrated}} = \begin{cases} P_{\text{raw}} & \text{se } P_{\text{raw}} \le 70.0 \\ 70.0 + 22.0 \cdot \tanh\left(\frac{P_{\text{raw}} - 70.0}{22.0}\right) & \text{se } P_{\text{raw}} > 70.0 \end{cases}$$
 
 Dove:
 * **$W \in [0, 100]$:** Punteggio meteorologico combinato (con esponente di sensitività **$1.2$**).
@@ -399,11 +399,13 @@ Dove:
 * **$A \in [0.40, 1.00]$:** Punteggio altitudinale specifico della specie (`calculateSpeciesAltitudeScore`).
 * **$S \in [0.10, 1.00]$:** Punteggio fenologico stagionale del mese in corso (`calculateSpeciesSeasonalityScore`).
 * **$T \in [0.50, 1.10]$:** Modificatore continuo del versante orografico (pendenza ed esposizione solare).
+* **$p_{\text{hurdle}} \in [0.0, 1.0]$:** Probabilità di superamento dell'hurdle ecologico (Weibull CDF); $1.0$ nel modello polifito standard.
+* **$\Phi_{\text{phase}} \in [0.35, 1.00]$:** Moltiplicatore biologico della fase fenologica (`evaluateGrowthPhase`): attua la Legge del Minimo di Liebig limitando la probabilità a $\sim 35\%\dots 50\%$ durante l'idratazione iniziale del micelio e l'incubazione dei primordi ($\tau < 0.6 \cdot \tau_{\text{peak}}$), evitando falsi positivi precoci prima dell'effettiva carpogenesi.
 
 #### B. Modello Hurdle di Occorrenza con CDF di Weibull ($p_{\text{hurdle}}$, `hurdleOccurrenceProbability`)
-In modalità fenologica avanzata (`usePhenologicalInertia = true`), per le singole specie target la probabilità finale è il prodotto dei due stadi:
+In modalità fenologica avanzata (`usePhenologicalInertia = true`), per le singole specie target la probabilità finale integra il filtro a due stadi:
 
-$$P_{\text{calibrated}} = p_{\text{hurdle}} \times P_{\text{cond}}$$
+$$P_{\text{calibrated}} = f_{\text{calib}}(P_{\text{raw}}) \quad \text{con } P_{\text{raw}} \propto p_{\text{hurdle}} \times H \times A \times W^{1.2} \times S \times T \times \Phi_{\text{phase}}$$
 
 La probabilità di superamento dell'hurdle $p_{\text{hurdle}}$ è modellata tramite la distribuzione cumulativa di Weibull:
 $$p_{\text{hurdle}} = 1 - \exp\left(-\left(\frac{x}{\sigma}\right)^\beta\right)$$

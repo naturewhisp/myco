@@ -1686,7 +1686,8 @@ object MushroomAlgorithms {
         seasonalityScore: Double,
         terrainModifier: Double = 1.0,
         config: EcologicalWeightsConfig = EcologicalWeightsConfig.DEFAULT,
-        species: MushroomSpecies? = null
+        species: MushroomSpecies? = null,
+        growthPhaseMultiplier: Double = 1.0
     ): Int {
         if (config == EcologicalWeightsConfig.DEFAULT) {
             return SharedMycoAlgorithms.growthProbability(
@@ -1702,11 +1703,11 @@ object MushroomAlgorithms {
         val rawProb = if (species != null && config.usePhenologicalInertia) {
             // Modello Hurdle a Due Stadi (de-Miguel et al. 2014)
             val pHurdle = hurdleOccurrenceProbability(habitatScore, altitudeScore, species)
-            val combined = weightedWeatherScore * pHurdle * seasonalityScore * terrainModifier
+            val combined = weightedWeatherScore * habitatScore * altitudeScore * seasonalityScore * terrainModifier * pHurdle * growthPhaseMultiplier
             combined.coerceAtLeast(0.0)
         } else {
             // Formulazione moltiplicativa classica pura (piena invarianza e retrocompatibilità per oracolo)
-            val combined = weightedWeatherScore * habitatScore * altitudeScore * seasonalityScore * terrainModifier
+            val combined = weightedWeatherScore * habitatScore * altitudeScore * seasonalityScore * terrainModifier * growthPhaseMultiplier
             combined.coerceAtLeast(0.0)
         }
         
@@ -2044,7 +2045,8 @@ object MushroomAlgorithms {
 
         for (i in startIndex until processedDays.size) {
             val weatherScore = calculateWeatherScore(i, processedDays, spunHyphalDensity, species, config, canopyCover)
-            val prob = dailyGrowthProbability(weatherScore, habitatScore, altScore, seasonScore, terrainModifier, config, species = species)
+            val growthPhaseMultiplier = evaluateGrowthPhase(processedDays, species, i).multiplier
+            val prob = dailyGrowthProbability(weatherScore, habitatScore, altScore, seasonScore, terrainModifier, config, species = species, growthPhaseMultiplier = growthPhaseMultiplier)
             result.add(DailyOutlook.fromProcessedDay(effectiveDays[i], prob))
         }
         return result

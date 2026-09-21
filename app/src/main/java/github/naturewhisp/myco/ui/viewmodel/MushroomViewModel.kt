@@ -413,6 +413,8 @@ class MushroomViewModel(
             species = species
         )
         lastTerrainEvaluation = terrainEval
+        
+        val growthPhaseEval = MushroomAlgorithms.evaluateGrowthPhase(days, species, todayIndex)
 
         val prob = MushroomAlgorithms.dailyGrowthProbability(
             weatherScore = rawWeatherScore,
@@ -421,7 +423,8 @@ class MushroomViewModel(
             seasonalityScore = seasonMult,
             terrainModifier = if (calculationMode == "WEATHER_ONLY") 1.0 else terrainEval.modifier,
             config = EcologicalWeightsConfig.PHENOLOGICAL,
-            species = species
+            species = species,
+            growthPhaseMultiplier = growthPhaseEval.multiplier
         )
         todayProbability = prob
 

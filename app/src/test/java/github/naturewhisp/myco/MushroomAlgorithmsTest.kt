@@ -811,4 +811,61 @@ class MushroomAlgorithmsTest {
         assertTrue("Morchella deve fruttificare in primavera", morchella.activeMonths.contains(3)) // Aprile (indice 3)
         assertNotNull("Morchella deve avere avvertenza di cottura prolungata", morchella.edibilityWarning)
     }
+
+    @Test
+    fun testHurdleModelIncludesHabitatAndAltitude() {
+        val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+
+        // Se habitat e altitude NON fossero moltiplicati nel combined, la probabilità resterebbe alta (es. > 70)
+        // anche se H o A sono mediocri, perché il p_hurdle fungerebbe solo da on/off.
+        // Verifichiamo che un H basso abbassi proporzionalmente la probabilità finale.
+        val probSuboptimalHabitat = MushroomAlgorithms.dailyGrowthProbability(
+            weatherScore = 100, // Massimo
+            habitatScore = 0.5, // Sub-ottimale
+            altitudeScore = 1.0,
+            seasonalityScore = 1.0,
+            terrainModifier = 1.0,
+            config = EcologicalWeightsConfig.PHENOLOGICAL,
+            species = edulis
+        )
+        // Senza habitat nel combined, la rawProb sarebbe ~100 -> tanh(30) -> 88%
+        // Con habitat nel combined, la rawProb = 100 * 0.5 * p_hurdle(0.5) = 50 * p_hurdle.
+        // p_hurdle(0.5, 1.0) per edulis (strictness=1.0) -> sigma=0.35, ratio=0.5/0.35=1.42, exp(-1.42^2.5)=-2.3, 1-e^-2.3 = 0.90
+        // combined = 50 * 0.9 = 45.
+        // calibratedProb = 45 (non va oltre il knee di 70).
+        assertTrue("La probabilità dovrebbe essere proporzionalmente scalata dall'habitatScore (atteso ~45%, attuale: $probSuboptimalHabitat)", probSuboptimalHabitat in 35..55)
+    }
+
+    @Test
+    fun testGrowthPhaseMultiplierModulatesProbability() {
+        val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+
+        // Fase iniziale: moltiplicatore = 0.35
+        val probEarlyPhase = MushroomAlgorithms.dailyGrowthProbability(
+            weatherScore = 100,
+            habitatScore = 1.0,
+            altitudeScore = 1.0,
+            seasonalityScore = 1.0,
+            terrainModifier = 1.0,
+            config = EcologicalWeightsConfig.PHENOLOGICAL,
+            species = edulis,
+            growthPhaseMultiplier = 0.35
+        )
+        // rawProb = 100 * 1 * 1 * 1 * 1 * 1 * 0.35 = 35. <= 70, quindi resta 35.
+        assertTrue("Nella fase precoce la probabilità deve essere strettamente limitata (atteso ~35%, attuale: $probEarlyPhase)", probEarlyPhase in 30..40)
+
+        // Fase di picco: moltiplicatore = 1.0
+        val probPeakPhase = MushroomAlgorithms.dailyGrowthProbability(
+            weatherScore = 100,
+            habitatScore = 1.0,
+            altitudeScore = 1.0,
+            seasonalityScore = 1.0,
+            terrainModifier = 1.0,
+            config = EcologicalWeightsConfig.PHENOLOGICAL,
+            species = edulis,
+            growthPhaseMultiplier = 1.0
+        )
+        // rawProb = 100, > 70, entra nel tanh.
+        assertTrue("Nella fase di picco la probabilità deve essere alta (atteso > 85%, attuale: $probPeakPhase)", probPeakPhase > 85)
+    }
 }

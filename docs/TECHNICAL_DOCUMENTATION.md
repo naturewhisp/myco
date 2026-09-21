@@ -607,6 +607,17 @@ $$\frac{\partial z}{\partial x} = \frac{z_E - z_W}{2\Delta}, \qquad \frac{\parti
     2. L'evento precedente ha costituito una ricarica idrica primaria saturante: $R_{\text{earlier}} \ge \max(25.0\text{ mm}, 0.70 \cdot R_{\text{target}})$;
     3. La pioggia recente è strettamente un rovescio secondario minore che non altera la cinetica di maturazione in atto: $R_{\text{recent}} < 0.70 \cdot R_{\text{earlier}}$.
     Se invece la pioggia recente è quantitativamente rilevante ($R_{\text{recent}} \ge 0.70 \cdot R_{\text{earlier}}$) o la pioggia pregressa non era saturante (es. seguita da siccità), il ciclo si riazzera fisiologicamente a *Idratazione miceliare* ($\tau = \tau_{\text{recent}}$) con moltiplicatore $\Phi_{\text{phase}} \le 0.50$, eliminando categoricamente sovrastime e falsi positivi precoci sul campo a pochi giorni da un temporale estivo/autunnale.
+  * **Barriera di Protezione Algoritmica & Test di Invarianti (Adversarial Gate 3, `PhenologicalInvariantsTest`):**
+    Per evitare in modo permanente anomalie di calcolo da interazioni temporali non-locali, l'architettura di calcolo è presidiata da 20 test formalizzati basati su proprietà invarianti:
+    * *Invariante di Latenza Minima (Liebig):* A $\tau \le 2$ giorni da una pioggia primaria $\ge 25\text{ mm}$, $\Phi_{\text{phase}} \le 0.45$ con stadio tassativamente impostato su `MYCELIAL_HYDRATION`.
+    * *Invariante di Predominanza dell'Innesco Primario:* Se $R_{\text{recent}} \ge 0.70 \cdot R_{\text{earlier}}$, l'evento recente prevale sempre resettando il timer fenologico.
+    * *Invariante di Siccità Assoluta:* Con piogge nulle su 28 giorni, stadio `WAITING_FOR_RAIN`, $\Phi_{\text{phase}} = 0.25$, probabilità $\le 20\%$.
+    * *Invariante di Gelo Notturno Letale:* Minime $< 0^\circ\text{C}$ deprimono l'inibizione termica a $0.30$.
+    * *Invariante di Anossia Pedologica (van Genuchten):* Suoli saturi $\theta > 0.44\text{ m}^3/\text{m}^3$ abbattono la risposta edafica verso il fondo biologico $0.15 \dots 0.20$.
+    * *Invariante di Monotonia DTR:* L'aumento dell'escursione termica sopra i $12^\circ\text{C}$ non può mai incrementare la probabilità (funzione smoothstep $C^1$).
+    * *Invariante di Continuità (Lipschitz):* Variazioni infinitesimali dei parametri $(\pm 0.5\text{ mm}, \pm 0.2^\circ\text{C})$ producono variazioni di probabilità $\le 5\%$.
+    * *Benchmark Empirici Ground Truth:* Validazione permanente e bloccante su serie storiche reali (Mindino 18 set $\le 35\%$, Mindino 21 set $20\% \dots 50\%$, Mindino 26 set $\ge 65\%$, Val di Taro $65\% \dots 88\%$, Garfagnana estiva $\le 40\%$, Carnia allagata $\le 20\%$, pascolo per *Macrolepiota* $\ge 60\%$).
+    * *Fuzzing Generativo su 500 Scenari:* Verifica automatica di coerenza, bound $[0, 92]$ e assenza di eccezioni/NaN su 500 serie casuali per ogni build.
   * La compatibilità con la UI preesistente è garantita dal delegato `calculateGrowthPhase` che estrae `phaseText`.
 * **Fase Lunare (`getMoonPhase`, `MushroomAlgorithms.kt:166`):**
   Calcolata sul ciclo sinodico lunare di $29.53058867\text{ giorni}$ riferito al novilunio del `2000-01-06T18:14:00Z`. La tradizione micologica popolare considera favorevoli la *Luna Nuova* e la *Luna Crescente* (primi 5.5 giorni).

@@ -11,7 +11,8 @@ This document defines the architectural guidelines, development workflows, and c
 - Before considering any coding task complete, agents **must run and verify**:
   1. `./gradlew lintDebug` (Static code analysis must report `0 errors, 0 warnings`).
   2. `./gradlew compileDebugKotlin` (Kotlin compiler must report clean build).
-  3. `./gradlew assembleDebug` (Debug APK packaging must succeed).
+  3. `./gradlew testDebugUnitTest` (All unit tests, invariants and benchmarks must pass 100%).
+  4. `./gradlew assembleDebug` (Debug APK packaging must succeed).
 
 ---
 
@@ -124,6 +125,18 @@ docs/
 - **Stand Basal Area ($G$) Unimodal Density Response**: Tree stand basal area $G$ ($m^2/\text{ha}$) derived continuously from canopy cover ($G \approx 50 \cdot C_f^{1.15}$) must be evaluated through unimodal CTFC response curves (Bonet et al. 2012, de-Miguel et al. 2014) peaking at species-specific optima ($G_{\text{opt}}$, e.g. $32\text{ m}^2/\text{ha}$ for *Boletus edulis*, $20\text{ m}^2/\text{ha}$ for *Lactarius deliciosus*), penalizing both clearcuts and hyper-dense, unmanaged stands.
 - **Species-Aware Dynamic Habitat Evaluation**: Habitat scoring (`evaluateSpeciesHabitat`) must dynamically adapt to active species ecology, distinguishing ectomycorrhizal symbioses, meadow saprotrophs (*Macrolepiota procera*), and wood-decay taxa, triggering instant recalculation across factors and outlooks upon species selection.
 - **Multi-Screen Outlook Coherence**: All prospective calculations (e.g., `calculateDailyOutlooks`) must forward the identical environmental and terrain modifiers (`terrainModifier`) used by primary single-day routines to guarantee 100% numerical consistency across screens.
+- **Biometeorological Invariants & Metamorphic Testing Policy**: All algorithmic changes to phenology, growth stages, or probability modeling must satisfy the formal invariants and empirical benchmarks tested in `PhenologicalInvariantsTest`:
+  1. *Minimum Latency Invariant (Liebig)*: A saturating rain event ($R \ge 25\text{ mm}$) at day $T_0$ guarantees $\Phi_{\text{phase}} \le 0.45$ and `stage = MYCELIAL_HYDRATION` for $T \in [T_0, T_0 + 2]$.
+  2. *Hydrological Trigger Predominance*: A recent rain event $\ge 70\%$ of an earlier event resets the hydrological trigger to early mycelial hydration, overriding any prior active fruiting window.
+  3. *Secondary Shower Protection*: An earlier mature fruiting flush is maintained if and only if:
+     - Earlier event is in active window ($\tau \in (\text{hydrationThreshold} + 1 \dots \text{fruitingThreshold})$);
+     - Earlier event was saturating ($R_{\text{earlier}} \ge \max(25\text{ mm}, 0.70 \cdot R_{\text{target}})$);
+     - Recent rain is strictly a minor secondary shower ($R_{\text{recent}} < 0.70 \cdot R_{\text{earlier}}$).
+  4. *Lethal Nocturnal Freezing Suppression*: Overnight sub-zero freezes ($T_{\min} < 0^\circ\text{C}$) force nocturnal chilling inhibition to $0.30$.
+  5. *Macropore Waterlogging / Anoxia Damping*: Acute saturation ($\theta > 0.44\text{ m}^3/\text{m}^3$) damps edaphic response toward the biological floor of $0.15 \dots 0.20$.
+  6. *Lipschitz Smoothness & Continuity*: Small continuous parameter perturbations ($+0.5\text{ mm}$, $+0.2^\circ\text{C}$) must never create discrete step jumps $> 5\%$.
+  7. *Empirical Ground-Truth Anchors*: Real historical datasets (Mindino 18-21 Sep, Val di Taro autumn flush, summer drought, alpine pasture) must remain strictly within their empirical bounds.
+  8. *Generative Fuzzing*: 500-iteration random scenario matrix must pass 100% without exceptions, `NaN`, or bound violations.
 
 ### 4.8 Lifecycle, Hardware Sensors & Concurrency Invariants
 - **Lifecycle-Bound Hardware Sensors**: Do NOT use naked `DisposableEffect(Unit)` for battery-intensive hardware listeners (GPS updates, rotation vector compass, barometer). Sensors must be bound to `LocalLifecycleOwner.current` via `LifecycleEventObserver`, starting exclusively on `Lifecycle.Event.ON_RESUME` (or `ON_START`) and stopping immediately on `Lifecycle.Event.ON_PAUSE` (or `ON_STOP`).

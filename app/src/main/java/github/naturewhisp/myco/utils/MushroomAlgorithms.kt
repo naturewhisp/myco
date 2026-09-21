@@ -61,7 +61,7 @@ data class TempStatus(val score: Int, val label: String)
 /**
  * Rappresentazione interna di un evento di innesco pluviometrico per la fenologia.
  */
-private data class RainTrigger(val triggerIndex: Int, val rainAmount: Float)
+internal data class RainTrigger(val triggerIndex: Int, val rainAmount: Float)
 
 /**
  * Valutazione biotica e strutturale dell'habitat stazionale specifica per taxon micologico.
@@ -565,6 +565,21 @@ object MushroomAlgorithms {
     }
 
     /**
+     * Calcola la penalità continua dell'escursione termica diurna (DTR).
+     *
+     * @param dtr Escursione termica giornaliera in °C (T_max - T_min).
+     * @param usePhenologicalInertia Se true, applica la transizione continua C1 smoothstep in [12°C, 18°C].
+     * @return Moltiplicatore continuo nell'intervallo [0.80, 1.00].
+     */
+    fun calculateDtrPenalty(dtr: Double, usePhenologicalInertia: Boolean = true): Double {
+        return if (usePhenologicalInertia) {
+            1.0 - 0.20 * smoothstep(12.0, 18.0, dtr)
+        } else {
+            if (dtr > 15.0) 0.8 else 1.0
+        }
+    }
+
+    /**
      * Calcola il punteggio meteorologico composito (0..100) per una specifica data.
      *
      * Integra le quattro componenti continue ponderate secondo [EcologicalWeightsConfig]:
@@ -636,7 +651,7 @@ object MushroomAlgorithms {
         
         val currentDay = if (dayIndex < effectiveData.size) effectiveData[dayIndex] else effectiveData.lastOrNull()
         val dtr = if (currentDay != null) (currentDay.maxTemp - currentDay.minTemp).toDouble() else 0.0
-        val dtrPenalty = if (config.usePhenologicalInertia) (1.0 - 0.20 * smoothstep(12.0, 18.0, dtr)) else (if (dtr > 15.0) 0.8 else 1.0)
+        val dtrPenalty = calculateDtrPenalty(dtr, config.usePhenologicalInertia)
 
         val effectiveTempScore: Double
         if (config.usePhenologicalInertia && dayIndex >= 10) {
@@ -777,6 +792,40 @@ object MushroomAlgorithms {
         val fruitingThreshold = max(incubationThreshold + 1, (1.35 * tauPeak).roundToInt())
         val maxLookback = max(0, effectiveToday - (2.5 * tauPeak).roundToInt())
 
+        val candidateEvents = extractCandidateRainEvents(processedData, effectiveToday, maxLookback)
+        if (candidateEvents.isEmpty()) {
+            return GrowthPhaseEvaluation(
+                phaseText = "Fase: Crescita assente (in attesa di precipitazioni).",
+                multiplier = 0.25,
+                stage = GrowthStage.WAITING_FOR_RAIN
+            )
+        }
+
+        val distinctEvents = clusterRainEvents(candidateEvents)
+        val activeTrigger = resolveActiveRainTrigger(
+            distinctEvents = distinctEvents,
+            effectiveToday = effectiveToday,
+            species = species,
+            hydrationThreshold = hydrationThreshold,
+            fruitingThreshold = fruitingThreshold
+        )
+
+        return evaluateStageFromTrigger(
+            activeTrigger = activeTrigger,
+            effectiveToday = effectiveToday,
+            species = species,
+            hydrationThreshold = hydrationThreshold,
+            incubationThreshold = incubationThreshold,
+            fruitingThreshold = fruitingThreshold,
+            tauPeak = tauPeak
+        )
+    }
+
+    internal fun extractCandidateRainEvents(
+        processedData: List<ProcessedDay>,
+        effectiveToday: Int,
+        maxLookback: Int
+    ): List<RainTrigger> {
         val candidateEvents = mutableListOf<RainTrigger>()
         for (i in effectiveToday downTo maxLookback) {
             if (processedData[i].totalPrecip >= 12.0f) {
@@ -790,16 +839,10 @@ object MushroomAlgorithms {
                 }
             }
         }
+        return candidateEvents
+    }
 
-        if (candidateEvents.isEmpty()) {
-            return GrowthPhaseEvaluation(
-                phaseText = "Fase: Crescita assente (in attesa di precipitazioni).",
-                multiplier = 0.25,
-                stage = GrowthStage.WAITING_FOR_RAIN
-            )
-        }
-
-        // Raggruppa eventi vicini nello stesso cluster idrologico (entro 2 giorni)
+    internal fun clusterRainEvents(candidateEvents: List<RainTrigger>): List<RainTrigger> {
         val distinctEvents = mutableListOf<RainTrigger>()
         candidateEvents.sortedByDescending { it.triggerIndex }.forEach { ev ->
             val existing = distinctEvents.firstOrNull { abs(it.triggerIndex - ev.triggerIndex) <= 2 }
@@ -807,14 +850,17 @@ object MushroomAlgorithms {
                 distinctEvents.add(ev)
             }
         }
+        return distinctEvents
+    }
 
-        // L'evento più recente è l'innesco idrologico attivo predefinito
+    internal fun resolveActiveRainTrigger(
+        distinctEvents: List<RainTrigger>,
+        effectiveToday: Int,
+        species: MushroomSpecies,
+        hydrationThreshold: Int,
+        fruitingThreshold: Int
+    ): RainTrigger {
         val recentTrigger = distinctEvents.first()
-
-        // Un evento precedente può mantenere una buttata attiva solo se:
-        // 1. È nella finestra di maturazione/raccolta (hydrationThreshold + 1 .. fruitingThreshold)
-        // 2. Era una pioggia abbondante/saturante (>= 25mm o >= 70% del target di specie)
-        // 3. L'evento recente è un rovescio secondario minore (recentTrigger.rainAmount < earlier.rainAmount * 0.70f)
         val targetRain = species.minRainAccumulation
         val earlierActiveFlush = distinctEvents.drop(1).firstOrNull { earlier ->
             val daysSinceEarlier = effectiveToday - earlier.triggerIndex
@@ -823,10 +869,19 @@ object MushroomAlgorithms {
             val isRecentOnlySecondaryShower = recentTrigger.rainAmount < earlier.rainAmount * 0.70f
             inFruitingWindow && isSaturatingRain && isRecentOnlySecondaryShower
         }
+        return earlierActiveFlush ?: recentTrigger
+    }
 
-        val activeTrigger = earlierActiveFlush ?: recentTrigger
+    internal fun evaluateStageFromTrigger(
+        activeTrigger: RainTrigger,
+        effectiveToday: Int,
+        species: MushroomSpecies,
+        hydrationThreshold: Int,
+        incubationThreshold: Int,
+        fruitingThreshold: Int,
+        tauPeak: Double
+    ): GrowthPhaseEvaluation {
         val daysSinceTrigger = effectiveToday - activeTrigger.triggerIndex
-
         val kernelVal = phenologyKernel(
             tauDays = daysSinceTrigger.toDouble(),
             tauPeak = tauPeak,

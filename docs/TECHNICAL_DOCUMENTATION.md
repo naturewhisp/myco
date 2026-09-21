@@ -600,7 +600,13 @@ $$\frac{\partial z}{\partial x} = \frac{z_E - z_W}{2\Delta}, \qquad \frac{\parti
     * $\tau \le 0.75 \cdot \tau_{\text{peak}}$: *Incubazione primordi* (differenziazione dei primordi ipogei, moltiplicatore $0.50 \dots 0.85$);
     * $\tau \le 1.35 \cdot \tau_{\text{peak}}$: *Buttata attiva* (finestra ottimale di raccolta e culmine epigeo, moltiplicatore $0.85 \dots 1.00$);
     * $\tau > 1.35 \cdot \tau_{\text{peak}}$: *Flusso in esaurimento* (buttata al termine, moltiplicatore decrescente $0.30 \dots 0.70$).
-  * **Risoluzione dell'Onda Fenologica Dominante:** Se si verificano eventi precipitativi multipli (ad esempio un temporale primario 11 giorni fa e un piovasco secondario 2 giorni fa), il sistema seleziona l'evento a massimo moltiplicatore biologico ($\max_k \Phi(\tau_k)$). Questo previene il reset fittizio a "Idratazione miceliare" quando una buttata attiva sul campo è già in piena produzione.
+  * **Risoluzione Biometeorologica degli Inneschi Idrologici (Rovesci Secondari vs Nuove Piogge Primarie):**
+    Gli eventi piovosi entro una finestra temporale di 2 giorni vengono raggruppati in cluster idrologici distinti. L'innesco idrologico attivo predefinito è l'evento precipitativo più recente (`recentTrigger`).
+    Un evento precedente può mantenere una buttata attiva in corso solo se vengono soddisfatte congiuntamente tre condizioni biometeorologiche:
+    1. L'evento precedente si colloca nella finestra fisiologica di raccolta attiva: $\tau_{\text{earlier}} \in (\text{hydrationThreshold} + 1 \dots \text{fruitingThreshold})$;
+    2. L'evento precedente ha costituito una ricarica idrica primaria saturante: $R_{\text{earlier}} \ge \max(25.0\text{ mm}, 0.70 \cdot R_{\text{target}})$;
+    3. La pioggia recente è strettamente un rovescio secondario minore che non altera la cinetica di maturazione in atto: $R_{\text{recent}} < 0.70 \cdot R_{\text{earlier}}$.
+    Se invece la pioggia recente è quantitativamente rilevante ($R_{\text{recent}} \ge 0.70 \cdot R_{\text{earlier}}$) o la pioggia pregressa non era saturante (es. seguita da siccità), il ciclo si riazzera fisiologicamente a *Idratazione miceliare* ($\tau = \tau_{\text{recent}}$) con moltiplicatore $\Phi_{\text{phase}} \le 0.50$, eliminando categoricamente sovrastime e falsi positivi precoci sul campo a pochi giorni da un temporale estivo/autunnale.
   * La compatibilità con la UI preesistente è garantita dal delegato `calculateGrowthPhase` che estrae `phaseText`.
 * **Fase Lunare (`getMoonPhase`, `MushroomAlgorithms.kt:166`):**
   Calcolata sul ciclo sinodico lunare di $29.53058867\text{ giorni}$ riferito al novilunio del `2000-01-06T18:14:00Z`. La tradizione micologica popolare considera favorevoli la *Luna Nuova* e la *Luna Crescente* (primi 5.5 giorni).

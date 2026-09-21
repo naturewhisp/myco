@@ -900,6 +900,43 @@ class MushroomAlgorithmsTest {
     }
 
     @Test
+    fun testEvaluateGrowthPhaseResetsToHydrationWhenRecentRainIsHeavierOrEarlierInsufficient() {
+        val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+        // Scenario Mindino reale:
+        // Day 16 (10 set): 22.3 mm (non saturante e seguito da secco)
+        // Day 23 (17 set): 25.3 mm (pioggia primaria più abbondante)
+        // Day 24 (18 set): giorno della visita sul campo (1 giorno dopo pioggia)
+        // Day 27 (21 set): 4 giorni dopo la pioggia primaria
+        val days = (0 until 28).map { i ->
+            ProcessedDay(
+                date = "2026-09-${String.format(Locale.US, "%02d", i + 1)}",
+                avgTemp = 16.0f,
+                minTemp = 12.0f,
+                maxTemp = 20.0f,
+                totalPrecip = when (i) {
+                    16 -> 22.3f
+                    23 -> 25.3f
+                    else -> 0.0f
+                },
+                avgHumidity = 75.0f,
+                weatherCode = 0
+            )
+        }
+
+        // Il 18 settembre (Day 24, 1 giorno dopo la pioggia di 25.3mm)
+        val evalSep18 = MushroomAlgorithms.evaluateGrowthPhase(days, edulis, dayIndex = 24)
+        assertEquals(GrowthStage.MYCELIAL_HYDRATION, evalSep18.stage)
+        assertEquals(1, evalSep18.daysSinceTrigger)
+        assertTrue("Il moltiplicatore il 18 settembre deve essere basso (<= 0.40, attuale: ${evalSep18.multiplier})", evalSep18.multiplier <= 0.40)
+
+        // Il 21 settembre (Day 27, 4 giorni dopo la pioggia di 25.3mm)
+        val evalSep21 = MushroomAlgorithms.evaluateGrowthPhase(days, edulis, dayIndex = 27)
+        assertEquals(GrowthStage.MYCELIAL_HYDRATION, evalSep21.stage)
+        assertEquals(4, evalSep21.daysSinceTrigger)
+        assertTrue("Il moltiplicatore il 21 settembre deve rispecchiare l'idratazione (<= 0.55, attuale: ${evalSep21.multiplier})", evalSep21.multiplier <= 0.55)
+    }
+
+    @Test
     fun testDtrPenaltySmoothTransition() {
         val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
         val baseDays = (0 until 28).map { i ->

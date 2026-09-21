@@ -59,6 +59,11 @@ data class RainStatus(val score: Int, val label: String)
 data class TempStatus(val score: Int, val label: String)
 
 /**
+ * Rappresentazione interna di un evento di innesco pluviometrico per la fenologia.
+ */
+private data class RainTrigger(val triggerIndex: Int, val rainAmount: Float)
+
+/**
  * Valutazione biotica e strutturale dell'habitat stazionale specifica per taxon micologico.
  *
  * @property score Punteggio finale normalizzato dell'habitat [0.10..1.00].
@@ -772,21 +777,21 @@ object MushroomAlgorithms {
         val fruitingThreshold = max(incubationThreshold + 1, (1.35 * tauPeak).roundToInt())
         val maxLookback = max(0, effectiveToday - (2.5 * tauPeak).roundToInt())
 
-        val candidateTriggerIndices = mutableListOf<Int>()
+        val candidateEvents = mutableListOf<RainTrigger>()
         for (i in effectiveToday downTo maxLookback) {
             if (processedData[i].totalPrecip >= 12.0f) {
-                candidateTriggerIndices.add(i)
+                candidateEvents.add(RainTrigger(i, processedData[i].totalPrecip))
             } else if (i >= 2) {
                 val threeDayRain = processedData[i].totalPrecip +
                         processedData[i - 1].totalPrecip +
                         processedData[i - 2].totalPrecip
                 if (threeDayRain >= 18.0f) {
-                    candidateTriggerIndices.add(i - 2)
+                    candidateEvents.add(RainTrigger(i - 2, threeDayRain))
                 }
             }
         }
 
-        if (candidateTriggerIndices.isEmpty()) {
+        if (candidateEvents.isEmpty()) {
             return GrowthPhaseEvaluation(
                 phaseText = "Fase: Crescita assente (in attesa di precipitazioni).",
                 multiplier = 0.25,
@@ -794,58 +799,79 @@ object MushroomAlgorithms {
             )
         }
 
-        val candidateEvaluations = candidateTriggerIndices.distinct().map { triggerIdx ->
-            val daysSinceTrigger = effectiveToday - triggerIdx
-            val kernelVal = phenologyKernel(
-                tauDays = daysSinceTrigger.toDouble(),
-                tauPeak = tauPeak,
-                alpha = species.phenologyShapeAlpha
-            )
-
-            when {
-                daysSinceTrigger <= hydrationThreshold -> {
-                    val mult = (0.35 + 0.15 * (daysSinceTrigger.toDouble() / hydrationThreshold)).coerceIn(0.35, 0.50)
-                    GrowthPhaseEvaluation(
-                        phaseText = "Fase: Idratazione miceliare (piogge recenti $daysSinceTrigger giorni fa).",
-                        multiplier = mult,
-                        daysSinceTrigger = daysSinceTrigger,
-                        stage = GrowthStage.MYCELIAL_HYDRATION
-                    )
-                }
-                daysSinceTrigger <= incubationThreshold -> {
-                    val daysToFruiting = max(1, (tauPeak - daysSinceTrigger).roundToInt())
-                    val mult = (0.50 + 0.35 * kernelVal).coerceIn(0.50, 0.85)
-                    GrowthPhaseEvaluation(
-                        phaseText = "Fase: Incubazione primordi (differenziazione in circa $daysToFruiting giorni).",
-                        multiplier = mult,
-                        daysSinceTrigger = daysSinceTrigger,
-                        stage = GrowthStage.PRIMORDIA_INCUBATION
-                    )
-                }
-                daysSinceTrigger <= fruitingThreshold -> {
-                    val mult = (0.85 + 0.15 * kernelVal).coerceIn(0.85, 1.00)
-                    GrowthPhaseEvaluation(
-                        phaseText = "Fase: Buttata attiva (finestra ottimale di raccolta).",
-                        multiplier = mult,
-                        daysSinceTrigger = daysSinceTrigger,
-                        stage = GrowthStage.ACTIVE_FRUITING
-                    )
-                }
-                else -> {
-                    val mult = (0.70 * kernelVal).coerceIn(0.30, 0.70)
-                    GrowthPhaseEvaluation(
-                        phaseText = "Fase: Flusso in esaurimento (in attesa di nuove piogge).",
-                        multiplier = mult,
-                        daysSinceTrigger = daysSinceTrigger,
-                        stage = GrowthStage.WANING
-                    )
-                }
+        // Raggruppa eventi vicini nello stesso cluster idrologico (entro 2 giorni)
+        val distinctEvents = mutableListOf<RainTrigger>()
+        candidateEvents.sortedByDescending { it.triggerIndex }.forEach { ev ->
+            val existing = distinctEvents.firstOrNull { abs(it.triggerIndex - ev.triggerIndex) <= 2 }
+            if (existing == null) {
+                distinctEvents.add(ev)
             }
         }
 
-        // Selezione dell'onda fenologica dominante (massimo potenziale produttivo attivo sul campo)
-        return candidateEvaluations.maxByOrNull { it.multiplier }
-            ?: candidateEvaluations.first()
+        // L'evento più recente è l'innesco idrologico attivo predefinito
+        val recentTrigger = distinctEvents.first()
+
+        // Un evento precedente può mantenere una buttata attiva solo se:
+        // 1. È nella finestra di maturazione/raccolta (hydrationThreshold + 1 .. fruitingThreshold)
+        // 2. Era una pioggia abbondante/saturante (>= 25mm o >= 70% del target di specie)
+        // 3. L'evento recente è un rovescio secondario minore (recentTrigger.rainAmount < earlier.rainAmount * 0.70f)
+        val targetRain = species.minRainAccumulation
+        val earlierActiveFlush = distinctEvents.drop(1).firstOrNull { earlier ->
+            val daysSinceEarlier = effectiveToday - earlier.triggerIndex
+            val inFruitingWindow = daysSinceEarlier in (hydrationThreshold + 1)..fruitingThreshold
+            val isSaturatingRain = earlier.rainAmount >= max(25.0f, targetRain * 0.70f)
+            val isRecentOnlySecondaryShower = recentTrigger.rainAmount < earlier.rainAmount * 0.70f
+            inFruitingWindow && isSaturatingRain && isRecentOnlySecondaryShower
+        }
+
+        val activeTrigger = earlierActiveFlush ?: recentTrigger
+        val daysSinceTrigger = effectiveToday - activeTrigger.triggerIndex
+
+        val kernelVal = phenologyKernel(
+            tauDays = daysSinceTrigger.toDouble(),
+            tauPeak = tauPeak,
+            alpha = species.phenologyShapeAlpha
+        )
+
+        return when {
+            daysSinceTrigger <= hydrationThreshold -> {
+                val mult = (0.35 + 0.15 * (daysSinceTrigger.toDouble() / hydrationThreshold)).coerceIn(0.35, 0.50)
+                GrowthPhaseEvaluation(
+                    phaseText = "Fase: Idratazione miceliare (piogge recenti $daysSinceTrigger giorni fa).",
+                    multiplier = mult,
+                    daysSinceTrigger = daysSinceTrigger,
+                    stage = GrowthStage.MYCELIAL_HYDRATION
+                )
+            }
+            daysSinceTrigger <= incubationThreshold -> {
+                val daysToFruiting = max(1, (tauPeak - daysSinceTrigger).roundToInt())
+                val mult = (0.50 + 0.35 * kernelVal).coerceIn(0.50, 0.85)
+                GrowthPhaseEvaluation(
+                    phaseText = "Fase: Incubazione primordi (differenziazione in circa $daysToFruiting giorni).",
+                    multiplier = mult,
+                    daysSinceTrigger = daysSinceTrigger,
+                    stage = GrowthStage.PRIMORDIA_INCUBATION
+                )
+            }
+            daysSinceTrigger <= fruitingThreshold -> {
+                val mult = (0.85 + 0.15 * kernelVal).coerceIn(0.85, 1.00)
+                GrowthPhaseEvaluation(
+                    phaseText = "Fase: Buttata attiva (finestra ottimale di raccolta).",
+                    multiplier = mult,
+                    daysSinceTrigger = daysSinceTrigger,
+                    stage = GrowthStage.ACTIVE_FRUITING
+                )
+            }
+            else -> {
+                val mult = (0.70 * kernelVal).coerceIn(0.30, 0.70)
+                GrowthPhaseEvaluation(
+                    phaseText = "Fase: Flusso in esaurimento (in attesa di nuove piogge).",
+                    multiplier = mult,
+                    daysSinceTrigger = daysSinceTrigger,
+                    stage = GrowthStage.WANING
+                )
+            }
+        }
     }
 
     /**

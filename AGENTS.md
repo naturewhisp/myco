@@ -13,6 +13,7 @@ This document defines the architectural guidelines, development workflows, and c
   2. `./gradlew compileDebugKotlin` (Kotlin compiler must report clean build).
   3. `./gradlew testDebugUnitTest` (All unit tests, invariants and benchmarks must pass 100%).
   4. `./gradlew assembleDebug` (Debug APK packaging must succeed).
+  5. If an Android device or emulator is connected (`adb devices`), stream-install the APK (`adb install -r`), launch the app, check logcat for zero runtime crashes, and capture screenshot proof.
 
 ---
 
@@ -137,6 +138,8 @@ docs/
   6. *Lipschitz Smoothness & Continuity*: Small continuous parameter perturbations ($+0.5\text{ mm}$, $+0.2^\circ\text{C}$) must never create discrete step jumps $> 5\%$.
   7. *Empirical Ground-Truth Anchors*: Real historical datasets (Mindino 18-21 Sep, Val di Taro autumn flush, summer drought, alpine pasture) must remain strictly within their empirical bounds.
   8. *Generative Fuzzing*: 500-iteration random scenario matrix must pass 100% without exceptions, `NaN`, or bound violations.
+- **Runtime Phenological Configuration Parity**: All production runtime invocations of algorithmic entrypoints (`calculateWeatherScore`, `dailyGrowthProbability`, `calculateDailyOutlooks`) in `MushroomViewModel`, background tasks, or summary generators MUST explicitly supply `config = EcologicalWeightsConfig.PHENOLOGICAL`. Silent fallback to `EcologicalWeightsConfig.DEFAULT` is strictly reserved for legacy oracle regression tests.
+- **Adversarial Gate 3 Invariant Enforcement**: Any modification affecting phenology, growth phases, soil moisture, canopy buffering, or probability calibration must execute and maintain 100% passing rate on `PhenologicalInvariantsTest`. It is strictly forbidden to relax or delete any of the 10 biometeorological invariants, the 5 empirical field benchmarks, or the 500-iteration generative fuzzing gate.
 
 ### 4.8 Lifecycle, Hardware Sensors & Concurrency Invariants
 - **Lifecycle-Bound Hardware Sensors**: Do NOT use naked `DisposableEffect(Unit)` for battery-intensive hardware listeners (GPS updates, rotation vector compass, barometer). Sensors must be bound to `LocalLifecycleOwner.current` via `LifecycleEventObserver`, starting exclusively on `Lifecycle.Event.ON_RESUME` (or `ON_START`) and stopping immediately on `Lifecycle.Event.ON_PAUSE` (or `ON_STOP`).
@@ -165,16 +168,20 @@ docs/
 Run these commands after making changes:
 
 ```pwsh
-# 1. Run full static code analysis (Lint + SARIF report)
+# 1. Run full unit test suite, invariants and ground truth benchmarks
+.\gradlew.bat testDebugUnitTest --rerun-tasks
+
+# 2. Run full static code analysis (Lint + SARIF report)
 .\gradlew.bat lintDebug
 
-# 2. Compile Kotlin sources
+# 3. Compile Kotlin sources
 .\gradlew.bat compileDebugKotlin
 
-# 3. Assemble complete debug APK
+# 4. Assemble complete debug APK
 .\gradlew.bat assembleDebug
 
-# 4. (Optional / On-Device) Install and verify on connected physical device or emulator
+# 5. On-Device Verification (MANDATORY whenever an ADB device is connected):
+# Check connected device: adb devices
 adb -s <DEVICE_ID> install -r app\build\outputs\apk\debug\app-debug.apk
 adb -s <DEVICE_ID> shell am force-stop github.naturewhisp.myco
 adb -s <DEVICE_ID> logcat -c

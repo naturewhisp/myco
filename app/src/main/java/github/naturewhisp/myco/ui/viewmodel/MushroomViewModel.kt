@@ -415,6 +415,8 @@ class MushroomViewModel(
         lastTerrainEvaluation = terrainEval
         
         val growthPhaseEval = MushroomAlgorithms.evaluateGrowthPhase(days, species, todayIndex)
+        growthPhase = growthPhaseEval.phaseText
+        lastGrowthPhaseVal = growthPhaseEval.phaseText
 
         val prob = MushroomAlgorithms.dailyGrowthProbability(
             weatherScore = rawWeatherScore,
@@ -432,6 +434,7 @@ class MushroomViewModel(
         val soil0To7 = todayData?.avgSoilMoisture0To7cm
         val soil7To28 = todayData?.avgSoilMoisture7To28cm
         val et0 = todayData?.totalEvapotranspiration
+        val effectiveRain = MushroomAlgorithms.calculateEffectiveRainfall(todayIndex, bufferedDays, species)
 
         factors = MushroomAlgorithms.calculateFactors(
             avgTemp = avgTemp,
@@ -441,7 +444,7 @@ class MushroomViewModel(
             habitatText = speciesHab.baseText,
             elevation = lastElevation,
             month = lastCurrentMonth,
-            growthPhaseText = lastGrowthPhaseVal,
+            growthPhaseText = growthPhaseEval.phaseText,
             moon = moon,
             slopeText = lastSlopeTextVal,
             species = species,
@@ -451,7 +454,8 @@ class MushroomViewModel(
             avgSoilMoisture0To7 = soil0To7,
             avgSoilMoisture7To28 = soil7To28,
             totalEvapotranspiration = et0,
-            canopyCover = estimatedCanopy
+            canopyCover = estimatedCanopy,
+            effectiveRainMm = effectiveRain
         )
 
         dailyOutlooks = MushroomAlgorithms.calculateDailyOutlooks(

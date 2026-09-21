@@ -442,13 +442,15 @@ La risposta termica è articolata su tre livelli fisici complementari che cattur
    Nei modelli avanzati (`usePhenologicalInertia = true`), la carpogenesi di *Boletus edulis* richiede che le 2–3 settimane precedenti abbiano mantenuto un regime termico idoneo (ottimo centrato a $T_{\text{opt}} \approx 13.5^\circ\text{C} \dots 14.0^\circ\text{C}$). Il punteggio termico combina la cinetica recente con il condizionamento pregresso:
    $$S_{T,\text{eff}} = 0.75 \cdot S_{T,\text{short}} + 0.25 \cdot \text{CTMI}(T_{d-20},\; T_{\text{tol,min}},\; T_{\text{opt}},\; T_{\text{tol,max}})$$
 
-4. **Inibizione Continua da Freddo Notturno ($F_{\text{nocturnal}}$) & Penalità DTR:**
+4. **Inibizione Continua da Freddo Notturno ($F_{\text{nocturnal}}$) & Penalità DTR Continua:**
    $$F_{\text{nocturnal}}(T_{\min}) = \begin{cases}
    1.0 & \text{se } T_{\min} \ge T_{\text{id,min}} \\
    0.3 & \text{se } T_{\min} \le T_{\text{tol,min}} \\
    0.3 + 0.7 \cdot \text{smoothstep}(T_{\text{tol,min}}, T_{\text{id,min}}, T_{\min}) & \text{altrimenti}
    \end{cases}$$
-   Se l'escursione termica giornaliera $\text{DTR} = T_{\max} - T_{\min} > 15^\circ\text{C}$, viene applicato un coefficiente di stress termico $0.80$. Il punteggio termico finale è $S_T = S_{T,\text{eff}} \times F_{\text{nocturnal}}(T_{\min}) \times \text{dtrPenalty}$.
+   Se l'escursione termica giornaliera $\text{DTR} = T_{\max} - T_{\min}$ supera i $12.0^\circ\text{C}$, viene applicata una modulazione continua dello stress termico tramite smoothstep:
+   $$\text{dtrPenalty}(\text{DTR}) = 1.0 - 0.20 \cdot \text{smoothstep}(12.0, 18.0, \text{DTR})$$
+   che riduce gradualmente il punteggio termico da $1.0$ (per $\text{DTR} \le 12^\circ\text{C}$) fino a $0.80$ (per $\text{DTR} \ge 18^\circ\text{C}$), eliminando qualsiasi discontinuità a gradino a $15^\circ\text{C}$. Il punteggio termico finale è $S_T = S_{T,\text{eff}} \times F_{\text{nocturnal}}(T_{\min}) \times \text{dtrPenalty}(\text{DTR})$.
 
 #### B. Precipitazioni Efficaci, Finestra Estesa a 26 Giorni ($P_{d-26}$) & Convoluzione Fenologica ($S_R$, `calculateEffectiveRainfall`, `MushroomAlgorithms.kt`)
 Superando la rigida finestra rettangolare a 10 giorni, l'orizzonte storico meteo interrogato da Open-Meteo è esteso a **28 giorni** (`past_days = 28`), consentendo di coprire integralmente la finestra empirica di ricarica idrica profonda a **26 giorni** ($P_{d-26}$) documentata da Brejon Lamartinière & Hoffman (2025/2026).
@@ -544,7 +546,7 @@ I carpofori della maggior parte dei funghi micorrizici necessitano di uno shock 
 * La componente di shock termico vale:
   $$\text{shockScore} = 15.0 \times \text{clamp}\left(\frac{\Delta T - \Delta T_{\min}}{3.0},\; 0,\; 1\right) \times \text{clamp}\left(\frac{R_{10}}{25.0},\; 0,\; 1\right)$$
 
-Inoltre, viene calcolata l'escursione termica giornaliera (DTR) per valutare lo stress termico giornaliero: se l'escursione termica giornaliera ($\text{DTR} = T_{\max} - T_{\min}$) supera i 15 gradi, viene applicata una penalità addizionale (moltiplicatore $0.8$) allo score termico (stress da shock termico diurno-notturno).
+Inoltre, viene calcolata l'escursione termica giornaliera (DTR) per valutare lo stress termico giornaliero: se l'escursione termica giornaliera ($\text{DTR} = T_{\max} - T_{\min}$) supera i $12.0^\circ\text{C}$, viene applicata una modulazione continua dello stress termico tramite smoothstep ($\text{dtrPenalty} \in [0.80, 1.00]$), evitando penalizzazioni a gradino.
 
 #### Punteggio Meteo Composito Pesato ($W$, `calculateWeatherScore`, `MushroomAlgorithms.kt:225`)
 La componente idrica combina le precipitazioni cumulate $S_R$ con il moltiplicatore pedologico $S_M$:
@@ -585,18 +587,20 @@ $$\frac{\partial z}{\partial x} = \frac{z_E - z_W}{2\Delta}, \qquad \frac{\parti
 
 * **Valutazione Ecologica del Versante (`evaluateTerrainAspect`, `MushroomAlgorithms.kt:413`):**
   * **Specie Termofile** (*B. aereus*, *A. caesarea*): I versanti a *Solatìo* (Sud, Sud-Est, Sud-Ovest) ricevono un moltiplicatore premiante fino a $1.05$ (+5%), mentre i versanti a *Bacìo* (Nord) subiscono una penalizzazione fino a $0.90$ (-10%).
-  * **Stagione Estiva Arida (Luglio - Agosto):** I versanti a *Bacìo* (Nord) preservano l'umidità del sottobosco dall'evapotraspirazione $\to$ bonus $1.05$; i versanti a *Solatìo* soffrono il disseccamento $\to$ malus $0.90$.
+  * **Stagione Estiva Arida (Giugno - Agosto):** I versanti a *Bacìo* (Nord) preservano l'umidità del sottobosco dall'evapotraspirazione $\to$ bonus $1.05$; i versanti a *Solatìo* soffrono il disseccamento $\to$ malus $0.90$.
+  * **Stagione Autunnale/Fredda (Ottobre - Dicembre, Aprile):** I versanti a *Solatìo* (Sud, Sud-Est, Sud-Ovest) accumulano calore e irraggiamento solare basso $\to$ bonus fino a $1.05$; i versanti a *Bacìo* (Nord) rimangono freddi e ombreggiati $\to$ malus $0.90$.
   * **Pendenze Estreme ($> 38^\circ$):** Il ruscellamento superficiale impedisce all'acqua piovana di penetrare nella lettiera $\to$ moltiplicatore orografico plafonato tassativamente a $0.92$.
 
 ### 4.6 Fasi Fenologiche e Ciclo Sinodico Lunare
-* **Valutazione Fenologica Continua (`evaluateGrowthPhase`, `MushroomAlgorithms.kt`):**
+* **Valutazione Fenologica Continua & Risoluzione Onde Dominanti (`evaluateGrowthPhase`, `MushroomAlgorithms.kt`):**
   Superando la semplice etichetta testuale, `evaluateGrowthPhase` restituisce un oggetto strutturato `GrowthPhaseEvaluation` che calcola sia la descrizione qualitativa sia il moltiplicatore probabilistico reale associato allo stadio di crescita:
-  * Rileva il giorno scatenante (*trigger day*) con precipitazione $\ge 12\text{ mm}$ o 3 giorni cumulati $\ge 18\text{ mm}$.
-  * Le soglie temporali sono dinamicamente calibrate sul $\tau_{\text{peak}}$ della specie:
+  * Rileva tutti i giorni scatenanti candidati (*trigger days*) con precipitazione $\ge 12\text{ mm}$ o 3 giorni cumulati $\ge 18\text{ mm}$.
+  * Valuta ciascun candidato sulla dinamica temporale specifica per la specie:
     * $\tau \le 0.35 \cdot \tau_{\text{peak}}$: *Idratazione miceliare* (attivazione metabolica del micelio, moltiplicatore $0.35 \dots 0.50$);
     * $\tau \le 0.75 \cdot \tau_{\text{peak}}$: *Incubazione primordi* (differenziazione dei primordi ipogei, moltiplicatore $0.50 \dots 0.85$);
     * $\tau \le 1.35 \cdot \tau_{\text{peak}}$: *Buttata attiva* (finestra ottimale di raccolta e culmine epigeo, moltiplicatore $0.85 \dots 1.00$);
     * $\tau > 1.35 \cdot \tau_{\text{peak}}$: *Flusso in esaurimento* (buttata al termine, moltiplicatore decrescente $0.30 \dots 0.70$).
+  * **Risoluzione dell'Onda Fenologica Dominante:** Se si verificano eventi precipitativi multipli (ad esempio un temporale primario 11 giorni fa e un piovasco secondario 2 giorni fa), il sistema seleziona l'evento a massimo moltiplicatore biologico ($\max_k \Phi(\tau_k)$). Questo previene il reset fittizio a "Idratazione miceliare" quando una buttata attiva sul campo è già in piena produzione.
   * La compatibilità con la UI preesistente è garantita dal delegato `calculateGrowthPhase` che estrae `phaseText`.
 * **Fase Lunare (`getMoonPhase`, `MushroomAlgorithms.kt:166`):**
   Calcolata sul ciclo sinodico lunare di $29.53058867\text{ giorni}$ riferito al novilunio del `2000-01-06T18:14:00Z`. La tradizione micologica popolare considera favorevoli la *Luna Nuova* e la *Luna Crescente* (primi 5.5 giorni).

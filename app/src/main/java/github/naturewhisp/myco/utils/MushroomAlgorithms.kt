@@ -631,7 +631,7 @@ object MushroomAlgorithms {
         
         val currentDay = if (dayIndex < effectiveData.size) effectiveData[dayIndex] else effectiveData.lastOrNull()
         val dtr = if (currentDay != null) (currentDay.maxTemp - currentDay.minTemp).toDouble() else 0.0
-        val dtrPenalty = if (dtr > 15.0) 0.8 else 1.0
+        val dtrPenalty = if (config.usePhenologicalInertia) (1.0 - 0.20 * smoothstep(12.0, 18.0, dtr)) else (if (dtr > 15.0) 0.8 else 1.0)
 
         val effectiveTempScore: Double
         if (config.usePhenologicalInertia && dayIndex >= 10) {
@@ -766,24 +766,27 @@ object MushroomAlgorithms {
             )
         }
 
-        var triggerDayIndex = -1
-        for (i in effectiveToday downTo 0) {
+        val tauPeak = species.phenologyLatencyPeakDays
+        val hydrationThreshold = max(2, (0.35 * tauPeak).roundToInt())
+        val incubationThreshold = max(hydrationThreshold + 1, (0.75 * tauPeak).roundToInt())
+        val fruitingThreshold = max(incubationThreshold + 1, (1.35 * tauPeak).roundToInt())
+        val maxLookback = max(0, effectiveToday - (2.5 * tauPeak).roundToInt())
+
+        val candidateTriggerIndices = mutableListOf<Int>()
+        for (i in effectiveToday downTo maxLookback) {
             if (processedData[i].totalPrecip >= 12.0f) {
-                triggerDayIndex = i
-                break
-            }
-            if (i >= 2) {
+                candidateTriggerIndices.add(i)
+            } else if (i >= 2) {
                 val threeDayRain = processedData[i].totalPrecip +
                         processedData[i - 1].totalPrecip +
                         processedData[i - 2].totalPrecip
                 if (threeDayRain >= 18.0f) {
-                    triggerDayIndex = i - 2
-                    break
+                    candidateTriggerIndices.add(i - 2)
                 }
             }
         }
 
-        if (triggerDayIndex == -1) {
+        if (candidateTriggerIndices.isEmpty()) {
             return GrowthPhaseEvaluation(
                 phaseText = "Fase: Crescita assente (in attesa di precipitazioni).",
                 multiplier = 0.25,
@@ -791,57 +794,58 @@ object MushroomAlgorithms {
             )
         }
 
-        val daysSinceTrigger = effectiveToday - triggerDayIndex
-        val tauPeak = species.phenologyLatencyPeakDays
-        val hydrationThreshold = max(2, (0.35 * tauPeak).roundToInt())
-        val incubationThreshold = max(hydrationThreshold + 1, (0.75 * tauPeak).roundToInt())
-        val fruitingThreshold = max(incubationThreshold + 1, (1.35 * tauPeak).roundToInt())
+        val candidateEvaluations = candidateTriggerIndices.distinct().map { triggerIdx ->
+            val daysSinceTrigger = effectiveToday - triggerIdx
+            val kernelVal = phenologyKernel(
+                tauDays = daysSinceTrigger.toDouble(),
+                tauPeak = tauPeak,
+                alpha = species.phenologyShapeAlpha
+            )
 
-        val kernelVal = phenologyKernel(
-            tauDays = daysSinceTrigger.toDouble(),
-            tauPeak = tauPeak,
-            alpha = species.phenologyShapeAlpha
-        )
-
-        return when {
-            daysSinceTrigger <= hydrationThreshold -> {
-                val mult = (0.35 + 0.15 * (daysSinceTrigger.toDouble() / hydrationThreshold)).coerceIn(0.35, 0.50)
-                GrowthPhaseEvaluation(
-                    phaseText = "Fase: Idratazione miceliare (piogge recenti $daysSinceTrigger giorni fa).",
-                    multiplier = mult,
-                    daysSinceTrigger = daysSinceTrigger,
-                    stage = GrowthStage.MYCELIAL_HYDRATION
-                )
-            }
-            daysSinceTrigger <= incubationThreshold -> {
-                val daysToFruiting = max(1, (tauPeak - daysSinceTrigger).roundToInt())
-                val mult = (0.50 + 0.35 * kernelVal).coerceIn(0.50, 0.85)
-                GrowthPhaseEvaluation(
-                    phaseText = "Fase: Incubazione primordi (differenziazione in circa $daysToFruiting giorni).",
-                    multiplier = mult,
-                    daysSinceTrigger = daysSinceTrigger,
-                    stage = GrowthStage.PRIMORDIA_INCUBATION
-                )
-            }
-            daysSinceTrigger <= fruitingThreshold -> {
-                val mult = (0.85 + 0.15 * kernelVal).coerceIn(0.85, 1.00)
-                GrowthPhaseEvaluation(
-                    phaseText = "Fase: Buttata attiva (finestra ottimale di raccolta).",
-                    multiplier = mult,
-                    daysSinceTrigger = daysSinceTrigger,
-                    stage = GrowthStage.ACTIVE_FRUITING
-                )
-            }
-            else -> {
-                val mult = (0.70 * kernelVal).coerceIn(0.30, 0.70)
-                GrowthPhaseEvaluation(
-                    phaseText = "Fase: Flusso in esaurimento (in attesa di nuove piogge).",
-                    multiplier = mult,
-                    daysSinceTrigger = daysSinceTrigger,
-                    stage = GrowthStage.WANING
-                )
+            when {
+                daysSinceTrigger <= hydrationThreshold -> {
+                    val mult = (0.35 + 0.15 * (daysSinceTrigger.toDouble() / hydrationThreshold)).coerceIn(0.35, 0.50)
+                    GrowthPhaseEvaluation(
+                        phaseText = "Fase: Idratazione miceliare (piogge recenti $daysSinceTrigger giorni fa).",
+                        multiplier = mult,
+                        daysSinceTrigger = daysSinceTrigger,
+                        stage = GrowthStage.MYCELIAL_HYDRATION
+                    )
+                }
+                daysSinceTrigger <= incubationThreshold -> {
+                    val daysToFruiting = max(1, (tauPeak - daysSinceTrigger).roundToInt())
+                    val mult = (0.50 + 0.35 * kernelVal).coerceIn(0.50, 0.85)
+                    GrowthPhaseEvaluation(
+                        phaseText = "Fase: Incubazione primordi (differenziazione in circa $daysToFruiting giorni).",
+                        multiplier = mult,
+                        daysSinceTrigger = daysSinceTrigger,
+                        stage = GrowthStage.PRIMORDIA_INCUBATION
+                    )
+                }
+                daysSinceTrigger <= fruitingThreshold -> {
+                    val mult = (0.85 + 0.15 * kernelVal).coerceIn(0.85, 1.00)
+                    GrowthPhaseEvaluation(
+                        phaseText = "Fase: Buttata attiva (finestra ottimale di raccolta).",
+                        multiplier = mult,
+                        daysSinceTrigger = daysSinceTrigger,
+                        stage = GrowthStage.ACTIVE_FRUITING
+                    )
+                }
+                else -> {
+                    val mult = (0.70 * kernelVal).coerceIn(0.30, 0.70)
+                    GrowthPhaseEvaluation(
+                        phaseText = "Fase: Flusso in esaurimento (in attesa di nuove piogge).",
+                        multiplier = mult,
+                        daysSinceTrigger = daysSinceTrigger,
+                        stage = GrowthStage.WANING
+                    )
+                }
             }
         }
+
+        // Selezione dell'onda fenologica dominante (massimo potenziale produttivo attivo sul campo)
+        return candidateEvaluations.maxByOrNull { it.multiplier }
+            ?: candidateEvaluations.first()
     }
 
     /**
@@ -1044,7 +1048,7 @@ object MushroomAlgorithms {
             }
         } else {
             val isHotSeason = month in 5..7 || avgTemp > 21.0
-            val isColdSeason = month in listOf(3, 10, 11) || (month == 4 && avgTemp < 13.0) || avgTemp < 13.0
+            val isColdSeason = month in listOf(3, 9, 10, 11) || (month in listOf(4, 8) && avgTemp < 15.0) || avgTemp < 13.0
 
             when {
                 isHotSeason -> {
@@ -1760,7 +1764,8 @@ object MushroomAlgorithms {
         avgSoilMoisture0To7: Float? = null,
         avgSoilMoisture7To28: Float? = null,
         totalEvapotranspiration: Float? = null,
-        canopyCover: Double? = null
+        canopyCover: Double? = null,
+        effectiveRainMm: Double? = null
     ): List<Factor> {
         val factors = mutableListOf<Factor>()
 
@@ -1788,14 +1793,19 @@ object MushroomAlgorithms {
         )
 
         // 2. Precipitazioni
-        val rainNorm = rainScoreSmooth(totalRain, species)
+        val displayRain = effectiveRainMm ?: totalRain
+        val rainNorm = rainScoreSmooth(displayRain, species)
         val rainLevel = when {
             rainNorm >= 0.8 -> FactorLevel.FAVORABLE
             rainNorm >= 0.4 -> FactorLevel.NEUTRAL
             else -> FactorLevel.ADVERSE
         }
         val rainDetail = buildString {
-            append("Ultime 2 settimane")
+            if (effectiveRainMm != null) {
+                append("Convoluzione fenologica f(τ)")
+            } else {
+                append("Ultime 2 settimane")
+            }
             if (canopyCover != null && canopyCover >= 0.40) {
                 append(" • Throughfall al suolo")
             }
@@ -1803,8 +1813,8 @@ object MushroomAlgorithms {
         factors.add(
             Factor(
                 id = FactorId.PRECIPITATION,
-                label = "Precipitazioni cumulate",
-                formattedValue = String.format(Locale.ITALIAN, "%.0f mm", totalRain),
+                label = if (effectiveRainMm != null) "Precipitazioni efficaci" else "Precipitazioni cumulate",
+                formattedValue = String.format(Locale.ITALIAN, "%.0f mm", displayRain),
                 level = rainLevel,
                 detail = rainDetail
             )

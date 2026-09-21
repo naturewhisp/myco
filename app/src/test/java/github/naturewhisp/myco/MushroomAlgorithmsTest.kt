@@ -16,6 +16,9 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Calendar
+import java.util.Locale
+import github.naturewhisp.myco.model.TerrainAspectData
+import github.naturewhisp.myco.utils.GrowthStage
 
 class MushroomAlgorithmsTest {
 
@@ -867,5 +870,114 @@ class MushroomAlgorithmsTest {
         )
         // rawProb = 100, > 70, entra nel tanh.
         assertTrue("Nella fase di picco la probabilità deve essere alta (atteso > 85%, attuale: $probPeakPhase)", probPeakPhase > 85)
+    }
+
+    @Test
+    fun testEvaluateGrowthPhaseMaintainsActiveFruitingOnSecondaryRain() {
+        val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+        // 28 giorni di simulazione
+        val days = (0 until 28).map { i ->
+            ProcessedDay(
+                date = "2026-09-${String.format(Locale.US, "%02d", i + 1)}",
+                avgTemp = 16.0f,
+                minTemp = 12.0f,
+                maxTemp = 20.0f,
+                totalPrecip = when (i) {
+                    16 -> 40.0f // 11 giorni fa rispetto a today (dayIndex 27): buttata attiva!
+                    25 -> 12.0f // 2 giorni fa rispetto a today: rovescio secondario
+                    else -> 0.0f
+                },
+                avgHumidity = 75.0f,
+                weatherCode = 0
+            )
+        }
+
+        val eval = MushroomAlgorithms.evaluateGrowthPhase(days, edulis, dayIndex = 27)
+        // Deve selezionare l'onda primaria matura (ACTIVE_FRUITING) e non resettare all'idratazione (MYCELIAL_HYDRATION)
+        assertEquals(GrowthStage.ACTIVE_FRUITING, eval.stage)
+        assertTrue("Il moltiplicatore deve rispecchiare la buttata attiva (atteso > 0.85, attuale: ${eval.multiplier})", eval.multiplier >= 0.85)
+        assertEquals(11, eval.daysSinceTrigger)
+    }
+
+    @Test
+    fun testDtrPenaltySmoothTransition() {
+        val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+        val baseDays = (0 until 28).map { i ->
+            ProcessedDay(
+                date = "2026-09-${String.format(Locale.US, "%02d", i + 1)}",
+                avgTemp = 18.0f,
+                minTemp = 18.0f,
+                maxTemp = 18.0f,
+                totalPrecip = 25.0f,
+                avgHumidity = 80.0f,
+                weatherCode = 0
+            )
+        }.toMutableList()
+
+        // Test DTR moderato (10°C, min 13, max 23): nessuna penalità
+        baseDays[27] = baseDays[27].copy(minTemp = 13.0f, maxTemp = 23.0f)
+        val scoreDtr10 = MushroomAlgorithms.calculateWeatherScore(27, baseDays, species = edulis, config = EcologicalWeightsConfig.PHENOLOGICAL)
+
+        // Test DTR intermedio (15°C, min 10.5, max 25.5): penalità parziale continua (~0.90)
+        baseDays[27] = baseDays[27].copy(minTemp = 10.5f, maxTemp = 25.5f)
+        val scoreDtr15 = MushroomAlgorithms.calculateWeatherScore(27, baseDays, species = edulis, config = EcologicalWeightsConfig.PHENOLOGICAL)
+
+        // Test DTR severo (20°C, min 8, max 28): penalità piena (0.80)
+        baseDays[27] = baseDays[27].copy(minTemp = 8.0f, maxTemp = 28.0f)
+        val scoreDtr20 = MushroomAlgorithms.calculateWeatherScore(27, baseDays, species = edulis, config = EcologicalWeightsConfig.PHENOLOGICAL)
+
+        assertTrue("Lo score per DTR 10°C deve essere maggiore di DTR 15°C ($scoreDtr10 > $scoreDtr15)", scoreDtr10 >= scoreDtr15)
+        assertTrue("Lo score per DTR 15°C deve essere maggiore di DTR 20°C ($scoreDtr15 > $scoreDtr20)", scoreDtr15 >= scoreDtr20)
+    }
+
+    @Test
+    fun testOctoberTerrainAspectFavorsSouth() {
+        val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+        // Quota 1000m, pendenza 15°, versante Sud (aspect 180°)
+        val southTerrain = TerrainAspectData(
+            centerElevation = 1000f,
+            slopeDegrees = 15f,
+            slopePercent = 26.8f,
+            aspectDegrees = 180f,
+            cardinalDirection = "Sud",
+            cardinalAbbreviation = "S",
+            isFlat = false
+        )
+        // Mese 9 = Ottobre (0-indexed)
+        val evalOctober = MushroomAlgorithms.evaluateTerrainAspect(
+            terrain = southTerrain,
+            month = 9,
+            avgTemp = 14.0,
+            seasonalityScore = 1.0,
+            species = edulis
+        )
+        assertEquals(FactorLevel.FAVORABLE, evalOctober.level)
+        assertTrue("In ottobre il versante Sud deve essere favorito (modifier > 1.0, attuale: ${evalOctober.modifier})", evalOctober.modifier > 1.0)
+        assertTrue(evalOctober.detail.contains("Solatìo"))
+    }
+
+    @Test
+    fun testCalculateFactorsUsesEffectiveRain() {
+        val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+        val moon = MushroomAlgorithms.getMoonPhase()
+        val factors = MushroomAlgorithms.calculateFactors(
+            avgTemp = 16.0,
+            totalRain = 0.0, // Legacy window = 0 mm
+            avgHumidity = 75.0,
+            habitatScore = 0.9,
+            habitatText = "Ideale",
+            elevation = 900f,
+            month = 8,
+            growthPhaseText = "Buttata attiva",
+            moon = moon,
+            slopeText = "Sud",
+            species = edulis,
+            effectiveRainMm = 32.0 // Convoluzione fenologica = 32 mm
+        )
+        val rainFactor = factors.first { it.id == FactorId.PRECIPITATION }
+        assertEquals("Precipitazioni efficaci", rainFactor.label)
+        assertEquals("32 mm", rainFactor.formattedValue)
+        assertEquals(FactorLevel.FAVORABLE, rainFactor.level)
+        assertTrue(rainFactor.detail.contains("fenologica"))
     }
 }

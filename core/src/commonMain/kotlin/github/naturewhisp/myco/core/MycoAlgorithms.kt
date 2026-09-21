@@ -62,9 +62,10 @@ object MycoAlgorithms {
         altitudeScore: Double,
         seasonalityScore: Double,
         terrainModifier: Double,
+        growthPhaseMultiplier: Double = 1.0,
     ): Int {
         val raw = 100.0 * (weatherScore / 100.0).pow(1.2) * habitatScore * altitudeScore *
-            seasonalityScore * terrainModifier
+            seasonalityScore * terrainModifier * growthPhaseMultiplier
         val calibrated = if (raw > 70.0) {
             70.0 + 22.0 * kotlin.math.tanh((raw - 70.0) / 22.0)
         } else {
@@ -194,7 +195,7 @@ object MycoAlgorithms {
                 isSouth -> 0.90
                 else -> 1.0
             }
-        } else if (monthIndex in listOf(3, 10, 11) || avgTemp < 13.0) {
+        } else if (monthIndex in listOf(3, 9, 10, 11) || (monthIndex in listOf(4, 8) && avgTemp < 15.0) || avgTemp < 13.0) {
             when {
                 isSouth -> 1.05
                 isNorth -> 0.90

@@ -1076,12 +1076,13 @@ class MushroomViewModel(
 
                 val slopeTextVal = MushroomAlgorithms.getSlopeRecommendation(seasonalityScore.score, avgTempLast5Days, currentMonth)
 
-                // Today's weather score ponderato con la densità ifale SPUN (volano per la pioggia e lo shock termico)
+                // Today's weather score ponderato con la densità ifale SPUN e inerzia fenologica (FEAT-08)
                 val rawWeatherScore = MushroomAlgorithms.calculateWeatherScore(
                     todayIndex,
                     processedDays,
                     spunHyphalDensity = spunData?.hyphalDensity,
                     species = selectedSpecies,
+                    config = EcologicalWeightsConfig.PHENOLOGICAL,
                     canopyCover = estimatedCanopy
                 )
 

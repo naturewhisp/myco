@@ -17,6 +17,7 @@ build/
 # File di configurazione locale dell'IDE
 *.iml
 .gradle/
+.kotlin/
 local.properties
 /app/src/debug/
 

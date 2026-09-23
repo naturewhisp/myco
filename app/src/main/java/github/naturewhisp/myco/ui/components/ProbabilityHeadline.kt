@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import github.naturewhisp.myco.model.ProbabilityTier
@@ -22,8 +23,9 @@ import github.naturewhisp.myco.ui.theme.NewsreaderFontFamily
 /**
  * Testata principale del responso di probabilità con gradazione tassonomica Herbarium.
  *
- * Visualizza la percentuale grande nel carattere serif Newsreader, l'etichetta estesa
- * del livello [ProbabilityTier], il nome vernacolare opzionale della specie e la [ProbabilityBar].
+ * Visualizza l'intestazione categoriale "FAVOREVOLEZZA AMBIENTALE", la percentuale grande
+ * nel carattere serif Newsreader, l'etichetta estesa del livello [ProbabilityTier],
+ * il nome vernacolare opzionale della specie e la [ProbabilityBar].
  *
  * @param probability Valore percentuale calcolato della probabilità (0..100).
  * @param modifier Modificatore Compose per personalizzazione del layout.
@@ -48,40 +50,42 @@ fun ProbabilityHeadline(
     Column(
         modifier = modifier.fillMaxWidth()
     ) {
+        Text(
+            text = "FAVOREVOLEZZA AMBIENTALE",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.Bottom
         ) {
-            Column {
-                Text(
-                    text = "FAVOREVOLEZZA AMBIENTALE",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp,
-                    modifier = Modifier.padding(bottom = 2.dp)
-                )
-                Text(
-                    text = "$probability%",
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontFamily = NewsreaderFontFamily,
-                    fontSize = 44.sp,
-                    fontWeight = FontWeight.Normal,
-                    lineHeight = 48.sp
-                )
-            }
+            Text(
+                text = "$probability%",
+                color = MaterialTheme.colorScheme.onSurface,
+                fontFamily = NewsreaderFontFamily,
+                fontSize = 44.sp,
+                fontWeight = FontWeight.Normal,
+                lineHeight = 48.sp
+            )
 
             Column(
                 horizontalAlignment = Alignment.End,
-                modifier = Modifier.padding(bottom = 6.dp)
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .padding(start = 16.dp, bottom = 4.dp)
             ) {
                 Text(
                     text = tierLabel,
                     color = tierColor,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.8.sp
+                    letterSpacing = 0.8.sp,
+                    textAlign = TextAlign.End
                 )
                 if (!speciesVernacular.isNullOrEmpty()) {
                     Text(
@@ -89,7 +93,8 @@ fun ProbabilityHeadline(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 12.sp,
                         fontFamily = NewsreaderFontFamily,
-                        fontWeight = FontWeight.Normal
+                        fontWeight = FontWeight.Normal,
+                        textAlign = TextAlign.End
                     )
                 }
             }

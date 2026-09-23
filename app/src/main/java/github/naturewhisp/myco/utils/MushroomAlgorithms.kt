@@ -802,16 +802,17 @@ object MushroomAlgorithms {
         }
 
         val distinctEvents = clusterRainEvents(candidateEvents)
-        val activeTrigger = resolveActiveRainTrigger(
-            distinctEvents = distinctEvents,
-            effectiveToday = effectiveToday,
-            species = species,
-            hydrationThreshold = hydrationThreshold,
-            fruitingThreshold = fruitingThreshold
-        )
+        val recentTrigger = distinctEvents.first()
+        val targetRain = species.minRainAccumulation
+        val earlierCandidate = distinctEvents.drop(1).firstOrNull { earlier ->
+            val daysSinceEarlier = effectiveToday - earlier.triggerIndex
+            val inFruitingWindow = daysSinceEarlier in (hydrationThreshold + 1)..fruitingThreshold
+            val isSaturatingRain = earlier.rainAmount >= max(25.0f, targetRain * 0.70f)
+            inFruitingWindow && isSaturatingRain
+        }
 
-        return evaluateStageFromTrigger(
-            activeTrigger = activeTrigger,
+        val evalRecent = evaluateStageFromTrigger(
+            activeTrigger = recentTrigger,
             effectiveToday = effectiveToday,
             species = species,
             hydrationThreshold = hydrationThreshold,
@@ -819,6 +820,31 @@ object MushroomAlgorithms {
             fruitingThreshold = fruitingThreshold,
             tauPeak = tauPeak
         )
+
+        if (earlierCandidate == null) {
+            return evalRecent
+        }
+
+        val evalEarlier = evaluateStageFromTrigger(
+            activeTrigger = earlierCandidate,
+            effectiveToday = effectiveToday,
+            species = species,
+            hydrationThreshold = hydrationThreshold,
+            incubationThreshold = incubationThreshold,
+            fruitingThreshold = fruitingThreshold,
+            tauPeak = tauPeak
+        )
+
+        // Raccordo continuo Lipschitziano (F04 / REG-03) attorno al reset 0.70
+        val ratio = (recentTrigger.rainAmount / earlierCandidate.rainAmount.coerceAtLeast(1.0f)).toDouble()
+        val transition = smoothstep(0.50, 0.90, ratio)
+        val blendedMultiplier = (1.0 - transition) * evalEarlier.multiplier + transition * evalRecent.multiplier
+
+        return if (transition < 0.5) {
+            evalEarlier.copy(multiplier = blendedMultiplier)
+        } else {
+            evalRecent.copy(multiplier = blendedMultiplier)
+        }
     }
 
     internal fun extractCandidateRainEvents(
@@ -827,16 +853,34 @@ object MushroomAlgorithms {
         maxLookback: Int
     ): List<RainTrigger> {
         val candidateEvents = mutableListOf<RainTrigger>()
-        for (i in effectiveToday downTo maxLookback) {
-            if (processedData[i].totalPrecip >= 12.0f) {
-                candidateEvents.add(RainTrigger(i, processedData[i].totalPrecip))
-            } else if (i >= 2) {
-                val threeDayRain = processedData[i].totalPrecip +
-                        processedData[i - 1].totalPrecip +
-                        processedData[i - 2].totalPrecip
-                if (threeDayRain >= 18.0f) {
+        var i = effectiveToday
+        while (i >= maxLookback) {
+            val precip = processedData[i].liquidPrecip
+            if (precip >= 10.0f) {
+                candidateEvents.add(RainTrigger(i, precip))
+                i--
+            } else if (precip >= 0.5f && i >= 2) {
+                val threeDayRain = processedData[i].liquidPrecip +
+                        processedData[i - 1].liquidPrecip +
+                        processedData[i - 2].liquidPrecip
+                if (threeDayRain >= 17.5f) {
                     candidateEvents.add(RainTrigger(i - 2, threeDayRain))
+                    i -= 3
+                } else if (i >= 4) {
+                    val fiveDayRain = threeDayRain +
+                            processedData[i - 3].liquidPrecip +
+                            processedData[i - 4].liquidPrecip
+                    if (fiveDayRain >= 24.0f) {
+                        candidateEvents.add(RainTrigger(i - 4, fiveDayRain))
+                        i -= 5
+                    } else {
+                        i--
+                    }
+                } else {
+                    i--
                 }
+            } else {
+                i--
             }
         }
         return candidateEvents
@@ -847,7 +891,12 @@ object MushroomAlgorithms {
         candidateEvents.sortedByDescending { it.triggerIndex }.forEach { ev ->
             val existing = distinctEvents.firstOrNull { abs(it.triggerIndex - ev.triggerIndex) <= 2 }
             if (existing == null) {
-                distinctEvents.add(ev)
+                distinctEvents.add(ev.copy())
+            } else {
+                val mergedRain = existing.rainAmount + ev.rainAmount
+                val latestIndex = max(existing.triggerIndex, ev.triggerIndex)
+                val idx = distinctEvents.indexOf(existing)
+                distinctEvents[idx] = RainTrigger(latestIndex, mergedRain)
             }
         }
         return distinctEvents
@@ -881,52 +930,61 @@ object MushroomAlgorithms {
         fruitingThreshold: Int,
         tauPeak: Double
     ): GrowthPhaseEvaluation {
-        val daysSinceTrigger = effectiveToday - activeTrigger.triggerIndex
-        val kernelVal = phenologyKernel(
+        val daysSinceTrigger = max(0, effectiveToday - activeTrigger.triggerIndex)
+        val k = phenologyKernel(
             tauDays = daysSinceTrigger.toDouble(),
             tauPeak = tauPeak,
             alpha = species.phenologyShapeAlpha
         )
 
-        return when {
+        val stage: GrowthStage
+        val phaseText: String
+        val baseMultiplier: Double
+
+        when {
             daysSinceTrigger <= hydrationThreshold -> {
-                val mult = (0.35 + 0.15 * (daysSinceTrigger.toDouble() / hydrationThreshold)).coerceIn(0.35, 0.50)
-                GrowthPhaseEvaluation(
-                    phaseText = "Fase: Idratazione miceliare (piogge recenti $daysSinceTrigger giorni fa).",
-                    multiplier = mult,
-                    daysSinceTrigger = daysSinceTrigger,
-                    stage = GrowthStage.MYCELIAL_HYDRATION
-                )
+                stage = GrowthStage.MYCELIAL_HYDRATION
+                phaseText = "Fase: Idratazione miceliare (piogge recenti $daysSinceTrigger giorni fa)."
+                baseMultiplier = (0.35 + 0.15 * (daysSinceTrigger.toDouble() / hydrationThreshold.coerceAtLeast(1)))
+                    .coerceIn(0.35, 0.50)
             }
             daysSinceTrigger <= incubationThreshold -> {
+                stage = GrowthStage.PRIMORDIA_INCUBATION
                 val daysToFruiting = max(1, (tauPeak - daysSinceTrigger).roundToInt())
-                val mult = (0.50 + 0.35 * kernelVal).coerceIn(0.50, 0.85)
-                GrowthPhaseEvaluation(
-                    phaseText = "Fase: Incubazione primordi (differenziazione in circa $daysToFruiting giorni).",
-                    multiplier = mult,
-                    daysSinceTrigger = daysSinceTrigger,
-                    stage = GrowthStage.PRIMORDIA_INCUBATION
-                )
+                phaseText = "Fase: Incubazione primordi (differenziazione in circa $daysToFruiting giorni)."
+                val kHydration = phenologyKernel(hydrationThreshold.toDouble(), tauPeak, species.phenologyShapeAlpha)
+                val denom = (1.0 - kHydration).coerceAtLeast(0.01)
+                val t = ((k - kHydration) / denom).coerceIn(0.0, 1.0)
+                baseMultiplier = (0.50 + 0.50 * t).coerceIn(0.50, 0.95)
             }
             daysSinceTrigger <= fruitingThreshold -> {
-                val mult = (0.85 + 0.15 * kernelVal).coerceIn(0.85, 1.00)
-                GrowthPhaseEvaluation(
-                    phaseText = "Fase: Buttata attiva (finestra ottimale di raccolta).",
-                    multiplier = mult,
-                    daysSinceTrigger = daysSinceTrigger,
-                    stage = GrowthStage.ACTIVE_FRUITING
-                )
+                stage = GrowthStage.ACTIVE_FRUITING
+                phaseText = "Fase: Buttata attiva (finestra ottimale di raccolta)."
+                val kHydration = phenologyKernel(hydrationThreshold.toDouble(), tauPeak, species.phenologyShapeAlpha)
+                val denom = (1.0 - kHydration).coerceAtLeast(0.01)
+                val t = ((k - kHydration) / denom).coerceIn(0.0, 1.0)
+                baseMultiplier = (0.50 + 0.50 * t).coerceIn(0.85, 1.00)
             }
             else -> {
-                val mult = (0.70 * kernelVal).coerceIn(0.30, 0.70)
-                GrowthPhaseEvaluation(
-                    phaseText = "Fase: Flusso in esaurimento (in attesa di nuove piogge).",
-                    multiplier = mult,
-                    daysSinceTrigger = daysSinceTrigger,
-                    stage = GrowthStage.WANING
-                )
+                stage = GrowthStage.WANING
+                phaseText = "Fase: Flusso in esaurimento (in attesa di nuove piogge)."
+                val kHydration = phenologyKernel(hydrationThreshold.toDouble(), tauPeak, species.phenologyShapeAlpha)
+                val denom = (1.0 - kHydration).coerceAtLeast(0.01)
+                val t = ((k - kHydration) / denom).coerceIn(0.0, 1.0)
+                baseMultiplier = if (k >= kHydration) {
+                    (0.50 + 0.50 * t).coerceIn(0.25, 0.85)
+                } else {
+                    (0.25 + 0.25 * (k / kHydration.coerceAtLeast(0.01))).coerceIn(0.25, 0.50)
+                }
             }
         }
+
+        return GrowthPhaseEvaluation(
+            phaseText = phaseText,
+            multiplier = baseMultiplier,
+            daysSinceTrigger = daysSinceTrigger,
+            stage = stage
+        )
     }
 
     /**
@@ -1208,17 +1266,44 @@ object MushroomAlgorithms {
     }
 
     /**
+     * Ricava dinamicamente l'indice del giorno odierno all'interno della serie temporale [processedData],
+     * tenendo conto del fuso orario geografico della località per evitare slittamenti a mezzanotte (F13 / REG-13).
+     */
+    fun deriveTodayIndex(
+        processedData: List<ProcessedDay>,
+        timezone: String? = null
+    ): Int {
+        if (processedData.isEmpty()) return 0
+        val tz = if (!timezone.isNullOrBlank()) {
+            try { java.util.TimeZone.getTimeZone(timezone) } catch (_: Exception) { java.util.TimeZone.getDefault() }
+        } else {
+            java.util.TimeZone.getDefault()
+        }
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).apply {
+            timeZone = tz
+        }
+        val todayIso = sdf.format(java.util.Date())
+        val idx = processedData.indexOfFirst { it.date == todayIso }
+        return if (idx >= 0) idx else min(processedData.size - 1, 14.coerceAtLeast(min(28, processedData.size - 1)))
+    }
+
+    /**
      * Analizza la finestra previsionale futura (+1..+5 giorni) per stimare il trend di crescita.
      *
      * @param processedData Serie temporale dei giorni con storico e previsioni future.
+     * @param todayIndex Indice del giorno odierno (default ricavato dinamicamente con [deriveTodayIndex]).
      * @return Paragrafo descrittivo Markdown con l'evoluzione del trend idrico e di fruttificazione.
      */
-    fun analyzeFutureTrend(processedData: List<ProcessedDay>): String {
-        val todayIndex = 14
-        if (processedData.size < todayIndex + 6) return ""
+    fun analyzeFutureTrend(
+        processedData: List<ProcessedDay>,
+        todayIndex: Int = deriveTodayIndex(processedData)
+    ): String {
+        if (todayIndex < 0 || todayIndex >= processedData.size) return ""
+        if (processedData.size <= todayIndex + 1) return ""
 
-        val futureWindow = processedData.subList(todayIndex + 1, todayIndex + 6)
-        val futureRain = futureWindow.sumOf { it.totalPrecip.toDouble() }
+        val futureWindow = processedData.subList(todayIndex + 1, min(processedData.size, todayIndex + 6))
+        if (futureWindow.isEmpty()) return ""
+        val futureRain = futureWindow.sumOf { it.liquidPrecip.toDouble() }
 
         return when {
             futureRain > 15 -> {
@@ -1310,16 +1395,13 @@ object MushroomAlgorithms {
     }
 
     /**
-     * Modello Termico Cardinale con Flessione (CTMI di Rosso et al., 1993).
+     * Modello Termico Cardinale con Flessione (Yin et al., 1995; Yan & Hunt, 1999).
      *
      * Modella con rigore termodinamico la cinetica cellulare ed enzimatica dei macromiceti:
      * - Risposta nulla per temp <= tMin o temp >= tMax.
-     * - Massimo unitario (1.0) esattamente alla temperatura ottimale tOpt.
-     * - Asimmetria biologica: ascesa progressiva dal limite psicrotollerante tMin e rapido decadimento verso tMax
-     *   dovuto alla denaturazione termica delle proteine cellulari.
-     *
-     * In presenza di parametri singolari al denominatore, applica la formulazione cardinale
-     * continua di Yan & Hunt (1999) garantendo Lipschitz-continuità e assenza di divisioni per zero.
+     * - Massimo unitario (1.0) esattamente alla temperatura ottimale tOpt, con derivata prima nulla.
+     * - Formulazione priva di singolarità interne o divisioni per zero (F02 / REG-01, REG-02).
+     * - Esponenti sempre >= 1.0 garantendo pendenza limitata e Lipschitz-continuità.
      *
      * @param temp Temperatura media in °C.
      * @param tMin Temperatura minima cardinale di tolleranza miceliare in °C.
@@ -1328,21 +1410,21 @@ object MushroomAlgorithms {
      * @return Risposta termica cardinale normalizzata in [0.0, 1.0].
      */
     fun ctmi(temp: Double, tMin: Double, tOpt: Double, tMax: Double): Double {
-        if (temp <= tMin || temp >= tMax || tMin >= tOpt || tOpt >= tMax) return 0.0
+        if (tMin >= tOpt || tOpt >= tMax) return 0.0
+        if (temp <= tMin || temp >= tMax) return 0.0
 
-        val num = (temp - tMax) * (temp - tMin) * (temp - tMin)
-        val den = (tOpt - tMin) * ((tOpt - tMin) * (temp - tOpt) - (tOpt - tMax) * (tOpt + tMin - 2.0 * temp))
+        val spanMin = tOpt - tMin
+        val spanMax = tMax - tOpt
+        val x = (temp - tMin) / spanMin
+        val y = (tMax - temp) / spanMax
 
-        if (den > 0.0) {
-            val v = num / den
-            if (v in 0.0..1.0) return v
+        return if (spanMin <= spanMax) {
+            val alpha = spanMax / spanMin
+            (x * Math.pow(y, alpha)).coerceIn(0.0, 1.0)
+        } else {
+            val beta = spanMin / spanMax
+            (Math.pow(x, beta) * y).coerceIn(0.0, 1.0)
         }
-
-        // Fallback analitico continuo cardinale privo di singolarità (Yan & Hunt, 1999)
-        val b = (tOpt - tMin) / (tMax - tOpt)
-        val term1 = (tMax - temp) / (tMax - tOpt)
-        val term2 = (temp - tMin) / (tOpt - tMin)
-        return (term1 * Math.pow(term2, b)).coerceIn(0.0, 1.0)
     }
 
     /**
@@ -1406,7 +1488,8 @@ object MushroomAlgorithms {
     /**
      * Interpolazione ermitiana cubica smoothstep continua tra [edge0] ed [edge1].
      */
-    private fun smoothstep(edge0: Double, edge1: Double, x: Double): Double {
+    fun smoothstep(edge0: Double, edge1: Double, x: Double): Double {
+        if (edge1 <= edge0) return if (x >= edge1) 1.0 else 0.0
         val t = ((x - edge0) / (edge1 - edge0)).coerceIn(0.0, 1.0)
         return t * t * (3.0 - 2.0 * t)
     }
@@ -1764,6 +1847,79 @@ object MushroomAlgorithms {
      * @param species Specie micologica target [MushroomSpecies] per il modello Hurdle (se null, usa prodotto baseline).
      * @return Probabilità percentuale complessiva normalizzata nell'intervallo [0, 100].
      */
+    /**
+     * Calcola l'indice normalizzato continuo di favorevolezza/idoneità ambientale (0.0..100.0).
+     *
+     * In conformità con la Revisione Scientifica (Percorso A / Indice Euristico):
+     * S_raw = 100 * (W/100)^1.2 * H * A * S * T * p_hurdle * Phi_phase
+     * S_calibrated = S_raw se <= 70, altrimenti 70 + 22 * tanh((S_raw - 70)/22)
+     *
+     * @param weatherScore Punteggio meteorologico calcolato (0..100).
+     * @param habitatScore Punteggio vegetazionale / boschivo (0.0..1.0).
+     * @param altitudeScore Risposta altimetrica continua della specie (0.0..1.0).
+     * @param seasonalityScore Risposta fenologica stagionale del mese corrente (0.0..1.0).
+     * @param terrainModifier Modificatore continuo del versante, pendenza ed esposizione orografica (default 1.0).
+     * @param config Configurazione dei pesi ed esponenti ecologici [EcologicalWeightsConfig].
+     * @param species Specie micologica target [MushroomSpecies] per il modello Hurdle (se null, usa prodotto baseline).
+     * @param growthPhaseMultiplier Moltiplicatore continuo di fase fenologica Phi_phase.
+     * @return Indice continuo normalizzato nell'intervallo [0.0, 100.0].
+     */
+    fun calculateSuitabilityScore(
+        weatherScore: Int,
+        habitatScore: Double,
+        altitudeScore: Double,
+        seasonalityScore: Double,
+        terrainModifier: Double = 1.0,
+        config: EcologicalWeightsConfig = EcologicalWeightsConfig.PHENOLOGICAL,
+        species: MushroomSpecies? = null,
+        growthPhaseMultiplier: Double = 1.0
+    ): Double {
+        val clampedWeather = weatherScore.coerceIn(0, 100)
+        val clampedHabitat = habitatScore.coerceIn(0.0, 1.0)
+        val clampedAltitude = altitudeScore.coerceIn(0.0, 1.0)
+        val clampedSeasonality = seasonalityScore.coerceIn(0.0, 1.0)
+        val clampedTerrain = terrainModifier.coerceIn(0.0, 2.0)
+        val clampedPhase = growthPhaseMultiplier.coerceIn(0.0, 1.0)
+
+        if (config == EcologicalWeightsConfig.DEFAULT) {
+            return SharedMycoAlgorithms.calculateSuitabilityScore(
+                weatherScore = clampedWeather,
+                habitatScore = clampedHabitat,
+                altitudeScore = clampedAltitude,
+                seasonalityScore = clampedSeasonality,
+                terrainModifier = clampedTerrain,
+                growthPhaseMultiplier = clampedPhase
+            )
+        }
+        val weightedWeatherScore = 100.0 * Math.pow(clampedWeather / 100.0, config.weatherExponent)
+
+        val rawScore = if (species != null && config.usePhenologicalInertia) {
+            // Modello Hurdle a Due Stadi (de-Miguel et al. 2014)
+            val pHurdle = hurdleOccurrenceProbability(clampedHabitat, clampedAltitude, species)
+            val combined = weightedWeatherScore * clampedHabitat * clampedAltitude * clampedSeasonality * clampedTerrain * pHurdle * clampedPhase
+            combined.coerceAtLeast(0.0)
+        } else {
+            // Formulazione moltiplicativa classica pura (piena invarianza e retrocompatibilità per oracolo)
+            val combined = weightedWeatherScore * clampedHabitat * clampedAltitude * clampedSeasonality * clampedTerrain * clampedPhase
+            combined.coerceAtLeast(0.0)
+        }
+
+        val pKnee = config.probabilityKneeThreshold
+        val pMax = config.probabilityMaxAsymptote
+
+        val calibrated = if (rawScore > pKnee) {
+            pKnee + (pMax - pKnee) * kotlin.math.tanh((rawScore - pKnee) / (pMax - pKnee))
+        } else {
+            rawScore
+        }
+
+        return calibrated.coerceIn(0.0, 100.0)
+    }
+
+    /**
+     * Calcola la probabilità giornaliera combinata di fruttificazione (0..100%).
+     * Compatibile retroattivamente con l'oracolo e i test legacy.
+     */
     fun dailyGrowthProbability(
         weatherScore: Int,
         habitatScore: Double,
@@ -1783,29 +1939,16 @@ object MushroomAlgorithms {
                 terrainModifier,
             )
         }
-        val weightedWeatherScore = 100.0 * Math.pow(weatherScore / 100.0, config.weatherExponent)
-        
-        val rawProb = if (species != null && config.usePhenologicalInertia) {
-            // Modello Hurdle a Due Stadi (de-Miguel et al. 2014)
-            val pHurdle = hurdleOccurrenceProbability(habitatScore, altitudeScore, species)
-            val combined = weightedWeatherScore * habitatScore * altitudeScore * seasonalityScore * terrainModifier * pHurdle * growthPhaseMultiplier
-            combined.coerceAtLeast(0.0)
-        } else {
-            // Formulazione moltiplicativa classica pura (piena invarianza e retrocompatibilità per oracolo)
-            val combined = weightedWeatherScore * habitatScore * altitudeScore * seasonalityScore * terrainModifier * growthPhaseMultiplier
-            combined.coerceAtLeast(0.0)
-        }
-        
-        val pKnee = config.probabilityKneeThreshold
-        val pMax = config.probabilityMaxAsymptote
-        
-        val calibratedProb = if (rawProb > pKnee) {
-            pKnee + (pMax - pKnee) * kotlin.math.tanh((rawProb - pKnee) / (pMax - pKnee))
-        } else {
-            rawProb
-        }
-        
-        return calibratedProb.toInt().coerceIn(0, 100)
+        return calculateSuitabilityScore(
+            weatherScore = weatherScore,
+            habitatScore = habitatScore,
+            altitudeScore = altitudeScore,
+            seasonalityScore = seasonalityScore,
+            terrainModifier = terrainModifier,
+            config = config,
+            species = species,
+            growthPhaseMultiplier = growthPhaseMultiplier
+        ).toInt().coerceIn(0, 100)
     }
 
     /**

@@ -53,14 +53,24 @@ fun ProbabilityHeadline(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.Bottom
         ) {
-            Text(
-                text = "$probability%",
-                color = MaterialTheme.colorScheme.onSurface,
-                fontFamily = NewsreaderFontFamily,
-                fontSize = 44.sp,
-                fontWeight = FontWeight.Normal,
-                lineHeight = 48.sp
-            )
+            Column {
+                Text(
+                    text = "FAVOREVOLEZZA AMBIENTALE",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+                Text(
+                    text = "$probability%",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontFamily = NewsreaderFontFamily,
+                    fontSize = 44.sp,
+                    fontWeight = FontWeight.Normal,
+                    lineHeight = 48.sp
+                )
+            }
 
             Column(
                 horizontalAlignment = Alignment.End,

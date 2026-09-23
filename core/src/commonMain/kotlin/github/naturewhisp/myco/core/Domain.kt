@@ -95,7 +95,9 @@ data class DailyOutlook(
     val avgHumidityPercent: Double,
     val probability: Int,
     val tier: ProbabilityTier,
-)
+) {
+    val suitabilityScore: Int get() = probability
+}
 
 data class TerrainAspect(
     val elevation: Double,

@@ -44,8 +44,25 @@ data class EcologicalWeightsConfig(
     val shockRainSaturationMm: Double = 25.0,
     val usePhenologicalInertia: Boolean = false,
     val probabilityKneeThreshold: Double = 70.0,
-    val probabilityMaxAsymptote: Double = 92.0
+    val probabilityMaxAsymptote: Double = 92.0,
+    val suitabilityKneeThreshold: Double = probabilityKneeThreshold,
+    val suitabilityMaxAsymptote: Double = probabilityMaxAsymptote
 ) {
+    init {
+        require(rainWeight >= 0.0 && tempWeight >= 0.0 && humidityWeight >= 0.0 && thermalShockWeight >= 0.0) {
+            "I pesi meteorologici non possono essere negativi"
+        }
+        require(rainWindowDays > 0 && rainLagDays >= 0 && rainLagDays < rainWindowDays) {
+            "Finestre temporali di precipitazione non valide: window=$rainWindowDays, lag=$rainLagDays"
+        }
+        require(tempWindowDays > 0 && humidityWindowDays > 0) {
+            "Finestre termiche o igrometriche devono essere strettamente positive"
+        }
+        require(suitabilityKneeThreshold in 0.0..100.0 && suitabilityMaxAsymptote >= suitabilityKneeThreshold) {
+            "Soglie asintotiche non valide: knee=$suitabilityKneeThreshold, max=$suitabilityMaxAsymptote"
+        }
+    }
+
     companion object {
         /**
          * Istanza predefinita baseline con finestra rigida [10 gg - 2 gg].

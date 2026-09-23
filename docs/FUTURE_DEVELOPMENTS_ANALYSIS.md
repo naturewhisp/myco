@@ -2,9 +2,9 @@
 
 **Progetto**: Myco (Android / Kotlin Multiplatform)  
 **Documento**: `docs/FUTURE_DEVELOPMENTS_ANALYSIS.md`  
-**Data di Redazione**: 2026-09-09  
-**Stato**: Approvato — Baseline per le Release v1.1, v1.2 e v2.0  
-**Riferimenti Architetturali**: `AGENTS.md`, `docs/IOS_ARCHITECTURE.md`, `PROJECT.md`  
+**Data di Redazione**: 2026-09-09 (Aggiornato: 2026-09-23)  
+**Stato**: Approvato — Baseline per le Release v1.1, v1.2, v1.3 (Percorso A), v1.4 e v2.0  
+**Riferimenti Architetturali**: `AGENTS.md`, `docs/IOS_ARCHITECTURE.md`, `PROJECT.md`, `docs/CITIZEN_SCIENCE_H3_ARCHITECTURE.md`, [`docs/Revisione_scientifica_algoritmi_Myco.md`](Revisione_scientifica_algoritmi_Myco.md)  
 
 ---
 
@@ -735,15 +735,29 @@ $$\text{Priority Score} = (\text{Impatto} \times 2) - \text{Sforzo} \quad (\text
 | **FEAT-14**| Science | Risposta unimodale dell'area basimetrica $G$ (CTFC Bonet/de-miguel) | 4 | 2 | **6.0** | **P2** | 3 SP / **S** | v1.2 | **COMPLETATO** (v1.2) |
 | **FEAT-15**| Science | Valutazione dinamica per specie dell'habitat (`evaluateSpeciesHabitat`) | 5 | 3 | **7.0** | **P1** | 5 SP / **M** | v1.2 | **COMPLETATO** (v1.2) |
 | **FEAT-16**| Taxonomy | Espansione catalogo con *Lactarius deliciosus* e *Morchella esculenta* | 4 | 2 | **6.0** | **P2** | 3 SP / **S** | v1.2 | **COMPLETATO** (v1.2) |
+| **MYCO-SCI-01**| Science | Semantica e target: `suitabilityScore` (0-100) non calibrato | 5 | 1 | **9.0** | **P1** | 2 SP / **S** | v1.3 | **URGENTE / PIANIFICATO** |
+| **MYCO-SCI-02**| Science | Risoluzione CTMI e famiglie termiche cardinali continue senza fallback | 5 | 2 | **8.0** | **P1** | 3 SP / **S** | v1.3 | **URGENTE / PIANIFICATO** |
+| **MYCO-SCI-03**| Science | Rimozione reset 70%, conservazione massa piogge e fasi continue | 5 | 3 | **7.0** | **P1** | 5 SP / **M** | v1.3 | **URGENTE / PIANIFICATO** |
+| **MYCO-SCI-05**| Data/Time | Date `LocalDate`, fusi sito, pioggia vs neve, missingness tipizzata | 5 | 2 | **8.0** | **P1** | 3 SP / **S** | v1.3 | **URGENTE / PIANIFICATO** |
+| **MYCO-SCI-04**| Multiplatform| Unificazione motore deterministico KMP in `:core` (Android & iOS) | 5 | 4 | **6.0** | **P1** | 8 SP / **M** | v1.3 | **URGENTE / PIANIFICATO** |
+| **MYCO-SCI-08**| Cartography| Parità Heatmap/Scheda puntuale (azzeramento a W=0 o isolamento) | 4 | 2 | **6.0** | **P1** | 3 SP / **S** | v1.3 | **URGENTE / PIANIFICATO** |
+| **MYCO-SCI-06**| Geospatial | Habitat su superfici geometriche OSM e cache isolata con raggio | 4 | 3 | **5.0** | **P1** | 5 SP / **M** | v1.3 | **URGENTE / PIANIFICATO** |
+| **MYCO-SCI-07**| Science | Bonifica SPUN: isolamento ife AM, manifest DOI/SHA256, fix interpolazione | 4 | 2 | **6.0** | **P1** | 3 SP / **S** | v1.3 | **URGENTE / PIANIFICATO** |
+| **MYCO-SCI-09**| Quality | Test suite REG-01..20, bonifica date Mindino e test continuità end-to-end | 5 | 2 | **8.0** | **P1** | 5 SP / **M** | v1.3 | **URGENTE / PIANIFICATO** |
+| **MYCO-SCI-10**| Science | Modelli idrologici/termici candidati, registro parametri e sensibilità | 4 | 3 | **5.0** | **P2** | 5 SP / **M** | v1.3 | *Pianificato* |
+| **MYCO-SCI-13**| Science | Protocollo di validazione comparativa dell'indice rispetto a baseline | 5 | 3 | **7.0** | **P1** | 8 SP / **M** | v1.3 | **URGENTE / PIANIFICATO** |
+| **FEAT-17**| Citizen Sci | Modulo Citizen Science & Uber H3 Res 7 (~5.16 km²) con TGB | 5 | 4 | **6.0** | **P1** | 13 SP / **L** | v1.4 | **PIANIFICATO** (Prerequisito dati per Percorso B) |
 | **KMP-01** | Architecture| Riorganizzazione Gradle in multi-modulo `:core` KMP | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v2.0 | **COMPLETATO** — dominio, engine, SPUN e heatmap condivisi; gate scientifici e performance attivi |
 | **KMP-02** | Mobile UI | Implementazione client iOS SwiftUI nativo | 5 | 4 | **6.0** | **P2** | 13 SP / **L** | v2.0 | **IMPLEMENTAZIONE COMPLETATA** — Registry/Forecast/MapKit, finestre ambientali condivise, habitat 1500 m, SPUN actor-isolated, offline, preferiti, Foundation Models validati, accessibilità e hardening anti-race; CI, device, firma e distribuzione restano da verificare |
 | **FEAT-05**| Hardware | Sensore barometrico nativo e telemetria sonde BLE | 3 | 4 | **2.0** | **P3** | 8 SP / **M** | v2.0 | *Pianificato* |
 | **FEAT-06**| Weather | Overlay radar precipitativo animato su MapView | 3 | 3 | **3.0** | **P3** | 5 SP / **M** | v2.0 | *Pianificato* |
+| **MYCO-SCI-11**| Science (B)| Dataset empirico validato da osservazioni Citizen Science (Percorso B) | 4 | 4 | **4.0** | **P3** | 13 SP / **L** | Post-Citizen | *Opzionale (Subordinato a FEAT-17)* |
+| **MYCO-SCI-12**| Science (B)| Modello probabilistico calibrato, Brier score, Model Card (Percorso B) | 4 | 4 | **4.0** | **P3** | 13 SP / **L** | Post-Citizen | *Opzionale (Subordinato a SCI-11)* |
 | **FEAT-07**| AI Weather | Nowcasting predittivo WeatherNext 3 (Google DeepMind) per FEAT-06 | 4 | 4 | **4.0** | **P3** | 13 SP / **L** | Post v2.0 | *Valutazione (Subordinata a FEAT-06)* |
 
 ---
 
-## 8. Roadmap Strategica in Tre Fasi
+## 8. Roadmap Strategica Multilivello
 
 ```mermaid
 gantt
@@ -769,16 +783,29 @@ gantt
     Localizzazione strings.xml (TASK-04)        :done, 2026-11-20, 2026-11-25
     Release v1.2 Stabile                        :milestone, 2026-12-05, 0d
 
-    section Fase 3: v2.0 Multiplatform iOS
-    Modularizzazione Gradle KMP :core (KMP-01)  :crit, 2027-01-10, 21d
-    Adapter iOS (CoreLocation, UserDefaults, Foundation Models) :done, 2027-02-01, 14d
-    UI SwiftUI nativa (KMP-02)                 :crit, done, 2027-02-15, 28d
-    Sensori Barometrici & Sonde BLE (FEAT-05)   :2027-03-01, 14d
-    Radar Precipitativo Real-Time (FEAT-06)     :2027-03-10, 14d
-    Release v2.0 iOS & Android                  :milestone, 2027-04-01, 0d
+    section Fase 3: v1.3 Revisione Scientifica (Percorso A)
+    Semantica Suitability & Cardinali CTMI (SCI-01, SCI-02) :crit, active, 2026-09-24, 7d
+    Continuità Piogge & Date/Fusi/Neve (SCI-03, SCI-05)     :crit, active, 2026-10-01, 7d
+    Unificazione Motore KMP & Parità Mappa (SCI-04, SCI-08) :crit, 2026-10-08, 10d
+    Habitat Geometrico OSM & Bonifica SPUN (SCI-06, SCI-07) :2026-10-18, 7d
+    Test Suite REG-01..20 & Baseline (SCI-09, SCI-13)       :2026-10-25, 7d
+    Release v1.3 Stabile (Percorso A)                       :milestone, 2026-11-05, 0d
 
-    section Post Fase 3: Evolutive Avanzate
-    Nowcasting AI WeatherNext 3 (FEAT-07 sub FEAT-06) :2027-04-15, 28d
+    section Fase 4: v1.4 Citizen Science & Uber H3
+    Infrastruttura DGGS Uber H3 Res 7 & Privacy Differenziale (FEAT-17) :crit, 2026-11-10, 14d
+    Repository Crowdsourcing & Sync Offline (FEAT-17)                   :2026-11-24, 14d
+    DeepMaxent con Target-Group Background (TGB)                        :2026-12-08, 14d
+    Release v1.4 Modulo Citizen Science                                 :milestone, 2026-12-22, 0d
+
+    section Fase 5: v2.0 Multiplatform iOS
+    Adapter iOS & SwiftUI Nativo (KMP-02)       :crit, 2027-01-10, 28d
+    Sensori Barometrici & Sonde BLE (FEAT-05)   :2027-02-10, 14d
+    Radar Precipitativo Real-Time (FEAT-06)     :2027-02-24, 14d
+    Release v2.0 iOS & Android                  :milestone, 2027-03-15, 0d
+
+    section Post-Fase 5: Evolutive Avanzate & Percorso B
+    Calibrazione Probabilità su Dati Citizen Science (SCI-11, SCI-12) :2027-04-01, 28d
+    Nowcasting AI WeatherNext 3 (FEAT-07 sub FEAT-06)                :2027-05-01, 28d
 ```
 
 ### 8.1 Fase 1: Release v1.1 — Affidabilità, Sicurezza e Consolidamento Architetturale
@@ -811,53 +838,99 @@ gantt
   4. [x] **Operatività sul Campo & Resilienza Offline (FEAT-04 / TD-01 / TD-02 / TASK-03)**: **COMPLETATO** (v1.2) — Snapping autentico su poligoni e formazioni forestali reali tramite Overpass QL (`findNearestForest`) con calcolo geospaziale Haversine; calcolo dinamico del punto di copertura SPUN più vicino (`findClosestCoveragePoint`) con indicazione di distanza reale e toponimo sentinella; fallback automatico sui dati in cache SQLite ignorando la scadenza TTL in assenza di connettività di rete (`getCachedDataIgnoreExpiry`); banner di stato "Modalità campo offline"; tool interattivo di precaricamento offline completo di tutti i layer ambientali in `SettingsScreen` (`prefetchForOfflineUse`).
   5. [x] **Internazionalizzazione e Pulizia Risorse (TASK-04 / TD-17)**: **COMPLETATO** (v1.2) — Estrazione progressiva e integrale delle stringhe di interfaccia in `res/values/strings.xml`, supporto alle forme plurali (`plurals`), conformità tipografica ed eliminazione totale dei warning di analisi statica.
   6. [x] **Espansione Test Suite Automatizzata**: **COMPLETATO** (v1.2) — Aggiunti test su formula di Haversine, sentinelle SPUN, fallback offline del repository, snapping forestale del ViewModel e sincronizzazione offline, portando la suite a **82 test unitari (100% passing)**.
-
-  7. [x] **Inerzia Biologica & Fase Fenologica (FEAT-08)**: **COMPLETATO** (v1.2) — Sostituzione della finestra rigida meteo con l'integrazione pesata `evaluateGrowthPhase` e convoluzione `calculateEffectiveRainfall` in `MushroomAlgorithms.kt`.
-  8. [x] **Isteresi Notturna & Inibizione DTR (FEAT-09)**: **COMPLETATO** (v1.2) — Aggiunta estrazione min/max temperature in `ProcessedDay`, implementazione del modello di penalità asimmetrica per inibizione da freddo notturno e modulazione inerzia biologica in caso di trauma termico.
-  9. [x] **Invariante Geospaziale Hardware (FIX-07)**: **COMPLETATO** (v1.2) — Restrizione dell'utilizzo della bussola hardware in `MushroomViewModel` e `MapScreen` esclusivamente se il cursore dista $\le 50$ metri dal GPS fisico dell'utente, risolvendo consumi anomali.
-  10. [x] **Dinamica Idraulica van Genuchten & Anti-Asfissia (FEAT-10)**: **COMPLETATO** (v1.2) — Rimodellazione biofisica continua di `soilMoistureScoreSmooth` secondo la curva idrodinamica di van Genuchten e la porosità aerifera residua ($\varepsilon_a < 10\%$). Penalizzazione asfittica progressiva e severa ($0.38 \dots 0.44 \dots 0.52\text{ m}^3/\text{m}^3$) fino al fondo biologico di $0.15$ per saturazione dei macropori superficiali e $0.20$ profonda. Feedback diagnostico in `FactorId.SOIL_MOISTURE` ("Ristagno/asfissia" / "Stress idrico/secco") e test unitari dedicati (83 test totali).
-  11. [x] **Canopy Buffering & Microclima Forestale (FEAT-11)**: **COMPLETATO** (v1.2) — Modellazione biometeorologica continua del microclima di sottobosco secondo De Frenne et al. (Nature Ecol. Evol. 2019/2021) e intercettazione chiome CTFC/Bonet et al. Attenuazione massime estive (cooling offset), isolamento radiativo notturno contro il freddo aperto, restringimento DTR ed evaporazione throughfall. Integrazione dinamica Overpass `forestCount` e test dedicati (87 test totali).
-  12. [x] **Modello Termico Cardinale CTMI & Finestre Fenologiche Decennali (FEAT-12)**: **COMPLETATO** (v1.2) — Implementazione del modello termico cardinale con flessione (CTMI di Rosso et al., 1993 / Yan & Hunt, 1999) con cinetica asimmetrica enzimatica. Integrazione delle risultanze empiriche decennali di Brejon Lamartinière & Hoffman (2025/2026): estensione della ricarica idrica preventiva a 26 giorni ($P_{d-26}$) con `past_days = 28` in Open-Meteo, indicizzazione temporale dinamica nel ViewModel, e condizionamento termico di medio termine a 20 giorni ($T_{d-20}$) calibrato sull'ottimo di $13.5^\circ\text{C}$ per *Boletus edulis*. Suite estesa a 91 test (100% pass).
-  13. [x] **Modello Hurdle a Due Stadi (FEAT-13)**: **COMPLETATO** (v1.2) — Scomposizione biometeorologica della probabilità di fruttificazione in occorrenza stazionale binaria (Hurdle $p_{\text{hurdle}}$ calcolato via CDF di Weibull con $\beta=2.5$ e $\sigma = 0.35 \cdot \text{hurdleStrictness}$) e resa condizionale $P_{\text{cond}}$ (con conservazione completa dei fattori stazionali $H \times A$ nel prodotto ecologico). Accoppiamento diretto del moltiplicatore fenologico della fase di crescita ($\Phi_{\text{phase}} \in [0.35, 1.0]$, Legge del Minimo di Liebig) nel calcolo della probabilità giornaliera, eliminando falsi positivi precoci durante l'idratazione e primordiazione.
-  14. [x] **Risposta Unimodale Area Basimetrica Stand $G$ (FEAT-14)**: **COMPLETATO** (v1.2) — Derivazione continua dell'area basimetrica forestale da canopy cover ($G \approx 50 \cdot C_f^{1.15}$) e applicazione della curva a campana asimmetrica CTFC (Bonet et al. 2012, de-Miguel et al. 2014) centrata su $G_{\text{opt}}$ specifico della specie ($32\text{ m}^2/\text{ha}$ per *Boletus edulis*, $20\text{ m}^2/\text{ha}$ per *Lactarius deliciosus*).
-  15. [x] **Valutazione Dinamica dell'Habitat per Specie (FEAT-15)**: **COMPLETATO** (v1.2) — Riprogettazione ecologica di `evaluateSpeciesHabitat`, che differenzia specie ectomicorriziche, saprotrofe prative (*Macrolepiota procera*) e lignicole, ricalcolando dinamicamente il punteggio dell'habitat al cambio specie in `MushroomViewModel.recalculateForSpecies`.
-  16. [x] **Espansione Catalogo Tassonomico & Sosia (FEAT-16)**: **COMPLETATO** (v1.2) — Inclusione di *Lactarius deliciosus* (sanguinello) e *Morchella esculenta* (spugnola), con metadati completi, latenze fenologiche differenziate, requisiti di area basimetrica e allarmi sosia tossici (*Lactarius torminosus*, *Gyromitra esculenta*).
-  17. [x] **Integrazione DeepMaxent con TGB nel Modulo Citizen Science (FEAT-17)**: **MODELLATO & INTEGRATO** (v1.2 Baseline / Blueprint v1.3) — Formalizzazione matematica e implementazione dei contratti dati e modelli di dominio Kotlin puro in `CitizenScienceModel.kt` per il superamento del bias di campionamento tramite Target-Group Background (TGB) e rete neurale Residual MLP multi-specie su DGGS Uber H3 (Risoluzione 7, ~5.16 km²). Regolarizzazione L2 ($\tau = 3 \times 10^{-4}$), mini-batch $|B| = 128$ come regolarizzatore spaziale naturale e validazione incrociata a blocchi spaziali (Spatial Blocking a 10-fold) conformemente a Ryckewaert et al. (2024).
-  18. [x] **Risoluzione Onde Dominanti & Penalità DTR Continua (FEAT-18)**: **COMPLETATO** (v1.2) — Risoluzione della competizione fenologica tra eventi di pioggia multipli tramite individuazione dell'evento idrologico attivo: clusterizzazione temporale ($\le 2\text{ giorni}$), priorità alla pioggia recente come innesco idrologico a meno che un evento precedente sia in piena finestra di raccolta ($\tau \in (\text{hydrationThreshold} + 1 \dots \text{fruitingThreshold})$), sia una pioggia saturante ($\ge 25\text{ mm}$ o $\ge 70\%$ del target di specie), e l'evento recente sia un mero rovescio secondario ($R_{\text{recent}} < 0.70 \cdot R_{\text{earlier}}$). Se l'evento recente è una nuova pioggia primaria ($R_{\text{recent}} \ge 0.70 \cdot R_{\text{earlier}}$), il ciclo si riazzera fisiologicamente a idratazione miceliare ($\Phi_{\text{phase}} \le 0.50$), prevenendo falsi positivi precoci sul campo. Sostituzione della penalità a gradino a $15^\circ\text{C}$ con funzione smoothstep continua tra $12^\circ\text{C}$ e $18^\circ\text{C}$ ($\text{dtrPenalty} \in [0.80, 1.00]$). Inclusione di Ottobre (mese 9) nella stagione fredda/autunnale per l'esposizione orografica a *solatìo*. Allineamento del fattore "Precipitazioni efficaci" nella dashboard fattori. Suite estesa a 155 test unitari (100% pass).
-  19. [x] **Barriera di Protezione Algoritmica & Ground Truth Benchmarks (FEAT-19 / Adversarial Gate 3)**: **COMPLETATO** (v1.2) — Definizione formale e implementazione del test suite di invarianti biometeorologiche e metamorphic testing in `PhenologicalInvariantsTest.kt` (20 test rigorosi). Modularizzazione dei componenti interni di `evaluateGrowthPhase` (`extractCandidateRainEvents`, `clusterRainEvents`, `resolveActiveRainTrigger`, `evaluateStageFromTrigger`) e helper `calculateDtrPenalty`. Formalizzazione di 10 invarianti biometeorologiche formali (Latenza minima di Liebig $\Phi \le 0.45$ a $\tau \le 2$, priorità tempesta primaria vs pioggerella secondaria, soppressione per siccità assoluta $P \le 5\%$, soppressione per gelata letale $\le -2^\circ\text{C}$, smorzamento anossico van Genuchten $\theta > 0.44\text{ m}^3/\text{m}^3$, gating deficit idrico profondo $\theta_{7-28} < 0.20$, monotonicità DTR, zero-inflation hurdle ectomicorrizico su campi aperti vs vitalità prativa di *Macrolepiota procera*, tetto asintotico $P \le 92\%$, continuità analitica lipschitziana $|\Delta P| \le 5\%$). Ancoraggio a 5 benchmark empirici reali da campo (Monte Mindino 18 e 21 Settembre, Val di Taro culmine autunnale, Garfagnana siccità estiva, Carnia allagamento/gelo, alpeggio prativo a mazze di tamburo) e fuzzing generativo con 500 serie meteorologiche casuali e realistiche. Suite estesa da 155 a **175 test unitari (100% pass)**.
-
-* **Criteri di Rilascio v1.2**:
-  - Calcolo dell'heatmap in meno di 50 ms su dispositivo mobile medio di riferimento (raggiunto: $< 2\text{ ms}$).
-  - Ricalcolo dinamico istantaneo dell'heatmap e dei fattori ecologici su selezione nuova specie.
-  - Zero warning diagnostici (`0 errors, 0 warnings`) e 100% test passing su suite estesa (175 test unitari).
-  - Validazione e verifica funzionale superata su Google Pixel 10 Pro fisico.
+  7. [x] **Inerzia Biologica & Fase Fenologica (FEAT-08)**: **COMPLETATO** (v1.2)
+  8. [x] **Isteresi Notturna & Inibizione DTR (FEAT-09)**: **COMPLETATO** (v1.2)
+  9. [x] **Invariante Geospaziale Hardware (FIX-07)**: **COMPLETATO** (v1.2)
+  10. [x] **Dinamica Idraulica van Genuchten & Anti-Asfissia (FEAT-10)**: **COMPLETATO** (v1.2)
+  11. [x] **Canopy Buffering & Microclima Forestale (FEAT-11)**: **COMPLETATO** (v1.2)
+  12. [x] **Modello Termico Cardinale CTMI (FEAT-12)**: **COMPLETATO** (v1.2)
+  13. [x] **Modello Hurdle a Due Stadi (FEAT-13)**: **COMPLETATO** (v1.2)
+  14. [x] **Risposta Unimodale Area Basimetrica Stand $G$ (FEAT-14)**: **COMPLETATO** (v1.2)
+  15. [x] **Valutazione Dinamica dell'Habitat per Specie (FEAT-15)**: **COMPLETATO** (v1.2)
+  16. [x] **Espansione Catalogo Tassonomico & Sosia (FEAT-16)**: **COMPLETATO** (v1.2)
+  17. [x] **Risoluzione Onde Dominanti & Penalità DTR Continua (FEAT-18)**: **COMPLETATO** (v1.2)
+  18. [x] **Barriera di Protezione Algoritmica (FEAT-19 / Adversarial Gate 3)**: **COMPLETATO** (v1.2)
 
 ---
 
-### 8.3 Fase 3: Release v2.0 — Porting Mobile iOS e Telemetria Hardware sul Campo
-*Obiettivo Primario*: Rilasciare la versione mobile nativa per iOS (iPhone e iPad) condividendo il 100% della logica di business e abilitare funzionalità hardware avanzate per raccoglitori professionisti sul campo.
+### 8.3 Fase 3: Release v1.3 — Revisione Scientifica, Stabilità Numerica e Unificazione KMP (Percorso A) — URGENTE
+*Obiettivo Primario*: Risolvere le 20 criticità e anomalie numeriche emerse dalla revisione scientifica ([`docs/Revisione_scientifica_algoritmi_Myco.md`](Revisione_scientifica_algoritmi_Myco.md)), unificare il motore di calcolo in Kotlin Multiplatform (`commonMain`) per eliminare la divergenza Android vs iOS, ristabilire la coerenza Mappa/Scheda e pubblicare un **indice di favorevolezza ambientale (0–100)** matematicamente solido, continuo e verificabile.
+
+* **Deliverable e Interventi (Percorso A)**:
+  1. **Semantica & Trasparenza dell'Indice (MYCO-SCI-01)**: Sostituzione di ogni dicitura `probability` con `suitabilityScore` («Indice di favorevolezza ambientale, 0–100»). Dichiarazione esplicita di natura euristica non calibrata statisticamente. Risolve **F01**, **F20**.
+  2. **Correzione CTMI & Cardinali Termiche (MYCO-SCI-02)**: Eliminazione del ramo irraggiungibile CTMI e della singolarità al denominatore; adozione di curve cardinali (Rosso et al. o Yan & Hunt) continue, derivabili, validate su griglia fitta senza fallback silente a radice. Risolve **F02**.
+  3. **Continuità Pluviometrica & Transizioni (MYCO-SCI-03)**: Rimozione dell'invariante di reset al 70% (che causava cali di 42 punti per 0.02 mm di pioggia). Conservazione della massa delle piogge nei cluster ($30 + 15 = 45\text{ mm}$); raccordi $C^1$ per il moltiplicatore fenologico $\Phi_{\text{phase}}$. Risolve **F03**, **F04**, **F05**.
+  4. **Date, Fusi e Integrità Temporale (MYCO-SCI-05)**: Adozione sistematica di `LocalDate` con fuso orario della stazione (`weather.timezone`); eliminazione dell'indice rigido `todayIndex = 14` in `analyzeFutureTrend`; separazione della neve dalla pioggia liquida; gestione tipizzata `UNKNOWN` anziché default $0$. Risolve **F14**, **F15**, **F16**.
+  5. **Unificazione Motore KMP Condiviso (MYCO-SCI-04)**: Spostamento del motore fenologico completo e revisionato in `core/src/commonMain`. Allineamento di iOS e Android sulla medesima pipeline deterministica (minime notturne, De Frenne, DTR, convoluzione). Risolve **F12**, **F13**, **F20**.
+  6. **Parità Cartografica Heatmap vs Scheda (MYCO-SCI-08)**: Riconciliazione matematica tra raster e scheda puntuale (azzeramento del residuo a $W=0$), oppure isolamento con esplicita dicitura e legenda di «Potenziale Geografico». Risolve **F11**.
+  7. **Habitat Geometrico OSM & Isolamento Cache (MYCO-SCI-06)**: Valutazione dell'habitat forestale tramite superfici/intersezioni geometriche anziché mero conteggio nodi OSM; inclusione di raggio e specie nelle chiavi di cache. Risolve **F08**, **F09**.
+  8. **Bonifica e Tracciabilità SPUN (MYCO-SCI-07)**: Isolamento del bonus ifale AM dai funghi ectomicorrizici/saprotrofi; manifest con DOI, metadati e checksum SHA256 dei GeoTIFF originali; correzione dell'ordine di masking NoData prima dell'interpolazione bilineare. Risolve **F10**.
+  9. **Bonifica Suite di Test REG-01..20 (MYCO-SCI-09)**: Implementazione della nuova suite di test di non-regressione REG-01..20; correzione delle date fittizie nei test storici (rimozione del 31-33 settembre); separazione rigorosa tra test analitici e scenari empirici. Risolve **F19**.
+  10. **Registro Parametri & Modelli Idrici (MYCO-SCI-10)**: Chiarimento sui limiti compensativi della somma meteo; transizione formale verso parametri di ritenzione idrica e memoria fenologica fissa a 26 giorni. Risolve **F06**, **F07**, **F17**, **F18**.
+  11. **Protocollo di Validazione Comparativa (MYCO-SCI-13)**: Protocollo di benchmark che dimostri l'utilità comparativa dell'indice rispetto a una climatologia di base specie-regione-stagione. Risolve **F01**, **F19**.
+
+#### 8.3.1 Matrice di Riscontro, Tracciabilità e Criteri di Accettazione (Rif. `Revisione_scientifica_algoritmi_Myco.md`)
+
+Questa matrice funge da **checklist di riscontro forense e benchmark vincolante** per garantire che ogni singolo rilievo del documento di revisione scientifica trovi una risoluzione completa, verificata da test automatici e priva di regressioni:
+
+| Ticket ID | Rilievo Revisione (§) | Test Rif. (§9) | Controesempio & Benchmark di Riscontro (§11) | Criterio di Accettazione per Chiusura Intervento | Stato |
+|---|---|:---:|---|---|:---:|
+| **MYCO-SCI-01** | **F01** (§5.1)<br>**F20** (§5.20) | `REG-20` | Output descritto come percentuale di successo (es. «70%») senza evento operativo definito né stima statistica. | • Nessun campo o etichetta UI denominato `probability` senza modello statistico empirico.<br>• Adozione di `suitabilityScore` (0–100) con dicitura esplicita di stima euristica relativa.<br>• Dati mancanti producono stato `UNKNOWN`/parziale controllato, mai default zero. | *Da Iniziare* |
+| **MYCO-SCI-02** | **F02** (§5.2) | `REG-01`<br>`REG-02` | Cardinali *edulis* (9/14/24): numeratore negativo in `Tmin..Tmax`, ramo razionale mai eseguito; fallback con derivata divergente a Tmin; singolarità denominatore a 10.667 °C. | • Curva cardinale continua, derivabile e senza singolarità su tutto l'intervallo $[T_{\min}, T_{\max}]$.<br>• Nessun fallback occulto a radice quadrata; test fitti a 10, 12, 14, 16, 20, 23 °C.<br>• Validazione esplicita della tupla $(T_{\min}, T_{\text{opt}}, T_{\max})$ all'avvio. | *Da Iniziare* |
+| **MYCO-SCI-03** | **F03** (§5.3)<br>**F04** (§5.4)<br>**F05** (§5.5) | `REG-03`<br>`REG-04`<br>`REG-05`<br>`REG-06` | • Pioggia 17.49 mm $\to$ score 68; pioggia 17.51 mm $\to$ score 26 (-42 punti per 0.02 mm!).<br>• Cluster 30+15 mm perde 30 mm diventando 15 mm.<br>• Pioggia 5.9 vs 6.0 mm/giorno: score 20 vs 34. | • Eliminazione del reset a soglia 70% ($R_{\text{rec}} < 0.70 \cdot R_{\text{earl}}$); fusione continua degli eventi.<br>• Conservazione rigorosa della massa d'acqua nei cluster ($30 + 15 = 45\text{ mm}$).<br>• Raccordi $C^1$ per il moltiplicatore $\Phi_{\text{phase}}$ (nessun salto tra giorni 8/9 o 15/16 a W costante). | *Da Iniziare* |
+| **MYCO-SCI-05** | **F14** (§5.14)<br>**F15** (§5.15)<br>**F16** (§5.16) | `REG-13`<br>`REG-14`<br>`REG-15`<br>`REG-16`<br>`REG-17` | • `analyzeFutureTrend` assumeva `todayIndex = 14`, leggendo giorni passati come futuro.<br>• Neve trattata come acqua liquida immediata.<br>• Array meteo corti riempiti con 0 °C e 0 mm. | • Adozione di `LocalDate` e fuso orario del sito (`weather.timezone`).<br>• Il riepilogo futuro non legge alcun indice antecedente ad oggi.<br>• Separazione della precipitazione nevosa dalla pioggia liquida.<br>• Null safety e validazione serie prima dell'aggregazione (`DataQuality.INCOMPLETE`). | *Da Iniziare* |
+| **MYCO-SCI-04** | **F12** (§5.12)<br>**F13** (§5.13)<br>**F20** (§5.20) | `REG-10`<br>`REG-18`<br>`REG-20` | • iOS usa formula legacy rettangolare 14 gg e media delle temperature minime anziché minime notturne reali.<br>• `WEATHER_ONLY`: scheda vale 81, primo giorno outlook vale 2. | • Migrazione del motore revisionato in `core/src/commonMain`.<br>• JSON meteo identico produce output Double identico su Android e iOS.<br>• Modalità `CalculationMode.WEATHER_ONLY` applicata uniformemente a scheda e tutti i giorni di outlook. | *Da Iniziare* |
+| **MYCO-SCI-08** | **F11** (§5.11) | `REG-09` | A meteo nullo ($W = 0$) e fattori massimi, la scheda restituisce 0 mentre la mappa cartografica restituisce **72**. | • Condivisione del medesimo motore di calcolo tra raster della mappa e scheda puntuale.<br>• A $W = 0$ la mappa non può mostrare classi favorevoli.<br>• In alternativa transitoria: legenda ed etichetta esplicita separata («Potenziale Geografico Relativo»). | *Da Iniziare* |
+| **MYCO-SCI-06** | **F08** (§5.8)<br>**F09** (§5.9) | `REG-11`<br>`REG-12` | • Conteggio nodi OSM: partizionare un bosco in più poligoni altera il punteggio; forestCount=0 dà 0.90 ai saprotrofi in città.<br>• Cambio specie conserva evidenze arboree della specie precedente. | • Calcolo habitat basato su superficie e intersezioni geometriche poligonali.<br>• Distinzione rigorosa tra `KNOWN_SUITABLE`, `KNOWN_UNSUITABLE`, `UNKNOWN`.<br>• Chiave di cache isolata con `radius` e `speciesId`; invalidazione immediata al cambio specie. | *Da Iniziare* |
+| **MYCO-SCI-07** | **F10** (§5.10) | `REG-09`<br>Audit SPUN | • Dataset `hyphal_density` riguarda micorrize arbuscolari (AM) e non funghi epigei.<br>• Interpolazione bilineare eseguita prima del filtro NoData $(-3.4 \times 10^{38})$ azzera le coste. | • Generazione manifest ufficiale con metadati, DOI e checksum SHA256 dei file originali.<br>• Rimozione dell'influenza delle ife AM dai funghi ectomicorrizici/saprotrofi.<br>• Correzione ordine NoData prima del resize in `tools/build_spun_asset.py`. | *Da Iniziare* |
+| **MYCO-SCI-09** | **F19** (§5.19) | `REG-01..20` | • Test storici Mindino contengono date inesistenti (`2026-09-31`, `32`, `33`).<br>• Test continuità chiamavano il calcolo senza moltiplicatore $\Phi$, nascondendo i salti. | • Suite REG-01..20 integrata e 100% passing.<br>• Calendario reale e date rigorose nei test di regressione.<br>• Tutti i test di continuità coprono la pipeline completa end-to-end con $\Phi_{\text{phase}}$. | *Da Iniziare* |
+| **MYCO-SCI-10** | **F06** (§5.6)<br>**F07** (§5.7)<br>**F17** (§5.17)<br>**F18** (§5.18) | `REG-07`<br>`REG-08`<br>`REG-19` | • Somma meteo compensativa: 0 °C produce comunque score 48 per via di pioggia/umidità.<br>• Damping anossia a gradino su soglie volumetriche senza curva di ritenzione idraulica. | • Dichiarazione trasparente della natura compensativa della somma meteo.<br>• Supporto di memoria fenologica idrica fisso a 26 giorni (indipendente dalla lunghezza della serie).<br>• Registro formale dei parametri ecologici con distinzione `measured / fitted / expert_prior`. | *Pianificato* |
+| **MYCO-SCI-13** | **F01** (§5.1)<br>**F19** (§5.19) | Test empirici | Mancanza di un confronto sistematico dell'indice rispetto a una baseline climatologica semplice. | • Protocollo di verifica su serie indipendenti che dimostri che punteggi maggiori riflettono condizioni mediamente più favorevoli.<br>• Divieto di calcolare Brier score o log-loss trattando impropriamente score/100 come probabilità. | *Da Iniziare* |
+| **MYCO-SCI-11** | **F01** (§7.2)<br>**F19** (§7.3) | Protocollo B | Mancanza di un protocollo standardizzato di visita e quantificazione dello sforzo (ore/area/osservatori). | • Definizione del target probabilistico formale.<br>• Dataset versionato alimentato dal Modulo Citizen Science H3 Res 7 (`FEAT-17`). | *Subordinato a FEAT-17* |
+| **MYCO-SCI-12** | **F01** (§7.4)<br>**F19** (§7.4) | Validazione B | Mancanza di calibrazione probabilistica (affidabilità, curve di calibrazione, Brier score, discriminazione). | • Validazione incrociata a blocchi spaziali (Spatial Block CV a 10-fold su celle H3).<br>• Calibrazione verificata con curve di affidabilità e pubblicazione di Model Card formale. | *Subordinato a SCI-11* |
+
+* **Criteri di Rilascio v1.3**:
+  - Risoluzione integrale dei 20 rilievi (F01–F20) e 100% test REG-01..20 passing.
+  - Zero salti di punteggio $> 5\%$ per variazioni infinitesimali di pioggia o temperatura.
+  - Parità numerica esatta (stesso Double prima dell'arrotondamento) tra motore Android, iOS e Heatmap.
+  - Rispetto assoluto della Zero Diagnostic Policy (`0 errors, 0 warnings`).
+
+---
+
+### 8.4 Fase 4: Release v1.4 — Modulo Citizen Science & Discrete Global Grid System (Uber H3)
+*Obiettivo Primario*: Rilasciare l'infrastruttura di crowdsourcing su celle esagonali Uber H3 Risoluzione 7 (~5.16 km²), implementando la privacy differenziale per proteggere le fungaie dei cercatori e abilitare la raccolta di dati empirici (presenze e Target-Group Background TGB) indispensabili come **prerequisito fondante per il Percorso B**.
 
 * **Deliverable e Interventi**:
-  1. [x] **Riorganizzazione Gradle Multiplatform**: **COMPLETATA** — `:core` (Kotlin Multiplatform puro con `commonMain`, `androidMain`, `iosMain`), `:app` (Android) e `:iosApp` (iOS).
-  2. [x] **Implementazione iOS Adapters**: **COMPLETATA** —
-     - `IosAssetProvider` con accesso all'atlante SPUN tramite `NSBundle.mainBundle`.
-     - `PreferencesStore` basato su `UserDefaults` per preferenze e disclaimer.
-     - `CoreLocationService` con Apple `CoreLocation` (`CLLocationManager`) e `CLHeading` per bussola hardware da campo.
-     - `AppleMapsNavigator` con apertura di coordinate via `MKMapItem`.
-     - `IosAiEngine` con Foundation Models, controllo di disponibilità e fallback deterministico.
-     - Cache strutturata basata su SwiftData o SQLite3 di sistema.
-  3. [x] **Interfaccia Grafica Mobile iOS**: **IMPLEMENTATA** con **SwiftUI nativo**, MapKit e Swift Charts, includendo Registry/Forecast, gestione preferiti, stati accessibili e diagnostica offline. Widget ed esportazione waypoint restano evolutive separate.
-  4. **Altimetria Barometrica Nativa**: Lettura del barometro di bordo (`CMAltimeter` su iOS, `Sensor.TYPE_PRESSURE` su Android) per calibrazione della quota e allarmi meteo rapidi.
-  5. **Integrazione Sonde BLE di Terze Parti**: Supporto per la connessione con sonde di umidità e temperatura del terreno Bluetooth via `CoreBluetooth`.
-
-* **Criteri di Rilascio v2.0**:
-  - Parità verificata del core scientifico deterministico; le interfacce restano native e indipendenti per piattaforma.
-  - Verifica operativa ancora necessaria per build CI, installazione su dispositivo, firma, pacchettizzazione `.ipa` e distribuzione TestFlight/App Store.
+  1. **Contratti Dati & DGGS Uber H3 (FEAT-17 Baseline)**: indicizzazione H3 Res 7 con cancellazione istantanea delle coordinate puntuali $(lat, lon)$ dalla RAM per tutelare la privacy dell'utente.
+  2. **Accodamento e Sync Offline (`CitizenScienceRepository`)**: memorizzazione locale SQLite delle segnalazioni sul campo e sincronizzazione asincrona protetta verso il backend.
+  3. **DeepMaxent con Target-Group Background (TGB)**: modellazione del bias di campionamento tramite specie del target group e validazione incrociata spaziale a blocchi (Spatial Block Cross-Validation).
+  4. **Dataset di Campo per Validazione**: accumulo delle prime serie storiche empiriche per sito, data e specie.
 
 ---
 
-### 8.4 Orizzonte Evolutivo Post-Fase 3: Integrazione WeatherNext 3 (Google DeepMind) Subordinata a FEAT-06
-*Obiettivo Primario*: Valutare e definire l'innesto del modello predittivo globale ad altissima risoluzione **Google DeepMind WeatherNext 3** come acceleratore e motore predittivo per il radar nowcasting (`FEAT-06`), subordinando tassativamente la sua adozione al completamento preliminare della Fase 3 (v2.0 Multiplatform iOS) e della baseline radar standard.
+### 8.5 Fase 5: Release v2.0 — Porting Mobile iOS e Telemetria Hardware sul Campo
+*Obiettivo Primario*: Rilasciare la versione mobile nativa per iOS (iPhone e iPad) con interfaccia SwiftUI completa, consumando il core KMP unificato v1.3, e abilitare funzionalità hardware per raccoglitori professionisti.
+
+* **Deliverable e Interventi**:
+  1. [x] **Riorganizzazione Gradle Multiplatform**: **COMPLETATA** — `:core` (KMP puro), `:app` (Android) e `:iosApp` (iOS).
+  2. [x] **Implementazione iOS Adapters**: **COMPLETATA** — CoreLocation, UserDefaults, Foundation Models, SwiftData.
+  3. [x] **Interfaccia Grafica Mobile iOS**: **IMPLEMENTATA** con SwiftUI nativo, MapKit e Swift Charts.
+  4. **Altimetria Barometrica Nativa (FEAT-05)**: Lettura barometro (`CMAltimeter` / `Sensor.TYPE_PRESSURE`) per compensazione quota e allarmi temporale rapido.
+  5. **Integrazione Sonde BLE di Terze Parti (FEAT-05)**: Connessione Bluetooth a sonde di umidità e temperatura del terreno.
+  6. **Overlay Radar Precipitativo (FEAT-06)**: Integrazione radar Doppler convenzionale (RainViewer / DPC) su mappa.
+
+---
+
+### 8.6 Orizzonte Post-v2.0: Percorso B (Probabilità Calibrata) & WeatherNext 3
+*Obiettivo Primario*: Evoluzione statistica avanzata subordinata alla disponibilità di dati sul campo e nowcasting AI.
+
+#### 8.6.1 Percorso B — Probabilità Calibrata su Dati Empirici (Opzionale, Subordinato a Fase 4)
+* **Dataset Empirico Validato (MYCO-SCI-11)**: Definizione rigorosa del target (es. probabilità di rilevare $\ge 1$ sporocarpo in visita standardizzata per area e sforzo); addestramento di modelli binomiali/GAM alimentati dai dati aggregati H3 del Modulo Citizen Science.
+* **Calibrazione Formale & Model Card (MYCO-SCI-12)**: Calibrazione con Brier score, log-loss, reliability diagrams, spatial block CV a 10-fold e pubblicazione della Model Card.
+
+#### 8.6.2 Integrazione Google DeepMind WeatherNext 3 (FEAT-07, Subordinata a FEAT-06)
+* Nowcasting probabilistico orario a risoluzione 5 km tramite proxy serverless Cloud Run.
+*Obiettivo Primario*: Valutare e definire l'innesto del modello predittivo globale ad altissima risoluzione **Google DeepMind WeatherNext 3** come acceleratore e motore predittivo per il radar nowcasting (`FEAT-06`), subordinando tassativamente la sua adozione al completamento preliminare della Fase 5 (v2.0 Multiplatform iOS) e della baseline radar standard.
 
 ```mermaid
 graph TD
@@ -922,3 +995,51 @@ Un microservizio serverless leggero (ospitato su Cloud Run con container Python/
 3. Aggrega i percentili ensemble ($p_{10}, p_{50}, p_{90}$) per la cella richiesta.
 4. Restituisce al client mobile un payload GeoJSON vettoriale ultra-compatto ($< 15\text{ KB}$) o un set di tile raster semi-trasparenti pronte per il layer OsmDroid/MapLibre.
 5. Mantiene una cache edge territoriale di 30 minuti per servire istantaneamente richieste provenienti dalla medesima vallata montano-forestale.
+
+---
+
+## 9. Allineamento con la Revisione Scientifica degli Algoritmi (Settembre 2026)
+
+A seguito della revisione scientifica e numerica dettagliata condotta nel documento [`docs/Revisione_scientifica_algoritmi_Myco.md`](file:///c:/Users/dendo/Documents/GitHub/myco/docs/Revisione_scientifica_algoritmi_Myco.md), viene formalizzata la seguente strategia operativa di sviluppo e riscontro per le release v1.3.x.
+
+### 9.1 Decisione di Prodotto: Percorso A vs Percorso B
+
+- **Percorso A (Indice Euristico di Favorevolezza Ambientale, 0–100 — ADOTTATO)**:
+  Il risultato principale dell'applicazione viene formalmente qualificato come **indice di idoneità/favorevolezza ambientale** (`suitabilityScore`, $0 \dots 100$), utile per confrontare oggettivamente luoghi e date. Viene eliminata qualsiasi pretesa ingannevole di calibrazione probabilistica frequentista ("7 uscite su 10") in assenza di un fitting statistico su uscite reali.
+- **Percorso B (Probabilità di Raccolta Calibrata e Bayesian Updating — OPZIONALE & DEFERITO)**:
+  Il calcolo di una reale probabilità statistica di ritrovamento/raccolta rimane un percorso evolutivo opzionale, da attivare esclusivamente dopo la raccolta di ground-truth verificato tramite il modulo Citizen Science (Fase 4).
+
+### 9.2 Piano di Rilascio in 4 Blocchi (Release v1.3)
+
+| Blocco | Release | Focus Architetturale & Scientifico | Riferimenti Revisione (Problemi Risolti) | Criteri di Accettazione | Stato |
+|---|---|---|---|---|---|
+| **Blocco 1** | v1.3.0 | **Numerica, Termica, Continuità Fenologica e Contratti di Dominio**: Ridenominazione semantica in Indice di Favorevolezza (`suitabilityScore`); curva cardinale termica continua priva di singolarità (Yin et al.); conservazione della massa nel clustering idrologico; eliminazione del reset 70% e raccordi $C^1$; allineamento date/todayIndex con fuso orario; separazione precipitazione liquida da neve; tolleranza a serie incomplete e garanzia di valori finiti in $[0, 100]$. | F01, F02, F03, F04, F05, F13, F14, F15, F16, F20 | REG-01..06, REG-13..16, REG-20 | **Completato** |
+| **Blocco 2** | v1.3.1 | **Copertura Forestale OSM e Habitat Multidimensionale**: Trattamento geometrico poligonale OSM e distanze; bonus ospite specie-specifico reattivo al cambio taxon; differenziazione ecologica (micorrizici vs saprotrofi vs lignicoli); calibrazione curva area basimetrica $G$. | F06, F08, F09, F18 | REG-07, REG-09, REG-10, REG-18 | Pianificato |
+| **Blocco 3** | v1.3.2 | **Pedologia Idraulica e Dataset SPUN F10 con Dati Originali**: Rimozione etichetta van Genuchten priva di curve di ritenzione idrica reale; pipeline rigenerazione asset SPUN a partire dai GeoTIFF originali in `C:\Users\dendo\Documents\Spun`; tracciamento provenance/hash SHA256; memoria idrica indipendente dalla lunghezza dello storico. | F07, F10, F17 | REG-08, REG-11, REG-17 | Pianificato |
+| **Blocco 4** | v1.3.3 | **Parità Cross-Platform Android/iOS/Core e Validazione Empirica**: Unificazione matematica tra Android, iOS e core KMP; allineamento Heatmap alla formula puntuale; segregazione test sintetici vs benchmark osservazionali storici. | F11, F12, F19 | REG-12, REG-19 | Pianificato |
+
+### 9.3 Matrice di Riscontro Completa (F01..F20 vs Test di Regressione)
+
+| ID Rilievo | Descrizione Rilievo Scientifico | Soluzione Adottata / Pianificata | Test di Verifica Automatico | Blocco |
+|---|---|---|---|---|
+| **F01** | Punteggio non calibrato spacciato per probabilità | Esposizione `suitabilityScore`, etichetta UI "Favorevolezza Ambientale", documentazione Percorso A | `ScientificRegressionBlock1Test.kt` | Blocco 1 |
+| **F02** | Singolarità ramo razionale CTMI per edulis a 10.667 °C | Adozione formulazione cardinale continua Yin et al., priva di singolarità e Lipschitziana | `reg01_cardinalThermalValidityAcrossAllSpecies`, `reg02_boletusEdulisSingularityAbsence` | Blocco 1 |
+| **F03** | Reset buttata a soglia rigida 70% (42 pt drop per 0.02 mm) | Raccordo continuo con smoothstep e rimozione del reset artificiale di fase | `reg03_rainfallContinuityAround70PercentReset` | Blocco 1 |
+| **F04** | Perdita di massa nel clustering piogge e moving sum overlap | Conservazione esatta della massa ($\sum R_i$), attribuzione date su osservazioni originali | `reg04_massConservationInClustering` | Blocco 1 |
+| **F05** | Salti di fase fenologica e pioggia debole persistente (5.9 mm) | Funzione fenologica continua $C^1$, soglia aggregata multi-giorno (3 gg e 5 gg) | `reg05_persistentLightRainDoesNotDropToWaiting`, `reg06_phenologicalPhaseTransitionsSmoothness` | Blocco 1 |
+| **F06** | Fattori limitanti aggirabili dalla somma meteo | Ponderazione continua e gating ecologico Liebig | REG-07 (Blocco 2) | Blocco 2 |
+| **F07** | Umidità suolo presentata come van Genuchten senza curve | Ricalibrazione idrologica e chiarimento documentale | REG-08 (Blocco 3) | Blocco 3 |
+| **F08** | Conteggi OSM trattati come copertura forestale e basal area | Stima geometrica e pesatura basimetrica ecologica | REG-09, REG-10 (Blocco 2) | Blocco 2 |
+| **F09** | Bonus ospite non specifico e cache non invalidata al cambio specie | Cache sensibile alla specie e raggio di campionamento | REG-10 (Blocco 2) | Blocco 2 |
+| **F10** | SPUN: interpretazione biologica e dati originali mancanti | Ricostruzione asset dai GeoTIFF originali in `C:\Users\dendo\Documents\Spun` | REG-11 (Blocco 3) | Blocco 3 |
+| **F11** | Heatmap incoerente con il punteggio puntuale | Allineamento equazione di rasterizzazione alla formula unificata | REG-12 (Blocco 4) | Blocco 4 |
+| **F12** | Divergenza tra motore Android e motore iOS | Porting KMP in `:core` condiviso e parità 100% testata | REG-12 (Blocco 4) | Blocco 4 |
+| **F13** | Modalità WEATHER_ONLY disallineata tra scheda e outlook | Propagazione uniforme di WEATHER_ONLY in tutti i calcoli | REG-14, `PhenologicalInvariantsTest` | Blocco 1 |
+| **F14** | Indici temporali, fusi orari e cambio mese inconsistenti | Utilizzo di `deriveTodayIndex(days, timezone)` e `LocalDate` standard | `reg13_validCalendarDatesAndMonthRollover`, `reg14_forecastTrendCoherentWithTodayIndex` | Blocco 1 |
+| **F15** | Dati mancanti e serie incomplete trattati come zeri validi | Gestione difensiva di serie brevi e fallimento controllato | `reg15_shortOrIncompleteSeriesTolerance` | Blocco 1 |
+| **F16** | Neve trattata come pioggia liquida immediatamente disponibile | Separazione di `liquidPrecip` da `snowfall` (Open-Meteo code 71-77, 85-86) | `reg16_snowfallTreatedSeparatelyFromLiquidRain` | Blocco 1 |
+| **F17** | Memoria idrica dipendente dalla lunghezza dello storico | Normalizzazione integrale del decadimento esponenziale | REG-17 (Blocco 3) | Blocco 3 |
+| **F18** | Parametri di specie e buffering di chioma non stimati empiricamente | Standardizzazione tabelle di microclima e trasparenza limiti | REG-18 (Blocco 2) | Blocco 2 |
+| **F19** | Test sintetici presentati come validazione empirica | Separazione rigorosa tra test di invarianti matematiche e benchmark storici | REG-19 (Blocco 4) | Blocco 4 |
+| **F20** | Quantizzazione, contratti numerici e assenza di NaN | Punteggio continuo in Double, clamping rigoroso `[0.0, 100.0]` | `reg20_boundsAndFiniteValuesCheck` | Blocco 1 |
+

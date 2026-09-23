@@ -59,6 +59,12 @@ data class DailyOutlook(
     val condition: WeatherCondition = weatherCondition(weatherCode)
 ) {
     /**
+     * Punteggio normalizzato di idoneità ambientale (Indice Euristico, 0..100).
+     */
+    val suitabilityScore: Int
+        get() = probability
+
+    /**
      * Risolve il livello ordinale [tier] nel corrispondente [ProbabilityTier].
      */
     val probabilityTier: ProbabilityTier

@@ -362,9 +362,10 @@ class PhenologicalInvariantsTest {
         // Estendiamo la serie con giorni stabili post-pioggia
         val extendedDays = createMindinoHistoricalSeries().toMutableList()
         for (i in 28..32) {
+            val validDate = java.time.LocalDate.of(2026, 9, 1).plusDays(i.toLong()).toString()
             extendedDays.add(
                 ProcessedDay(
-                    date = "2026-09-${i + 1}",
+                    date = validDate,
                     avgTemp = 15.0f,
                     minTemp = 10.0f,
                     maxTemp = 19.0f,

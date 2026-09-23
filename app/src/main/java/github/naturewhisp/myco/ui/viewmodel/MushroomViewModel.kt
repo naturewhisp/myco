@@ -130,6 +130,10 @@ class MushroomViewModel(
         private set
     var todayProbability by mutableStateOf(0)
         private set
+    var todaySuitabilityScore by mutableStateOf(0.0)
+        private set
+    var lastWeatherTimezone: String? = null
+        private set
     var growthPhase by mutableStateOf("")
         private set
     var habitatText by mutableStateOf("")
@@ -355,9 +359,7 @@ class MushroomViewModel(
     fun recalculateForSpecies() {
         val days = lastProcessedDays ?: return
         val species = selectedSpecies
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-        val matchedIndex = days.indexOfFirst { it.date == todayStr }
-        val todayIndex = if (matchedIndex >= 0) matchedIndex else min(28, days.size - 1)
+        val todayIndex = MushroomAlgorithms.deriveTodayIndex(days, lastWeatherTimezone)
         if (days.size <= todayIndex || todayIndex < 0) return
 
         val altScore = MushroomAlgorithms.calculateSpeciesAltitudeScore(lastElevation, species)
@@ -418,7 +420,7 @@ class MushroomViewModel(
         growthPhase = growthPhaseEval.phaseText
         lastGrowthPhaseVal = growthPhaseEval.phaseText
 
-        val prob = MushroomAlgorithms.dailyGrowthProbability(
+        val suitability = MushroomAlgorithms.calculateSuitabilityScore(
             weatherScore = rawWeatherScore,
             habitatScore = habScore,
             altitudeScore = altMult,
@@ -428,6 +430,8 @@ class MushroomViewModel(
             species = species,
             growthPhaseMultiplier = growthPhaseEval.multiplier
         )
+        val prob = suitability.toInt().coerceIn(0, 100)
+        todaySuitabilityScore = suitability
         todayProbability = prob
 
         val todayData = bufferedDays.getOrNull(todayIndex)
@@ -1032,10 +1036,9 @@ class MushroomViewModel(
                 val habitatBonusTextVal = initialHabEval.bonusText
 
                 // Process weather
+                lastWeatherTimezone = weather.timezone
                 val processedDays = MushroomAlgorithms.processWeatherData(weather)
-                val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-                val matchedIndex = processedDays.indexOfFirst { it.date == todayStr }
-                val todayIndex = if (matchedIndex >= 0) matchedIndex else min(28, processedDays.size - 1)
+                val todayIndex = MushroomAlgorithms.deriveTodayIndex(processedDays, weather.timezone)
                 
                 // Forecast grid: next 5 days starting today (todayIndex to todayIndex+4)
                 forecastDays = processedDays.subList(todayIndex, min(processedDays.size, todayIndex + 5))
@@ -1135,7 +1138,7 @@ class MushroomViewModel(
 
                 recalculateForSpecies()
 
-                val futureTrend = MushroomAlgorithms.analyzeFutureTrend(processedDays)
+                val futureTrend = MushroomAlgorithms.analyzeFutureTrend(processedDays, todayIndex = todayIndex)
 
                 // Salva nella cronologia recenti (solo se toponimo reale e non segnaposto)
                 if (!SavedLocation.isPlaceholderName(resolvedDisplayName)) {

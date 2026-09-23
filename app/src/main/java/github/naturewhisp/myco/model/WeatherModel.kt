@@ -68,5 +68,21 @@ data class ProcessedDay(
     val avgSoilMoisture7To28cm: Float? = null,
     val totalEvapotranspiration: Float? = null,
     val minTemp: Float = avgTemp,
-    val maxTemp: Float = avgTemp
-)
+    val maxTemp: Float = avgTemp,
+    val snowfall: Float = 0.0f
+) {
+    /**
+     * Precipitazione liquida effettiva: se la temperatura media giornaliera è <= 0°C o il codice WMO
+     * indica neve (71, 73, 75, 77, 85, 86), la precipitazione solida/neve viene separata e non alimenta
+     * l'innesco idrico istantaneo (REG-16).
+     */
+    val liquidPrecip: Float
+        get() = if (isSnowDay(weatherCode, avgTemp)) 0.0f else totalPrecip
+
+    companion object {
+        fun isSnowDay(weatherCode: Int?, avgTemp: Float): Boolean {
+            val isSnowWmo = weatherCode in listOf(71, 73, 75, 77, 85, 86)
+            return isSnowWmo || avgTemp <= 0.0f
+        }
+    }
+}

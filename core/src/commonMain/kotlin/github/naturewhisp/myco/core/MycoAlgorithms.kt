@@ -56,6 +56,31 @@ object MycoAlgorithms {
         return (rainScore + tempScore + humidityScore + shockScore).coerceIn(0.0, 100.0).roundToInt()
     }
 
+    fun calculateSuitabilityScore(
+        weatherScore: Int,
+        habitatScore: Double,
+        altitudeScore: Double,
+        seasonalityScore: Double,
+        terrainModifier: Double,
+        growthPhaseMultiplier: Double = 1.0,
+    ): Double {
+        val clampedWeather = weatherScore.coerceIn(0, 100)
+        val clampedHabitat = habitatScore.coerceIn(0.0, 1.0)
+        val clampedAltitude = altitudeScore.coerceIn(0.0, 1.0)
+        val clampedSeasonality = seasonalityScore.coerceIn(0.0, 1.0)
+        val clampedTerrain = terrainModifier.coerceIn(0.0, 2.0)
+        val clampedPhase = growthPhaseMultiplier.coerceIn(0.0, 1.0)
+
+        val raw = 100.0 * (clampedWeather / 100.0).pow(1.2) * clampedHabitat * clampedAltitude *
+            clampedSeasonality * clampedTerrain * clampedPhase
+        val calibrated = if (raw > 70.0) {
+            70.0 + 22.0 * kotlin.math.tanh((raw - 70.0) / 22.0)
+        } else {
+            raw
+        }
+        return calibrated.coerceIn(0.0, 100.0)
+    }
+
     fun growthProbability(
         weatherScore: Int,
         habitatScore: Double,
@@ -64,14 +89,32 @@ object MycoAlgorithms {
         terrainModifier: Double,
         growthPhaseMultiplier: Double = 1.0,
     ): Int {
-        val raw = 100.0 * (weatherScore / 100.0).pow(1.2) * habitatScore * altitudeScore *
-            seasonalityScore * terrainModifier * growthPhaseMultiplier
-        val calibrated = if (raw > 70.0) {
-            70.0 + 22.0 * kotlin.math.tanh((raw - 70.0) / 22.0)
+        return calculateSuitabilityScore(
+            weatherScore = weatherScore,
+            habitatScore = habitatScore,
+            altitudeScore = altitudeScore,
+            seasonalityScore = seasonalityScore,
+            terrainModifier = terrainModifier,
+            growthPhaseMultiplier = growthPhaseMultiplier,
+        ).toInt().coerceIn(0, 100)
+    }
+
+    fun ctmi(temp: Double, tMin: Double, tOpt: Double, tMax: Double): Double {
+        if (tMin >= tOpt || tOpt >= tMax) return 0.0
+        if (temp <= tMin || temp >= tMax) return 0.0
+
+        val spanMin = tOpt - tMin
+        val spanMax = tMax - tOpt
+        val x = (temp - tMin) / spanMin
+        val y = (tMax - temp) / spanMax
+
+        return if (spanMin <= spanMax) {
+            val alpha = spanMax / spanMin
+            (x * y.pow(alpha)).coerceIn(0.0, 1.0)
         } else {
-            raw
+            val beta = spanMin / spanMax
+            (x.pow(beta) * y).coerceIn(0.0, 1.0)
         }
-        return calibrated.toInt().coerceIn(0, 100)
     }
 
     fun nocturnalChillingInhibition(minTemp: Double, species: MushroomSpecies): Double {

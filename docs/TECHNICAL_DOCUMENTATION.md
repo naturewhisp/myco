@@ -1128,3 +1128,13 @@ L'architettura per la raccolta delle osservazioni da campo e la ricalibrazione r
   * Privacy Differenziale Spaziale tramite celle esagonali **Uber H3 Risoluzione 7** (~5 km di raggio, zero coordinate GPS persistite o trasmesse).
   * Validazione locale on-device tramite **Gemini Nano / AICore** (classificazione specie e stadio fenologico con distruzione locale della foto).
   * Aggiornamento bayesiano della probabilità e ricalibrazione retroattiva della latenza $\tau_{\text{peak}}$ su versanti omogenei.
+
+---
+
+## 11. Governance, Roadmap e Revisione Scientifica
+
+Il progetto adotta un processo di sincronizzazione e governance continua basato su tre pilastri documentali:
+1. **Linee Guida di Sviluppo & Zero Diagnostic Policy**: [`AGENTS.md`](file:///c:/Users/dendo/Documents/GitHub/myco/AGENTS.md).
+2. **Censimento Debito Tecnico e Roadmap Multilivello**: [`docs/FUTURE_DEVELOPMENTS_ANALYSIS.md`](file:///c:/Users/dendo/Documents/GitHub/myco/docs/FUTURE_DEVELOPMENTS_ANALYSIS.md), contenente la matrice di tracciabilità e riscontro con la revisione scientifica.
+3. **Revisione Scientifica e Numerica degli Algoritmi**: [`docs/Revisione_scientifica_algoritmi_Myco.md`](file:///c:/Users/dendo/Documents/GitHub/myco/docs/Revisione_scientifica_algoritmi_Myco.md), documento di audit forense e benchmark matematico per la Release v1.3 (Percorso A) e l'evoluzione opzionale a probabilità calibrata (Percorso B post-Citizen Science).
+

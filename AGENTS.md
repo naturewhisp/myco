@@ -67,6 +67,7 @@ docs/
 - **Explicit Locales**: Never call `String.format(...)` without an explicit `Locale`. Use `Locale.getDefault()` for UI strings, or `Locale.US` for coordinate numbers, query keys, or serialization.
 - **Unused Exception Syntax**: Catch blocks with intentionally unused exceptions must use `catch (_: Exception)`.
 - **Pure Compose Activity**: `MainActivity` inherits from `ComponentActivity`. Do not introduce legacy Fragment dependencies or FragmentActivity workarounds.
+- **KMP `:core` & Android Algorithmic Lockstep**: Any update to the mycological algorithm, response curves (e.g. nocturnal chilling, DTR, hurdle model), asymptotic calibrations (`growthProbability`), or taxonomic catalogs (`SPECIES_CATALOG`) must be co-evolved immediately in `core/src/commonMain/kotlin/github/naturewhisp/myco/core/`. Parity tests (`ScientificParityTest`, `FullAnalysisResultParityTest`, `CrossPlatformScientificParityTest`) must remain 100% synchronized with zero tolerance for drift.
 
 ### 4.2 Formatting & Style (`.editorconfig`)
 - Indentation: 4 spaces for Kotlin/Java/XML/Gradle; 2 spaces for JSON/YAML.
@@ -160,6 +161,12 @@ docs/
   1. The status column and release plan in `docs/FUTURE_DEVELOPMENTS_ANALYSIS.md`.
   2. The package/component inventory in `docs/TECHNICAL_DOCUMENTATION.md`.
 - **Cache Isolation & Preference Protection**: When adding new user preferences to `KeyValueStorage`, verify that `CacheManager.clearCache()` preserves them and clears strictly ephemeral API response caches. Never invoke blanket `.clear()` without protecting user settings.
+
+### 4.11 iOS & Swift Concurrency Testing Invariants
+- **XCTest Asynchronous Polling Timeout**: In XCTest suites testing asynchronous state transitions or actor-hopping workflows (`@MainActor`, `Task.detached`), polling helper functions (`waitUntil`) must configure a minimum timeout of **5.0 seconds** (`Duration.seconds(5)`). This guarantees resilience against thread-scheduling and CPU latency spikes on virtualized macOS CI runners, while preserving sub-millisecond execution when conditions are met immediately.
+
+### 4.12 CI / GitHub Actions SDK Configuration Standard
+- **Android SDK Setup Action (`setup-android@v3`)**: Whenever `android-actions/setup-android@v3` is referenced in `.github/workflows/*.yml`, agents must explicitly set `with: packages: ''` to prevent fatal failures caused by Google's permanent removal of the deprecated legacy `tools` package from `dl.google.com`. Required SDK components (`platforms`, `build-tools`, `cmdline-tools`) must be installed explicitly via subsequent `sdkmanager` steps.
 
 ---
 

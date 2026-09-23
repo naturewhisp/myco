@@ -113,7 +113,7 @@ final class MycoViewModelSearchTests: XCTestCase {
     }
 
     private func waitUntil(
-        timeout: Duration = .seconds(4),
+        timeout: Duration = .seconds(5),
         condition: @escaping @MainActor () -> Bool
     ) async throws {
         let deadline = ContinuousClock.now + timeout

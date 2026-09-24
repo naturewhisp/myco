@@ -15,15 +15,16 @@ object MycoAlgorithms {
         days: List<ProcessedDay>,
         species: MushroomSpecies,
         spunHyphalDensity: Double?,
+        applySpunHyphalBonus: Boolean = true,
     ): Int {
         if (dayIndex !in days.indices) return 0
 
         val windows = EnvironmentalWindows.derive(days, dayIndex)
         val totalRain = windows.rainWindowTotalMm
         var rainScore = rainResponse(totalRain, species) * 40.0
-        if (spunHyphalDensity != null && spunHyphalDensity >= 5.0 && totalRain >= 12.0) {
+        if (applySpunHyphalBonus && spunHyphalDensity != null && spunHyphalDensity >= 5.0 && totalRain >= 12.0) {
             rainScore = min(40.0, rainScore + 6.0)
-        } else if (spunHyphalDensity != null && spunHyphalDensity < 2.5) {
+        } else if (applySpunHyphalBonus && spunHyphalDensity != null && spunHyphalDensity < 2.5) {
             rainScore = max(0.0, rainScore - 4.0)
         }
 
@@ -46,7 +47,7 @@ object MycoAlgorithms {
         var shockScore = 0.0
         if (dayIndex > 4 && totalRain >= 12.0) {
             val drop = windows.temperatureDropC ?: 0.0
-            val minimumDrop = if (spunHyphalDensity != null && spunHyphalDensity >= 5.0) 2.0 else 3.0
+            val minimumDrop = if (applySpunHyphalBonus && spunHyphalDensity != null && spunHyphalDensity >= 5.0) 2.0 else 3.0
             if (drop > minimumDrop) {
                 shockScore = 15.0 * ((drop - minimumDrop) / 3.0).coerceIn(0.0, 1.0) *
                     (totalRain / 25.0).coerceIn(0.0, 1.0)
@@ -186,6 +187,14 @@ object MycoAlgorithms {
         else -> (humidity - 50.0) / 35.0
     }.coerceIn(0.0, 1.0)
 
+    /**
+     * Risposta ecologica empirica continua al contenuto idrico del suolo su due orizzonti (0-7 cm e 7-28 cm).
+     *
+     * NOTA SCIENTIFICA (F07 - Pedologia Idraulica):
+     * Risposta euristica basata su curve smoothstep C1 del contenuto volumetrico (theta in m3/m3).
+     * Non implementa equazioni differenziali di van Genuchten (1980), non disponendo dei parametri
+     * di suzione matriciale h, conducibilita K(h) o coefficienti di ritenzione locali (theta_r, theta_s, alpha, n, m).
+     */
     fun soilMoistureResponse(shallow: Double?, deep: Double?, et0: Double?): Double {
         if (shallow == null && deep == null) return 1.0
         val shallowScore = shallow?.let {

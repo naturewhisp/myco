@@ -463,6 +463,7 @@ dove:
 * $\tau_{\text{peak}}$ è il picco di latenza biologica al culmine epigeo (es. $11.0\text{ giorni}$ per *Boletus edulis*).
 * Inoltre, è integrata un'isteresi da trauma termico notturno: se nei 5 giorni recenti la temperatura minima scende sotto $T_{\text{tol,min}}$, $\tau_{\text{peak}}$ viene incrementato di $1.5\text{ giorni}$ per simulare la stasi di ripresa cellulare.
 * $\alpha$ governa l'ampiezza della finestra di fruttificazione (default $4.0$).
+* **Invarianza dell'Archivio Storico (`maxMemoryDays = 26`):** Il loop fenologico limita tassativamente la memoria idrica retrospettiva a 26 giorni rispetto al giorno target ($\tau \in [0, 26]$). L'estensione arbitraria della serie storica nel passato o la presenza di archivi plurimensili non altera in alcun modo il volume efficace né la compensazione del suolo profondo.
 * **Proprietà:** $f(0) = 0$, $f(\tau_{\text{peak}}) = 1.0$ (picco unitario garantito), $\lim_{\tau \to \infty} f(\tau) = 0$.
 
 Inoltre, la pioggia grezza viene decurtata della quota assorbita dal deficit idrico del suolo profondo (orizzonte 7–28 cm sotto la soglia di $0.20\text{ m}^3/\text{m}^3$):
@@ -482,7 +483,7 @@ $$S_H(H) = \begin{cases}
 \end{cases}$$
 
 #### D. Umidità del Suolo Multi-Profondità ed Evapotraspirazione ($S_M$, `soilMoistureScoreSmooth`, `MushroomAlgorithms.kt`)
-Modella l'idratazione pedologica a due orizzonti strategici unitamente al tasso di evaporazione superficiale $ET_0$ da Open-Meteo, integrando la fisica idrodinamica di van Genuchten e il limite biologico di porosità aerifera ($\varepsilon_a = \Phi - \theta$):
+Modella l'idratazione pedologica a due orizzonti strategici unitamente al tasso di evaporazione superficiale $ET_0$ da Open-Meteo, mediante una risposta empirica bi-layer continua a gradiente biologico con rampe cubiche smoothstep e smorzamento continuo per ipossia/anossia (senza ricorrere a equazioni differenziali di ritenzione idraulica di van Genuchten, garantendo derivabilità $C^1$ e assenza di discontinuità):
 * **Orizzonte Superficiale ($0 \dots 7\text{ cm}$, $M_{0-7}$):** Lettiera e strato organico dove avviene l'induzione e lo sviluppo dei bottoni primordiali.
   * Stress da disseccamento acuto: $M_{0-7} < 0.10\text{ m}^3/\text{m}^3 \implies S = 0.10$ (disidratazione irreversibile e lisi da secco).
   * Rampa di salita: $0.10 \le M_{0-7} < 0.22 \implies 0.10 + 0.90 \cdot \text{smoothstep}(0.10, 0.22, M_{0-7})$.
@@ -806,8 +807,27 @@ Per garantire continuità di servizio durante i frequenti blocchi per manutenzio
 * **Query Dinamica per Canopia Specie-Specifica (FEAT-03 / TD-10):** Se viene specificata una specie micorrizica, la clausola Overpass estrae e concatena i generi botanici presenti in `species.preferredCanopyTypes` (es. `Fagus|Quercus|Castanea|Pinus|Picea|Abies|Betula`); per i funghi saprotrofi (es. *Macrolepiota procera*), interroga invece prati, pascoli e brughiere (`meadow|grassland|heath|scrub`).
 * **Isolamento della Cache per Specie:** Il risultato della query viene salvato nella cache con chiave parametrizzata sulla specie: `habitat_bonus_${species?.id ?: "general"}_${roundedLat}_${roundedLon}`, evitando collisioni o letture errate quando l'utente alterna funghi con differenti associazioni arboree.
 
-### 6.3 Atlante Miceliare SPUN (Formato Binario `spun_italy.bin`)
-I dati scientifici sulla biomassa e ricchezza ectomicorrizica sono codificati nel file `spun/spun_italy.bin` memorizzato negli asset applicativi (`SpunDataManager.kt`).
+### 6.3 Atlante Miceliare SPUN (Formato Binario `spun_italy.bin` & `SPUN_MANIFEST.json`)
+I dati scientifici sulla biomassa e ricchezza ectomicorrizica sono codificati nel file `spun/spun_italy.bin` memorizzato negli asset applicativi (`SpunDataManager.kt`), corredato dal manifest di tracciabilità `spun/SPUN_MANIFEST.json` conforme alla revisione scientifica F10 (v1.3.2).
+
+#### Provenienza dei Dati Originali & Manifest di Tracciabilità
+A differenza delle versioni precedenti che utilizzavano estrazioni intermedie, l'asset è rigenerato deterministicamente dallo script `tools/build_spun_asset.py` a partire dai GeoTIFF originali ad alta risoluzione globale prodotti dal consorzio SPUN (*Society for the Protection of Underground Networks*, Hawkins et al., *Nature Ecology & Evolution* 2023, DOI: `10.1038/s41559-023-02118-2`):
+* `EcM_Fungi_Richness_Predicted.tif` (715.3 MB, SHA256: `506d61e42190b61c7c6c96d6074b907825fe1f8a3237750be6682976cec7965a`)
+* `hyphal_density_m_cm3_Classified_mean.tif` (733.9 MB, SHA256: `43a5c1bacb53d34f9fdf34b3108777a28e02669cebc05ce8b98ea9b218ee065a`)
+
+Il file `SPUN_MANIFEST.json` include gli hash crittografici di input e output, le dimensioni della griglia ($1560 \times 1500$, risoluzione 32.3 arco-secondi $\approx 1\text{ km}$), le coordinate geografiche e la dichiarazione esplicita della gilda micorrizica per ciascun canale.
+
+#### Correzione NoData e Convoluzione Normalizzata (Recupero Costiero +91k Celle)
+I raster globali SPUN contengono il valore sentinella NoData Float32 `-3.40000000000000034e+38` sul mare e oltre i confini terrestri. Nelle versioni legacy, l'interpolazione bilineare eseguita prima del filtraggio NoData corrompeva le celle costiere limitrofe, azzerando la ricchezza ectomicorrizica su promontori e litorali boschivi (es. Portofino, Promontorio del Conero, Gargano).
+La pipeline revisionata applica una **convoluzione bilineare normalizzata con maschera NoData preliminare**:
+$$v_{\text{interp}} = \frac{\sum_{i=1}^4 w_i \cdot v_i \cdot m_i}{\sum_{i=1}^4 w_i \cdot m_i} \quad \text{con } m_i = \begin{cases} 1 & \text{se } v_i \neq \text{NoData} \\ 0 & \text{se } v_i = \text{NoData} \end{cases}$$
+Questo intervento ha ripristinato **91.159 celle valide** precedentemente azzerate lungo l'intero perimetro costiero italiano.
+
+#### Isolamento della Gilda AM dal Punteggio Operativo Ectomicorrizico
+Il layer `hyphal_density_m_cm3_Classified_mean.tif` quantifica la densità ifale delle **micorrize arbuscolari (AM)** (prevalentemente Glomeromycota ipogei che colonizzano piante erbacee e colture), e non dei macromiceti epigei commestibili.
+In conformità a F10 e `EcologicalWeightsConfig.PHENOLOGICAL`:
+* Il calcolo operativo della favorevolezza (`calculateWeatherScore`) isola completamente il bonus ifale (`applySpunHyphalBonus = false`).
+* La densità ifale rimane disponibile a scopo puramente informativo/pedologico nella UI, senza distorcere l'idoneità alla fruttificazione di basidiomiceti ectomicorrizici (*Boletus*, *Cantharellus*) o saprotrofi (*Macrolepiota*).
 
 #### Struttura dell'Header Binario (32 Byte, Big-Endian)
 ```

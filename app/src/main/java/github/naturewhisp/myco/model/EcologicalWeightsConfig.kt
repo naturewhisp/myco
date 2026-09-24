@@ -46,7 +46,8 @@ data class EcologicalWeightsConfig(
     val probabilityKneeThreshold: Double = 70.0,
     val probabilityMaxAsymptote: Double = 92.0,
     val suitabilityKneeThreshold: Double = probabilityKneeThreshold,
-    val suitabilityMaxAsymptote: Double = probabilityMaxAsymptote
+    val suitabilityMaxAsymptote: Double = probabilityMaxAsymptote,
+    val applySpunHyphalBonus: Boolean = false
 ) {
     init {
         require(rainWeight >= 0.0 && tempWeight >= 0.0 && humidityWeight >= 0.0 && thermalShockWeight >= 0.0) {
@@ -65,13 +66,14 @@ data class EcologicalWeightsConfig(
 
     companion object {
         /**
-         * Istanza predefinita baseline con finestra rigida [10 gg - 2 gg].
+         * Istanza predefinita baseline con finestra rigida [10 gg - 2 gg] ed emulazione storica oracle.
          */
-        val DEFAULT = EcologicalWeightsConfig(usePhenologicalInertia = false)
+        val DEFAULT = EcologicalWeightsConfig(usePhenologicalInertia = false, applySpunHyphalBonus = true)
 
         /**
-         * Configurazione biologica avanzata basata su inerzia fenologica continua f(tau).
+         * Configurazione biologica avanzata basata su inerzia fenologica continua f(tau)
+         * e isolamento dei correttivi ifali AM dal modello operativo (F10).
          */
-        val PHENOLOGICAL = EcologicalWeightsConfig(usePhenologicalInertia = true)
+        val PHENOLOGICAL = EcologicalWeightsConfig(usePhenologicalInertia = true, applySpunHyphalBonus = false)
     }
 }

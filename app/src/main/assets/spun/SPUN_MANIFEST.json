@@ -1,0 +1,58 @@
+{
+  "manifest_version": "1.0.0",
+  "dataset_provider": "Society for the Protection of Underground Networks (SPUN)",
+  "provider_url": "https://spun.earth",
+  "doi_citation": "https://doi.org/10.1038/s41559-023-02118-2",
+  "description": "Global mycorrhizal maps of ectomycorrhizal (EcM) fungal species richness and hyphal density (AM).",
+  "layers": [
+    {
+      "id": "ecm_fungi_richness",
+      "name": "Ectomycorrhizal Fungal Richness",
+      "guild": "ECTOMYCORRHIZAL",
+      "ecological_relevance": "Direct symbiont network richness for ectomycorrhizal fungi (Boletus, Cantharellus, Amanita, Lactarius)",
+      "source_filename": "EcM_Fungi_Richness_Predicted.tif",
+      "source_filesize_bytes": 715317153,
+      "source_sha256": "506d61e42190b61c7c6c96d6074b907825fe1f8a3237750be6682976cec7965a",
+      "unit": "predicted_species_count",
+      "valid_pixels": 1065635,
+      "resampling": "normalized_convolution_bilinear",
+      "nodata_masking_applied": true,
+      "max_value_raw": 99.0
+    },
+    {
+      "id": "hyphal_density",
+      "name": "Hyphal Density Mean",
+      "guild": "ARBUSCULAR_MYCORRHIZAL",
+      "ecological_relevance": "Arbuscular Mycorrhizal (AM) hyphal network biomass. Treated as experimental research covariate; isolated from operational EcM/saprotrophic fruiting probability models (F10).",
+      "source_filename": "hyphal_density_m_cm3_Classified_mean.tif",
+      "source_filesize_bytes": 733862140,
+      "source_sha256": "43a5c1bacb53d34f9fdf34b3108777a28e02669cebc05ce8b98ea9b218ee065a",
+      "unit": "meters_per_cm3_soil",
+      "scale_factor": 0.05,
+      "max_representable": 12.75,
+      "valid_pixels": 974131,
+      "nodata_masking_applied": true,
+      "max_value_raw": 12.3
+    }
+  ],
+  "spatial_coverage": {
+    "region_code": "ITA",
+    "region_name": "Italia e arco alpino/mediterraneo",
+    "min_latitude": 35.0,
+    "max_latitude": 47.5,
+    "min_longitude": 6.0,
+    "max_longitude": 19.0,
+    "step_arcseconds": 30,
+    "step_degrees": 0.008333333333333333,
+    "grid_width": 1560,
+    "grid_height": 1500,
+    "total_cells": 2340000
+  },
+  "binary_asset": {
+    "filename": "spun_italy.bin",
+    "filesize_bytes": 1587357,
+    "sha256": "05119af62c78fa1e2ab078a83747c3c317bd1f0ff57d8093633aeddc5a1746b2",
+    "compression": "zlib_level_9",
+    "header_size_bytes": 32
+  }
+}

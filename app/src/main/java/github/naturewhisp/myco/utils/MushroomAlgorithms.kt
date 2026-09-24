@@ -435,19 +435,25 @@ object MushroomAlgorithms {
     /**
      * Calcola la precipitazione efficace biologicamente attiva tramite convoluzione fenologica continua.
      *
-     * Sostituisce la somma piatta nella finestra rigida [10 gg - 2 gg] integrando le precipitazioni
-     * passate ponderate secondo il kernel di latenza unimodale della specie e modulate dalla
-     * compensazione del deficit idrico profondo (7-28 cm).
+     * Integra le precipitazioni passate ponderate secondo il kernel di latenza unimodale della specie e modulate
+     * dalla compensazione del deficit idrico profondo (7-28 cm).
+     *
+     * NOTA SCIENTIFICA (F17 - Memoria idrica indipendente dalla lunghezza dello storico):
+     * Per garantire che il ricalcolo per la stessa data sia invariante rispetto alla lunghezza dell'archivio
+     * storico passato fornito (es. 28 gg vs 60 gg vs 100 gg), il supporto temporale del kernel e la media
+     * del suolo profondo sono rigidamente vincolati a una finestra massima fissa [maxMemoryDays] (default 26 giorni).
      *
      * @param dayIndex Indice del giorno target all'interno di [allData].
      * @param allData Serie temporale completa dei giorni elaborati.
      * @param species Specie fungina target con i relativi parametri fenologici.
+     * @param maxMemoryDays Finestra massima di memoria fenologica idrica retrospettiva (default 26 giorni).
      * @return Precipitazione efficace ponderata in mm.
      */
     fun calculateEffectiveRainfall(
         dayIndex: Int,
         allData: List<ProcessedDay>,
-        species: MushroomSpecies = SPECIES_CATALOG[0]
+        species: MushroomSpecies = SPECIES_CATALOG[0],
+        maxMemoryDays: Int = 26
     ): Double {
         if (dayIndex <= 0 || allData.isEmpty()) return 0.0
 
@@ -456,9 +462,10 @@ object MushroomAlgorithms {
         val hasChillingTrauma = recentWindow.any { it.minTemp < species.toleratedTempMin }
         val effectiveTauPeak = if (hasChillingTrauma) species.phenologyLatencyPeakDays + 1.5 else species.phenologyLatencyPeakDays
 
+        val memoryWindowStart = max(0, dayIndex - maxMemoryDays)
         var weightedRain = 0.0
         val pastDeepSoilList = mutableListOf<Double>()
-        for (i in 0 until dayIndex) {
+        for (i in memoryWindowStart until dayIndex) {
             val tau = (dayIndex - i).toDouble()
             val precip = allData[i].totalPrecip.toDouble()
             if (precip > 0.0) {
@@ -632,10 +639,11 @@ object MushroomAlgorithms {
         }
         var rainScore = rainScoreSmooth(effectiveRain, species) * config.rainWeight
 
-        // Modulatore biologico SPUN: rete ifale densa (>5.0 m/cm3) amplifica la risposta a piogge moderate
-        if (spunHyphalDensity != null && spunHyphalDensity >= 5.0f && effectiveRain >= config.minRainForShockMm) {
+        // Modulatore biologico SPUN: rete ifale densa (>5.0 m/cm3) amplifica la risposta a piogge moderate.
+        // Isolato nel modello operativo PHENOLOGICAL in conformità a F10 (biomassa AM non coincidente con macromiceti).
+        if (config.applySpunHyphalBonus && spunHyphalDensity != null && spunHyphalDensity >= 5.0f && effectiveRain >= config.minRainForShockMm) {
             rainScore = min(config.rainWeight, rainScore + 6.0)
-        } else if (spunHyphalDensity != null && spunHyphalDensity < 2.5f) {
+        } else if (config.applySpunHyphalBonus && spunHyphalDensity != null && spunHyphalDensity < 2.5f) {
             rainScore = max(0.0, rainScore - 4.0)
         }
 
@@ -720,7 +728,7 @@ object MushroomAlgorithms {
 
         // Calcolo continuo dello shock termico induttivo dei primordi
         var shockScore = 0.0
-        val minDrop = if (spunHyphalDensity != null && spunHyphalDensity >= 5.0f) {
+        val minDrop = if (config.applySpunHyphalBonus && spunHyphalDensity != null && spunHyphalDensity >= 5.0f) {
             config.spunAssistedThermalDropMin
         } else {
             config.standardThermalDropMin
@@ -1530,8 +1538,19 @@ object MushroomAlgorithms {
      * Valuta in modo continuo il contenuto idrico del suolo [0.0, 1.0] combinando l'orizzonte superficiale (0-7 cm)
      * e l'orizzonte radicale profondo (7-28 cm), modulati dall'evapotraspirazione di riferimento FAO ET0.
      *
-     * Integra la dinamica idraulica di van Genuchten penalizzando sia il deficit idrico/disseccamento (< 0.20 m³/m³),
-     * sia la saturazione asfittica dei macropori (> 0.40 m³/m³) che induce ipossia e lisi batterica dei primordi.
+     * NOTA SCIENTIFICA (F07 - Pedologia Idraulica):
+     * Questo modello è una risposta euristica empirica continua a due strati basata su funzioni smoothstep C1
+     * del contenuto volumetrico idrico (theta in m³/m³) con smorzamento progressivo per anossia/ipossia.
+     * Non costituisce un'implementazione formale delle relazioni idrauliche parametrizzate di van Genuchten (1980),
+     * poiché non modella matric potential/suzione (h), conducibilità non satura K(h), né parametri locali di
+     * ritenzione (theta_r, theta_s, alpha, n, m) dipendenti dalla tessitura del suolo.
+     *
+     * Soglie biologiche implementate:
+     * - Orizzonte superficiale (0-7 cm): disseccamento sotto 0.10 m³/m³ (score 0.10); ricarica ottimale
+     *   in 0.22..0.38 m³/m³ (score 1.0); stasi anossica progressiva in 0.38..0.44 (da 1.0 a 0.50) e
+     *   collasso ipossico in 0.44..0.52 che raggiunge il pavimento biologico 0.15 a 0.52 m³/m³.
+     * - Orizzonte profondo (7-28 cm): riserva idrica con optimum in 0.20..0.35 m³/m³ (score 1.0);
+     *   stasi radicale/miceliare oltre 0.35 m³/m³ (fino a 0.55 a 0.42 m³/m³) e pavimento 0.20 a 0.50 m³/m³.
      *
      * @param m0To7 Umidità volumetrica superficiale in m³/m³ (orizzonte primordi/lettiera). Range ottimale: 0.22..0.38.
      * @param m7To28 Umidità volumetrica profonda in m³/m³ (orizzonte miceliare perenne). Range ottimale: 0.20..0.35.
@@ -1542,9 +1561,8 @@ object MushroomAlgorithms {
         if (m0To7 == null && m7To28 == null) return 1.0
 
         // Calcolo continuo orizzonte superficiale 0-7 cm (induzione e idratazione primordiale)
-        // Dinamica van Genuchten: capacità di campo ottimale 0.22..0.38 m³/m³;
-        // decadimento per asfissia e lisi dei primordi per saturazione dei macropori oltre 0.38 m³/m³,
-        // con crollo ipossico severo oltre 0.44 m³/m³.
+        // Capacità di campo ottimale 0.22..0.38 m³/m³; decadimento per asfissia oltre 0.38 m³/m³,
+        // raggiungendo 0.50 a 0.44 m³/m³ e il pavimento biologico 0.15 a 0.52 m³/m³.
         val s0To7 = if (m0To7 != null) {
             when {
                 m0To7 < 0.10 -> 0.10

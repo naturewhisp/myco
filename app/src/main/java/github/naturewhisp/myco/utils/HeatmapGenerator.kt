@@ -2,6 +2,7 @@ package github.naturewhisp.myco.utils
 
 import github.naturewhisp.myco.core.HeatmapEngine
 import github.naturewhisp.myco.model.EcologicalCategory
+import github.naturewhisp.myco.model.EcologicalWeightsConfig
 import github.naturewhisp.myco.model.HeatmapRaster
 import github.naturewhisp.myco.model.HeatmapRenderConfig
 import github.naturewhisp.myco.model.MushroomSpecies
@@ -121,17 +122,24 @@ object HeatmapGenerator {
                                 (hypRatio * 70.0f + ecmRatio * 30.0f)
                             }
                             EcologicalCategory.ECTOMYCORRHIZAL -> {
-                                (ecmRatio * 55.0f + hypRatio * 45.0f)
+                                (ecmRatio * 100.0f)
                             }
                         }
 
-                        // Modulatore meteo, stagionale e altimetrico: volano di attivazione fruttificazione
-                        val weatherFactor = (baseWeatherScore / 100.0).coerceIn(0.2, 1.0)
-                        val seasonFactor = seasonalityScore.coerceIn(0.3, 1.0)
-                        val altFactor = altitudeScore.coerceIn(0.4, 1.0)
-                        val weatherMultiplier = (0.60 + (weatherFactor * seasonFactor * altFactor) * 0.60).toFloat()
+                        // Calcolo coerente dell'indice raster secondo la formula unificata (F11 / MYCO-SCI-08)
+                        val cellHabitatScore = (bioPotential / 100.0).coerceIn(0.0, 1.0)
+                        val cellSuitability = MushroomAlgorithms.calculateSuitabilityScore(
+                            weatherScore = baseWeatherScore.toInt().coerceIn(0, 100),
+                            habitatScore = cellHabitatScore,
+                            altitudeScore = altitudeScore.coerceIn(0.0, 1.0),
+                            seasonalityScore = seasonalityScore.coerceIn(0.0, 1.0),
+                            terrainModifier = 1.0,
+                            config = EcologicalWeightsConfig.PHENOLOGICAL,
+                            species = species,
+                            growthPhaseMultiplier = 1.0
+                        )
 
-                        val prob = (bioPotential * weatherMultiplier).toInt().coerceIn(0, 100)
+                        val prob = cellSuitability.toInt().coerceIn(0, 100)
                         val baseColor = getHeatmapColor(prob, isDark, config)
 
                         // Sfumatura radiale morbida (feathering) sull'ultimo 25% del bordo esterno

@@ -642,12 +642,25 @@ La distribuzione geografica della probabilità su scala territoriale è calcolat
   Il potenziale biologico della cella raster viene modulato in funzione dell'inquadramento ecologico (`EcologicalCategory`):
   * **Saprotrofi (`SAPROTROPHIC`, es. *Macrolepiota procera*):** Non dipendono da simbiosi ectomicorrizica arborea; il potenziale biologico è trainato dalla biomassa fungina sotterranea e da una base humus/lettiera:
     $$\text{bioPotential} = 20.0 + \text{hypRatio} \times 80.0$$
-  * **Ectomicorrizici Simbionti (`ECTOMYCORRHIZAL`, es. *Boletus edulis*, *Cantharellus cibarius*):** Bilanciamento 50-50 tra ricchezza ectomicorrizica della stazione arborea e densità miceliare:
+  * **Ectomicorrizici Simbionti (`ECTOMYCORRHIZAL`, es. *Boletus edulis*, *Cantharellus cibarius*):** Bilanciamento 50-50 tra ricchezza ectomicorrizica della stazione arborea e densità miceliare (con isolamento delle ife AM per default):
     $$\text{bioPotential} = \text{ecmRatio} \times 50.0 + \text{hypRatio} \times 50.0$$
   * **Parassiti Lignicoli (`PARASITIC`, es. *Armillaria mellea*):**
     $$\text{bioPotential} = 30.0 + \text{ecmRatio} \times 35.0 + \text{hypRatio} \times 35.0$$
-  Inoltre, il moltiplicatore meteorologico territoriale include l'idoneità altitudinale specifica della specie ($A \in [0.40, 1.00]$):
-  $$\text{weatherMultiplier} = \left(\frac{W}{100}\right) \times S \times A$$
+* **Parità Matematica Heatmap e Scheda Puntuale (F11 / Blocco 4):**
+  A partire dalla versione 1.3.3, è stato rimosso l'arbitrario incremento numerico non calibrato (`multiplier = 0.60 + ... * 0.60`), riconducendo il calcolo del raster alla medesima equazione unificata della scheda puntuale:
+  $$\text{suitability}_{\text{cell}} = \text{calculateSuitabilityScore}\left(W,\; \frac{\text{bioPotential}}{100},\; A,\; S,\; \text{terrain} = 1.0,\; \Phi = 1.0\right)$$
+  * **Azzeramento a Meteo Nullo ($W = 0$):** Se il punteggio meteo è zero (siccità estrema o gelate severe continue), la cella raster assume valore identicamente nullo e il pixel risulta **100% trasparente** ($\text{ARGB} = 0$), garantendo che la mappa non mostri alcuna classe favorevole in assenza di requisiti biometeorologici minimi.
+  * **Identità Matematica:** Per qualsiasi tupla di input $(W, H, A, S, T=1, \Phi=1)$, il punteggio prima della quantizzazione grafica è matematicamente identico tra cella raster e scheda puntuale ($\Delta \le 10^{-6}$).
+* **Coerenza della Modalità WEATHER_ONLY tra Scheda e Outlook (F13 / Blocco 4):**
+  Nel calcolo delle proiezioni settimanali (`calculateDailyOutlooks`), il parametro `calculationMode` viene propagato all'intero orizzonte temporale:
+  * Quando l'utente seleziona la modalità `WEATHER_ONLY`, i fattori non-meteorologici ($H, A, S, T$) vengono fissati a $1.0$ su tutti i 7 giorni dell'outlook, prevenendo discrepanze numeriche artificiali.
+  * Il giorno 0 dell'outlook coincide esattamente con la probabilità/idoneità calcolata per la scheda principale (`dailyOutlooks[0].probability == todayProbability`).
+* **Parità Cross-Platform Android/iOS/Core Lockstep (F12 / Blocco 4):**
+  Il motore condiviso Kotlin Multiplatform `:core` (`commonMain`) implementa le medesime curve di risposta idrica a due orizzonti (`soilMoistureResponse`), il modello a due stadi `hurdleOccurrenceProbability` e la formulazione asintotica `calculateSuitabilityScore`, garantendo convergenza numerica assoluta ($\Delta \le 10^{-6}$) tra Android e iOS.
+* **Validazione Empirica e Rigore del Calendario Reale (F19 / Blocco 4):**
+  I benchmark storici reali sono stati rigorosamente segregati dai test sintetici di invarianti matematiche:
+  * La serie empirica di Mindino è ancorata a date gregoriane valide (`LocalDate.of(2026, 8, 25)`), collocando la prima pioggia il 10 settembre (giorno 16), la pioggia primaria il 17 settembre (giorno 23), la visita reale sul campo il 18 settembre (giorno 24), il consolidamento il 21 settembre (giorno 27) e il weekend di picco il 26 settembre (giorno 32), con completa eliminazione di date fittizie.
+  * Al giorno della visita reale (18 settembre, con 0 carpofori trovati), il gating della Legge del Minimo di Liebig impone $\Phi_{\text{phase}} \le 0.45$ (stadio `MYCELIAL_HYDRATION`), impedendo falsi positivi nonostante l'ottima pioggia del giorno precedente.
 * **Ricalcolo Asincrono & Anti-Stale (`heatmapJob`):** Quando l'utente seleziona una nuova specie target nel selettore inferiore, `MushroomViewModel` cancella istantaneamente qualsiasi calcolo raster in-flight (`heatmapJob?.cancel()`), lancia una coroutine asincrona su `Dispatchers.Default` e aggiorna in tempo reale la nuvola di calore della mappa senza freeze dell'interfaccia grafica.
 * **Palette Minerale Botanica Herbarium:**
   * $0\% \dots 16\%$: Trasparenza totale (nessuna attività biologica rilevata).

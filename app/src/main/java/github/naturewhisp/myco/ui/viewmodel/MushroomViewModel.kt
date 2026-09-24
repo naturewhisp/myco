@@ -493,7 +493,8 @@ class MushroomViewModel(
             spunHyphalDensity = lastSpunData?.hyphalDensity,
             terrainModifier = if (calculationMode == "WEATHER_ONLY") 1.0 else terrainEval.modifier,
             canopyCover = siteCanopyCover,
-            config = EcologicalWeightsConfig.PHENOLOGICAL
+            config = EcologicalWeightsConfig.PHENOLOGICAL,
+            calculationMode = calculationMode
         )
 
         val fav = favoriteLocations.firstOrNull {

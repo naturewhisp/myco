@@ -361,8 +361,9 @@ class PhenologicalInvariantsTest {
     fun benchmark03_mindinoProjectedWeekendPeakSep26() {
         // Estendiamo la serie con giorni stabili post-pioggia
         val extendedDays = createMindinoHistoricalSeries().toMutableList()
+        val startDate = java.time.LocalDate.of(2026, 8, 25)
         for (i in 28..32) {
-            val validDate = java.time.LocalDate.of(2026, 9, 1).plusDays(i.toLong()).toString()
+            val validDate = startDate.plusDays(i.toLong()).toString()
             extendedDays.add(
                 ProcessedDay(
                     date = validDate,
@@ -588,14 +589,16 @@ class PhenologicalInvariantsTest {
     }
 
     private fun createMindinoHistoricalSeries(): List<ProcessedDay> {
-        // Serie storica reale di Mindino:
+        // Serie storica reale di Mindino (F19 - Validità Calendario Reale):
+        // Inizio serie: 2026-08-25 (Day 0)
         // Day 16 (10 set): 22.3 mm (seguito da secco)
         // Day 23 (17 set): 25.3 mm (pioggia primaria consistente)
         // Day 24 (18 set): giorno della visita sul campo (0 funghi)
         // Day 27 (21 set): 4 giorni dopo pioggia
+        val startDate = java.time.LocalDate.of(2026, 8, 25)
         return (0 until 28).map { i ->
             ProcessedDay(
-                date = "2026-09-${String.format(Locale.US, "%02d", i + 1)}",
+                date = startDate.plusDays(i.toLong()).toString(),
                 avgTemp = 16.0f,
                 minTemp = 11.5f,
                 maxTemp = 20.5f,

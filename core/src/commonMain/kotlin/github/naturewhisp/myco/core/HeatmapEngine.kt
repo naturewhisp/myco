@@ -16,6 +16,7 @@ class HeatmapEngine {
         isDark: Boolean,
         gridSize: Int = 96,
         radiusKm: Double = 35.0,
+        applySpunHyphalBonus: Boolean = false,
     ): HeatmapRaster? {
         require(gridSize >= 2)
         val species = SpeciesCatalog.byId(speciesId)
@@ -55,11 +56,23 @@ class HeatmapEngine {
                 val biologicalPotential = when (species.category) {
                     EcologicalCategory.SAPROTROPHIC -> hyphalRatio * 80.0 + 20.0
                     EcologicalCategory.PARASITIC -> hyphalRatio * 70.0 + ecmRatio * 30.0
-                    EcologicalCategory.ECTOMYCORRHIZAL -> ecmRatio * 55.0 + hyphalRatio * 45.0
+                    EcologicalCategory.ECTOMYCORRHIZAL -> if (applySpunHyphalBonus) {
+                        ecmRatio * 55.0 + hyphalRatio * 45.0
+                    } else {
+                        ecmRatio * 100.0
+                    }
                 }
-                val multiplier = 0.60 + (baseWeatherScore / 100.0).coerceIn(0.2, 1.0) *
-                    seasonalityScore.coerceIn(0.3, 1.0) * altitudeScore.coerceIn(0.4, 1.0) * 0.60
-                var color = color((biologicalPotential * multiplier).toInt().coerceIn(0, 100), isDark)
+                val cellHabitatScore = (biologicalPotential / 100.0).coerceIn(0.0, 1.0)
+                val cellSuitability = MycoAlgorithms.calculateSuitabilityScore(
+                    weatherScore = baseWeatherScore.toInt().coerceIn(0, 100),
+                    habitatScore = cellHabitatScore,
+                    altitudeScore = altitudeScore.coerceIn(0.0, 1.0),
+                    seasonalityScore = seasonalityScore.coerceIn(0.0, 1.0),
+                    terrainModifier = 1.0,
+                    growthPhaseMultiplier = 1.0,
+                )
+                val probability = cellSuitability.toInt().coerceIn(0, 100)
+                var color = color(probability, isDark)
                 if (distance > 0.75 && color != 0) {
                     val alpha = (((color ushr 24) and 0xFF) * ((1.0 - distance) / 0.25).coerceIn(0.0, 1.0)).toInt()
                     color = (color and 0x00FFFFFF) or (alpha shl 24)

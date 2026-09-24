@@ -2394,11 +2394,15 @@ object MushroomAlgorithms {
         spunHyphalDensity: Float? = null,
         terrainModifier: Double = 1.0,
         config: EcologicalWeightsConfig = EcologicalWeightsConfig.DEFAULT,
-        canopyCover: Double? = null
+        canopyCover: Double? = null,
+        calculationMode: String = "ALL"
     ): List<DailyOutlook> {
         if (processedDays.isEmpty()) return emptyList()
-        val altScore = calculateSpeciesAltitudeScore(elevation, species).score
-        val seasonScore = calculateSpeciesSeasonalityScore(month, species).score
+        val isWeatherOnly = calculationMode == "WEATHER_ONLY"
+        val altScore = if (isWeatherOnly) 1.0 else calculateSpeciesAltitudeScore(elevation, species).score
+        val seasonScore = if (isWeatherOnly) 1.0 else calculateSpeciesSeasonalityScore(month, species).score
+        val effectiveHabScore = if (isWeatherOnly) 1.0 else habitatScore
+        val effectiveTerrainMod = if (isWeatherOnly) 1.0 else terrainModifier
         val result = mutableListOf<DailyOutlook>()
 
         val effectiveDays = if (canopyCover != null && canopyCover > 0.001) applyCanopyBuffering(processedDays, canopyCover) else processedDays
@@ -2406,7 +2410,16 @@ object MushroomAlgorithms {
         for (i in startIndex until processedDays.size) {
             val weatherScore = calculateWeatherScore(i, processedDays, spunHyphalDensity, species, config, canopyCover)
             val growthPhaseMultiplier = evaluateGrowthPhase(processedDays, species, i).multiplier
-            val prob = dailyGrowthProbability(weatherScore, habitatScore, altScore, seasonScore, terrainModifier, config, species = species, growthPhaseMultiplier = growthPhaseMultiplier)
+            val prob = dailyGrowthProbability(
+                weatherScore = weatherScore,
+                habitatScore = effectiveHabScore,
+                altitudeScore = altScore,
+                seasonalityScore = seasonScore,
+                terrainModifier = effectiveTerrainMod,
+                config = config,
+                species = species,
+                growthPhaseMultiplier = growthPhaseMultiplier
+            )
             result.add(DailyOutlook.fromProcessedDay(effectiveDays[i], prob))
         }
         return result

@@ -97,6 +97,28 @@ object MycoAlgorithms {
         return factor.coerceIn(0.65, 1.0)
     }
 
+    fun hurdleOccurrenceProbability(
+        habitatScore: Double,
+        altitudeScore: Double,
+        species: MushroomSpecies,
+    ): Double {
+        val effectiveHab = if (species.category == EcologicalCategory.SAPROTROPHIC) {
+            max(habitatScore, 0.85)
+        } else {
+            habitatScore
+        }
+
+        val stationSuitability = (effectiveHab * altitudeScore).coerceIn(0.0, 1.0)
+        if (stationSuitability <= 0.001) return 0.0
+
+        val sigma = (0.35 * species.hurdleStrictness).coerceIn(0.05, 0.50)
+        val beta = 2.5
+        val ratio = stationSuitability / sigma
+        val exponent = -ratio.pow(beta)
+
+        return (1.0 - kotlin.math.exp(exponent)).coerceIn(0.0, 1.0)
+    }
+
     fun calculateSuitabilityScore(
         weatherScore: Int,
         habitatScore: Double,
@@ -104,6 +126,8 @@ object MycoAlgorithms {
         seasonalityScore: Double,
         terrainModifier: Double,
         growthPhaseMultiplier: Double = 1.0,
+        species: MushroomSpecies? = null,
+        useHurdle: Boolean = false,
     ): Double {
         val clampedWeather = weatherScore.coerceIn(0, 100)
         val clampedHabitat = habitatScore.coerceIn(0.0, 1.0)
@@ -112,8 +136,14 @@ object MycoAlgorithms {
         val clampedTerrain = terrainModifier.coerceIn(0.0, 2.0)
         val clampedPhase = growthPhaseMultiplier.coerceIn(0.0, 1.0)
 
+        val pHurdle = if (useHurdle && species != null) {
+            hurdleOccurrenceProbability(clampedHabitat, clampedAltitude, species)
+        } else {
+            1.0
+        }
+
         val raw = 100.0 * (clampedWeather / 100.0).pow(1.2) * clampedHabitat * clampedAltitude *
-            clampedSeasonality * clampedTerrain * clampedPhase
+            clampedSeasonality * clampedTerrain * clampedPhase * pHurdle
         val calibrated = if (raw > 70.0) {
             70.0 + 22.0 * kotlin.math.tanh((raw - 70.0) / 22.0)
         } else {
@@ -129,6 +159,8 @@ object MycoAlgorithms {
         seasonalityScore: Double,
         terrainModifier: Double,
         growthPhaseMultiplier: Double = 1.0,
+        species: MushroomSpecies? = null,
+        useHurdle: Boolean = false,
     ): Int {
         return calculateSuitabilityScore(
             weatherScore = weatherScore,
@@ -137,6 +169,8 @@ object MycoAlgorithms {
             seasonalityScore = seasonalityScore,
             terrainModifier = terrainModifier,
             growthPhaseMultiplier = growthPhaseMultiplier,
+            species = species,
+            useHurdle = useHurdle,
         ).toInt().coerceIn(0, 100)
     }
 
@@ -200,19 +234,21 @@ object MycoAlgorithms {
         val shallowScore = shallow?.let {
             when {
                 it < 0.10 -> 0.10
-                it <= 0.22 -> 0.10 + 0.90 * smoothstep(0.10, 0.22, it)
-                it <= 0.38 -> 1.0
-                it <= 0.48 -> 1.0 - 0.50 * smoothstep(0.38, 0.48, it)
-                else -> 0.50
+                it in 0.10..0.22 -> 0.10 + 0.90 * smoothstep(0.10, 0.22, it)
+                it in 0.22..0.38 -> 1.0
+                it in 0.38..0.44 -> 1.0 - 0.50 * smoothstep(0.38, 0.44, it)
+                it in 0.44..0.52 -> 0.50 - 0.35 * smoothstep(0.44, 0.52, it)
+                else -> 0.15
             }
         }
         val deepScore = deep?.let {
             when {
                 it < 0.12 -> 0.20
-                it <= 0.20 -> 0.20 + 0.80 * smoothstep(0.12, 0.20, it)
-                it <= 0.35 -> 1.0
-                it <= 0.45 -> 1.0 - 0.40 * smoothstep(0.35, 0.45, it)
-                else -> 0.60
+                it in 0.12..0.20 -> 0.20 + 0.80 * smoothstep(0.12, 0.20, it)
+                it in 0.20..0.35 -> 1.0
+                it in 0.35..0.42 -> 1.0 - 0.45 * smoothstep(0.35, 0.42, it)
+                it in 0.42..0.50 -> 0.55 - 0.35 * smoothstep(0.42, 0.50, it)
+                else -> 0.20
             }
         }
         val base = when {
@@ -222,7 +258,8 @@ object MycoAlgorithms {
             else -> 1.0
         }
         val etModifier = if (et0 != null && et0 > 3.0) {
-            1.0 - 0.15 * ((et0 - 3.0).coerceIn(0.0, 3.0) / 3.0)
+            val excess = (et0 - 3.0).coerceIn(0.0, 3.0) / 3.0
+            1.0 - (0.15 * excess)
         } else {
             1.0
         }

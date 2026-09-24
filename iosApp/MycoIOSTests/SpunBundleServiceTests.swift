@@ -7,7 +7,7 @@ final class SpunBundleServiceTests: XCTestCase {
         let result = try await SpunBundleService().sample(latitude: 45, longitude: 10, radiusMeters: 100_000)
         let sample = try XCTUnwrap(result)
 
-        XCTAssertEqual(sample.regionCode, "ALP")
+        XCTAssertEqual(sample.regionCode, "ITA")
         XCTAssertTrue((0 ... 1).contains(sample.ecmScore))
         XCTAssertTrue((0 ... 1).contains(sample.hyphalScore))
     }

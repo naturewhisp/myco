@@ -25,7 +25,8 @@ data class OverpassElement(
     @SerializedName("id") val id: Long,
     @SerializedName("lat") val lat: Double? = null,
     @SerializedName("lon") val lon: Double? = null,
-    @SerializedName("center") val center: OverpassCenter? = null
+    @SerializedName("center") val center: OverpassCenter? = null,
+    @SerializedName("tags") val tags: Map<String, String>? = null
 ) {
     /**
      * Restituisce la coordinata (lat, lon) dell'elemento, estraendola da `(lat, lon)` o da `center`.
@@ -36,6 +37,48 @@ data class OverpassElement(
             center != null -> Pair(center.lat, center.lon)
             else -> null
         }
+
+    /**
+     * Genere botanico arboreo estratto dal tag `genus` o dal binomio `species`.
+     */
+    val genus: String?
+        get() = tags?.get("genus") ?: tags?.get("species")?.split(" ")?.firstOrNull()
+
+    /**
+     * Tipologia fogliare prevalente estratta dal tag `leaf_type` (es. "broadleaved", "needleleaved").
+     */
+    val leafType: String?
+        get() = tags?.get("leaf_type")
+
+    /**
+     * Indica se l'elemento rappresenta una copertura forestale o boschiva verificata.
+     */
+    val isWoodOrForest: Boolean
+        get() {
+            val natural = tags?.get("natural")
+            val landuse = tags?.get("landuse")
+            return natural == "wood" || landuse == "forest"
+        }
+
+    /**
+     * Indica se l'elemento rappresenta un ambiente aperto a prato, pascolo o radura.
+     */
+    val isMeadowOrGrass: Boolean
+        get() {
+            val landuse = tags?.get("landuse")
+            val natural = tags?.get("natural")
+            return landuse in listOf("meadow", "grass", "pasture") || natural in listOf("grassland", "heath")
+        }
+
+    /**
+     * Indica se l'elemento appartiene a un tessuto urbano, industriale o intensamente antropizzato.
+     */
+    val isUrbanOrBuilt: Boolean
+        get() {
+            val landuse = tags?.get("landuse")
+            return landuse in listOf("residential", "commercial", "industrial", "retail", "construction") ||
+                    tags?.containsKey("building") == true
+        }
 }
 
 /**
@@ -45,3 +88,4 @@ data class OverpassCenter(
     @SerializedName("lat") val lat: Double,
     @SerializedName("lon") val lon: Double
 )
+

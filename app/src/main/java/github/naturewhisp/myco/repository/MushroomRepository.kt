@@ -3,6 +3,8 @@ package github.naturewhisp.myco.repository
 import com.google.gson.Gson
 import github.naturewhisp.myco.model.EcologicalCategory
 import github.naturewhisp.myco.model.GeocodeResult
+import github.naturewhisp.myco.model.HabitatEvidence
+import github.naturewhisp.myco.model.HabitatStatus
 import github.naturewhisp.myco.model.MushroomSpecies
 import github.naturewhisp.myco.model.OverpassResponse
 import github.naturewhisp.myco.model.SpunData
@@ -144,15 +146,15 @@ class MushroomRepository(
     suspend fun fetchHabitat(latitude: Double, longitude: Double): OverpassResponse? {
         val roundedLat = String.format(Locale.US, "%.4f", latitude)
         val roundedLon = String.format(Locale.US, "%.4f", longitude)
-        val cacheKey = "habitat_${roundedLat}_${roundedLon}"
+        val radius = cacheManager.radius
+        val cacheKey = "habitat_${radius}m_${roundedLat}_${roundedLon}"
 
         val cached = cacheManager.getCachedData(cacheKey, OverpassResponse::class.java, 24 * 60 * 60 * 1000) // 24 hours
         if (cached != null) {
             return cached
         }
 
-        val radius = cacheManager.radius
-        val query = "[out:json];(nwr[\"natural\"=\"wood\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"=\"forest\"](around:$radius,$latitude,$longitude););out body;"
+        val query = "[out:json];(nwr[\"natural\"=\"wood\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"=\"forest\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"~\"meadow|grass|pasture\"](around:$radius,$latitude,$longitude);nwr[\"natural\"~\"grassland|heath\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"~\"residential|commercial|industrial\"](around:$radius,$latitude,$longitude););out tags center;"
 
         for (service in overpassServices) {
             try {
@@ -183,14 +185,14 @@ class MushroomRepository(
         val roundedLat = String.format(Locale.US, "%.4f", latitude)
         val roundedLon = String.format(Locale.US, "%.4f", longitude)
         val speciesKey = species?.id ?: "general"
-        val cacheKey = "habitat_bonus_${speciesKey}_${roundedLat}_${roundedLon}"
+        val radius = cacheManager.radius
+        val cacheKey = "habitat_bonus_${speciesKey}_${radius}m_${roundedLat}_${roundedLon}"
 
         val cached = cacheManager.getCachedData(cacheKey, OverpassResponse::class.java, 24 * 60 * 60 * 1000) // 24 hours
         if (cached != null) {
             return cached
         }
 
-        val radius = cacheManager.radius
         val knownGeneraMap = mapOf(
             "fagus" to "Fagus",
             "quercus" to "Quercus",
@@ -214,9 +216,9 @@ class MushroomRepository(
         }
 
         val query = if (species?.category == EcologicalCategory.SAPROTROPHIC) {
-            "[out:json];(nwr[\"landuse\"~\"meadow|grass|pasture\"](around:$radius,$latitude,$longitude);nwr[\"natural\"~\"grassland|heath\"](around:$radius,$latitude,$longitude);nwr[\"leaf_type\"~\"broadleaved|needleleaved\"](around:$radius,$latitude,$longitude););out body;"
+            "[out:json];(nwr[\"landuse\"~\"meadow|grass|pasture\"](around:$radius,$latitude,$longitude);nwr[\"natural\"~\"grassland|heath\"](around:$radius,$latitude,$longitude););out tags center;"
         } else {
-            "[out:json];(nwr[\"leaf_type\"~\"broadleaved|needleleaved\"](around:$radius,$latitude,$longitude);nwr[\"genus\"~\"$genusRegex\"](around:$radius,$latitude,$longitude););out body;"
+            "[out:json];nwr[\"genus\"~\"$genusRegex\"](around:$radius,$latitude,$longitude);out tags center;"
         }
 
         for (service in overpassServices) {
@@ -229,6 +231,115 @@ class MushroomRepository(
             }
         }
         return cacheManager.getCachedDataIgnoreExpiry(cacheKey, OverpassResponse::class.java)?.first
+    }
+
+    /**
+     * Estrae le evidenze vegetazionali, di copertura e di habitat geometrico da una risposta Overpass.
+     *
+     * Implementa l'invarianza rispetto alla segmentazione poligonale (F08) dividendo l'area di
+     * scansione in ottanti spaziali: 1 poligono esteso o 20 sub-poligoni occupano gli stessi settori
+     * e generano la medesima stima di copertura.
+     *
+     * @param response Risposta Overpass deserializzata, o null se non disponibile.
+     * @param targetLat Latitudine del punto target.
+     * @param targetLon Longitudine del punto target.
+     * @param searchRadiusMeters Raggio di scansione in metri.
+     * @return [HabitatEvidence] con stato tipizzato, coperture e generi confermati.
+     */
+    fun extractHabitatEvidence(
+        response: OverpassResponse?,
+        targetLat: Double,
+        targetLon: Double,
+        searchRadiusMeters: Int = cacheManager.radius
+    ): HabitatEvidence {
+        if (response == null) {
+            return HabitatEvidence.UNKNOWN_HABITAT
+        }
+        val elements = response.elements
+        if (elements.isEmpty()) {
+            return HabitatEvidence(
+                status = HabitatStatus.KNOWN_UNSUITABLE,
+                forestCoverFraction = 0.0,
+                meadowFraction = 0.0,
+                distanceToNearestForestMeters = searchRadiusMeters.toDouble(),
+                confirmedHostGenera = emptySet(),
+                dominantLeafType = null
+            )
+        }
+
+        val forestElements = elements.filter { it.isWoodOrForest }
+        val meadowElements = elements.filter { it.isMeadowOrGrass }
+        val urbanElements = elements.filter { it.isUrbanOrBuilt }
+
+        val confirmedGenera = elements.mapNotNull { it.genus }.toSet()
+        val leafTypes = elements.mapNotNull { it.leafType }
+        val dominantLeafType = when {
+            leafTypes.contains("mixed") || (leafTypes.contains("broadleaved") && leafTypes.contains("needleleaved")) -> "mixed"
+            leafTypes.contains("broadleaved") -> "broadleaved"
+            leafTypes.contains("needleleaved") -> "needleleaved"
+            else -> null
+        }
+
+        val forestDistances = forestElements.mapNotNull { el ->
+            el.coordinate?.let { (lat, lon) ->
+                MushroomAlgorithms.haversineDistanceKm(targetLat, targetLon, lat, lon) * 1000.0
+            }
+        }
+        val minForestDist = forestDistances.minOrNull() ?: searchRadiusMeters.toDouble()
+
+        // Calcolo della copertura forestale con invarianza rispetto alla segmentazione poligonale (F08, REG-11)
+        val forestSectors = BooleanArray(8)
+        for (el in forestElements) {
+            val coord = el.coordinate ?: continue
+            val dist = MushroomAlgorithms.haversineDistanceKm(targetLat, targetLon, coord.first, coord.second) * 1000.0
+            if (dist <= searchRadiusMeters) {
+                val dLat = coord.first - targetLat
+                val dLon = (coord.second - targetLon) * cos(Math.toRadians(targetLat))
+                var angle = Math.toDegrees(kotlin.math.atan2(dLon, dLat))
+                if (angle < 0) angle += 360.0
+                val sector = (angle / 45.0).toInt().coerceIn(0, 7)
+                forestSectors[sector] = true
+            }
+        }
+        val coveredForestSectors = forestSectors.count { it }
+        val baseForestCover = coveredForestSectors / 8.0
+
+        val forestCoverFraction = when {
+            minForestDist <= 50.0 -> max(baseForestCover, 0.75)
+            minForestDist <= 150.0 -> max(baseForestCover, 0.50)
+            else -> baseForestCover
+        }.coerceIn(0.0, 1.0)
+
+        val meadowSectors = BooleanArray(8)
+        for (el in meadowElements) {
+            val coord = el.coordinate ?: continue
+            val dist = MushroomAlgorithms.haversineDistanceKm(targetLat, targetLon, coord.first, coord.second) * 1000.0
+            if (dist <= searchRadiusMeters) {
+                val dLat = coord.first - targetLat
+                val dLon = (coord.second - targetLon) * cos(Math.toRadians(targetLat))
+                var angle = Math.toDegrees(kotlin.math.atan2(dLon, dLat))
+                if (angle < 0) angle += 360.0
+                val sector = (angle / 45.0).toInt().coerceIn(0, 7)
+                meadowSectors[sector] = true
+            }
+        }
+        val meadowFraction = (meadowSectors.count { it } / 8.0).coerceIn(0.0, 1.0)
+
+        val isUrbanDominant = urbanElements.size > (forestElements.size + meadowElements.size) && forestCoverFraction < 0.20
+        val status = when {
+            isUrbanDominant -> HabitatStatus.KNOWN_UNSUITABLE
+            forestCoverFraction > 0.10 || meadowFraction > 0.10 -> HabitatStatus.KNOWN_SUITABLE
+            else -> HabitatStatus.KNOWN_UNSUITABLE
+        }
+
+        return HabitatEvidence(
+            status = status,
+            forestCoverFraction = forestCoverFraction,
+            meadowFraction = meadowFraction,
+            distanceToNearestForestMeters = minForestDist,
+            confirmedHostGenera = confirmedGenera,
+            dominantLeafType = dominantLeafType
+        )
     }
 
     /**

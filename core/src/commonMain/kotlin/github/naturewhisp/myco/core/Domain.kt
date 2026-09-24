@@ -72,9 +72,17 @@ data class MushroomSpecies(
     val preferredCanopyTypes: List<String>,
     val fruitingPeriodDescription: String,
     val activeMonths: List<Int>,
-    val toxicLookAlikes: List<String>,
-    val edibilityWarning: String?,
-)
+    val toxicLookAlikes: List<String> = emptyList(),
+    val edibilityWarning: String? = null,
+    val phenologyLatencyPeakDays: Double = 11.0,
+    val phenologyShapeAlpha: Double = 4.0,
+    val optimalTemp: Double = (idealTempMin + idealTempMax) / 2.0,
+    val optimalBasalAreaM2Ha: Double = 32.0,
+    val hurdleStrictness: Double = 1.0,
+) {
+    val isGeneralBaseline: Boolean
+        get() = id == "general"
+}
 
 data class ProcessedDay(
     val dateIso: String,

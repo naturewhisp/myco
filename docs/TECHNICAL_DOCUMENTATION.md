@@ -513,9 +513,10 @@ I dati meteorologici macroclimatici convenzionali (Open-Meteo, ERA5-Land a 2 met
   $$P_{\text{throughfall}} = P \cdot \left(1.0 - C_f \cdot \left(0.15 + 0.20 \cdot \exp\left(-\frac{P}{8.0}\right)\right)\right)$$
 * **Umidità Relativa Sub-Canopy:** Contenimento dei venti ed evaporazione interna aumentano l'umidità dell'aria fino a $+6\%$:
   $$\text{RH}_{\text{subcanopy}} = \min\left(100.0,\; \text{RH} + C_f \cdot 6.0 \cdot \left(1.0 - \frac{\text{RH}}{100.0}\right)\right)$$
-* La copertura canopica $C_f$ viene stimata dinamicamente da `MushroomViewModel` integrando la consistenza boschiva OSM (`forestCount`) e la nicchia della specie ($C_f = 0.85$ per bosco denso; $C_f = 0.10$ per saprotrofi prativi come *Macrolepiota procera*).
+* La copertura canopica $C_f$ è trattata rigorosamente come proprietà fisica ambientale del luogo geografico (`siteCanopyCover`), disaccoppiata dall'ecologia del fungo selezionato (F18, REG-18). Viene stimata dinamicamente a partire dall'evidenza vegetazionale (`HabitatEvidence.forestCoverFraction`) derivata dalle geometrie OSM dell'intorno. La risposta specifica del taxon alla copertura del luogo è governata unicamente dalla curva ecologica alometrica (`standDensityResponseUnimodal`) e dalla valutazione dell'habitat (`evaluateSpeciesHabitat`).
+* Il microclima De Frenne applica una transizione continua $C^1$ (smoothstep) per l'attenuazione delle massime attorno a $18^\circ\text{C}$ senza scalini discontinui e preserva l'ordinamento termofisico naturale ($T_{\min} \le T_{\text{avg}} \le T_{\max}$) tramite smorzamento proporzionale del DTR, senza swap forzati.
 
-#### F. Densità del Popolamento Boschivo, Area Basimetrica ($G$) e Valutazione Dinamica dell'Habitat (`standDensityResponseUnimodal`, `canopyCoverToBasalArea`, `evaluateSpeciesHabitat`)
+#### F. Densità del Popolamento Boschivo, Area Basimetrica ($G$) e Valutazione Dinamica dell'Habitat (`standDensityResponseUnimodal`, `canopyCoverToBasalArea`, `evaluateSpeciesHabitat`, `HabitatEvidence`)
 La resa carpogenica nei popolamenti forestali non segue una funzione monotona crescente rispetto alla biomassa legnosa: radure o tagli rasi (*clearcuts*) privano i funghi ectomicorrizici di fotosintati dall'apparato radicale, mentre popolamenti iper-densi, chiusi e non gestiti soffrono di ristagno di umidità fredda, competizione radicale estrema e soffocamento della lettiera (Bonet et al. 2012, de-Miguel et al. 2014, Martinez de Aragon et al. 2007).
 
 1. **Stima Continua dell'Area Basimetrica Stand ($G$, $\text{m}^2/\text{ha}$, `canopyCoverToBasalArea`):**
@@ -531,12 +532,15 @@ La resa carpogenica nei popolamenti forestali non segue una funzione monotona cr
    * Per popolamenti eccessivamente densi ($G \gg G_{\text{opt}}$) o degradati/aperti ($G \ll G_{\text{opt}}$), il moltiplicatore decade dolcemente e in modo continuo verso il baseline $0.65$.
    * $G_{\text{opt}}$ è calibrato specificamente per ciascun taxon (`MushroomSpecies.optimalBasalAreaM2Ha`): $32\text{ m}^2/\text{ha}$ per *Boletus edulis*, $20\text{ m}^2/\text{ha}$ per *Lactarius deliciosus* (pinete giovani e luminose), $10\text{ m}^2/\text{ha}$ per *Macrolepiota procera*.
 
-3. **Valutazione Dinamica per Specie dell'Habitat (`evaluateSpeciesHabitat`):**
-   L'indice di habitat non è più calcolato staticamente in modo polifito, ma si adatta dinamicamente all'ecologia del fungo selezionato:
-   * **Specie Ectomicorriziche (*Boletus*, *Lactarius*, *Cantharellus*):** Richiedono la presenza di formazioni boschive e premiano la presenza di generi arborei simbionti specifici rilevati da OSM Overpass (`specificElementsCount`), modulando il punteggio con la densità $G$ e la biomassa SPUN.
-   * **Specie Saprotrofe Pratiche (*Macrolepiota procera*):** Non dipendono da alberi simbionti; beneficiano della lettiera erbacea e del margine boschivo, ottenendo un punteggio elevato ($H \approx 0.85$) anche in campi aperti e pascoli privi di copertura canopica.
-   * **Specie Lignicole (*Armillaria mellea*):** Premiano la presenza di latifoglie mature e ceppaie in boschi montani/collinari.
-   * In `MushroomViewModel.recalculateForSpecies`, ogni selezione o cambio di specie attiva innesca immediatamente la rivalutazione dell'habitat per la nuova specie, aggiornando la dashboard dei fattori e l'outlook fenologico.
+3. **Valutazione Geometrica e Tipizzata dell'Habitat (`HabitatEvidence`, `evaluateSpeciesHabitat`):**
+   L'habitat vegetazionale è modellato tramite il costrutto tipizzato `HabitatEvidence`, superando il conteggio grezzo di nodi/poligoni:
+   * **Stati Tipizzati (`HabitatStatus`):**
+     - `KNOWN_SUITABLE`: presenza confermata di bosco, foresta o pascolo idoneo.
+     - `KNOWN_UNSUITABLE`: presenza confermata di area urbana, commerciale o edificata (`score \le 0.20`).
+     - `UNKNOWN`: assenza di connettività o timeout API OSM, trattato con stima neutrale (`score = 0.50`), evitando l'attribuzione fallace del massimo punteggio praticolo in aree cittadine prive di dati.
+   * **Invarianza al Partizionamento Poligonale (REG-09, REG-11):** La copertura spaziale viene calcolata mediante discretizzazione angolare a 8 settori geografici attorno al punto target. La frammentazione di un grande poligono forestale in decine di micro-poligoni produce identica frazione di occupazione ($\Delta \le \pm 2\%$).
+   * **Specificità Rigorosa del Genere Ospite (REG-10):** Il bonus per essenze simbionti viene accordato esclusivamente in presenza di un riscontro tassonomico sul genere (`genus` o primo epiteto binomiale in `species`), escludendo tag fogliari generici (`leaf_type=broadleaved|needleleaved`).
+   * **Isolamento delle Cache e Reattività (REG-12):** Le chiavi di cache incorporano esplicitamente il raggio di scansione (`habitat_${radius}m_...`, `habitat_bonus_${species}_${radius}m_...`), impedendo interferenze tra scansioni a 500m e 5000m. Il cambio specie nel ViewModel elimina ogni condivisione di conteggi pregressi, rivalutando l'habitat in tempo reale.
 
 ### 4.4 Shock Termico Induttivo dei Primordi e DTR (Diurnal Temperature Range)
 I carpofori della maggior parte dei funghi micorrizici necessitano di uno shock induttivo (*cold shock*) per avviare la fruttificazione, consistente in un brusco abbassamento delle temperature a seguito di temporali estivi o autunnali (`MushroomAlgorithms.kt:280`):

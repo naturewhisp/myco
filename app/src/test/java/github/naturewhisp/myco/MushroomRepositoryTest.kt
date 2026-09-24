@@ -121,7 +121,7 @@ class MushroomRepositoryTest {
         val macrolepiota = SPECIES_CATALOG.first { it.id == "macrolepiota_procera" }
 
         val dummyResponse = OverpassResponse(elements = emptyList())
-        val boletusKey = "habitat_bonus_boletus_edulis_45.1000_7.2000"
+        val boletusKey = "habitat_bonus_boletus_edulis_1500m_45.1000_7.2000"
         cacheManager.saveCachedData(boletusKey, dummyResponse)
 
         // Cache hit per Boletus edulis
@@ -129,7 +129,7 @@ class MushroomRepositoryTest {
         assertNotNull("Boletus edulis deve leggere la cache isolata", boletusHit)
 
         // Cache miss per Macrolepiota procera (chiave diversa, isolamento rigoroso della cache per specie)
-        val macrolepiotaKey = "habitat_bonus_macrolepiota_procera_45.1000_7.2000"
+        val macrolepiotaKey = "habitat_bonus_macrolepiota_procera_1500m_45.1000_7.2000"
         val cachedMacrolepiota = cacheManager.getCachedData(macrolepiotaKey, OverpassResponse::class.java, 24 * 60 * 60 * 1000)
         org.junit.Assert.assertNull("Macrolepiota non deve condividere la cache di Boletus edulis", cachedMacrolepiota)
     }

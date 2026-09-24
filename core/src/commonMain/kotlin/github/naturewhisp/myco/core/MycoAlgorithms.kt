@@ -53,7 +53,47 @@ object MycoAlgorithms {
             }
         }
 
-        return (rainScore + tempScore + humidityScore + shockScore).coerceIn(0.0, 100.0).roundToInt()
+        val rawWeather = (rainScore + tempScore + humidityScore + shockScore)
+        val thermalViability = when {
+            windows.averageTempWindowC < species.toleratedTempMin -> {
+                smoothstep(species.toleratedTempMin - 3.0, species.toleratedTempMin, windows.averageTempWindowC)
+            }
+            windows.averageTempWindowC > species.toleratedTempMax -> {
+                1.0 - smoothstep(species.toleratedTempMax, species.toleratedTempMax + 3.0, windows.averageTempWindowC)
+            }
+            else -> 1.0
+        }
+
+        return (rawWeather * thermalViability).coerceIn(0.0, 100.0).roundToInt()
+    }
+
+    fun deepSoilMoistureCompensation(historicalDeepSoil: Double?): Double {
+        if (historicalDeepSoil == null) return 1.0
+        return when {
+            historicalDeepSoil < 0.12 -> 0.70
+            historicalDeepSoil < 0.20 -> 0.70 + 0.30 * smoothstep(0.12, 0.20, historicalDeepSoil)
+            historicalDeepSoil <= 0.35 -> 1.0 + 0.10 * smoothstep(0.20, 0.28, historicalDeepSoil)
+            historicalDeepSoil < 0.44 -> 1.10 - 0.10 * smoothstep(0.35, 0.44, historicalDeepSoil)
+            else -> 1.0 - 0.15 * smoothstep(0.44, 0.52, historicalDeepSoil)
+        }.coerceIn(0.70, 1.15)
+    }
+
+    fun canopyCoverToBasalArea(canopyCover: Double): Double {
+        val c = canopyCover.coerceIn(0.0, 1.0)
+        if (c <= 0.001) return 0.0
+        return 50.0 * c.pow(1.15)
+    }
+
+    fun standDensityResponseUnimodal(canopyCover: Double, species: MushroomSpecies): Double {
+        if (species.category == EcologicalCategory.SAPROTROPHIC) return 1.0
+        val g = canopyCoverToBasalArea(canopyCover)
+        val gOpt = species.optimalBasalAreaM2Ha
+        if (g <= 0.5 || gOpt <= 0.5) return 0.65
+        val u = sqrt(g / gOpt)
+        val deltaPhi = 2.0 * (kotlin.math.ln(u) - u + 1.0)
+        val gamma = 0.75
+        val factor = 0.65 + 0.35 * kotlin.math.exp(gamma * deltaPhi)
+        return factor.coerceIn(0.65, 1.0)
     }
 
     fun calculateSuitabilityScore(

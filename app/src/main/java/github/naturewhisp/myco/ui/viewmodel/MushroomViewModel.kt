@@ -10,6 +10,8 @@ import github.naturewhisp.myco.model.EcologicalCategory
 import github.naturewhisp.myco.model.EcologicalWeightsConfig
 import github.naturewhisp.myco.model.Factor
 import github.naturewhisp.myco.model.GeocodeResult
+import github.naturewhisp.myco.model.HabitatEvidence
+import github.naturewhisp.myco.model.HabitatStatus
 import github.naturewhisp.myco.platform.android.HeatmapData
 import github.naturewhisp.myco.model.MushroomSpecies
 import github.naturewhisp.myco.model.PlaceName
@@ -322,6 +324,7 @@ class MushroomViewModel(
     private var lastHabitatBaseText: String = ""
     private var lastForestCount: Int = 0
     private var lastSpecificForestCount: Int = 0
+    private var lastHabitatEvidence: HabitatEvidence? = null
     private var lastElevation: Float = 800f
     private var lastSpunData: SpunData? = null
     private var lastLat: Double = 41.8902
@@ -341,6 +344,19 @@ class MushroomViewModel(
     fun selectSpecies(species: MushroomSpecies) {
         selectedSpecies = species
         recalculateForSpecies()
+
+        // Rilevamento asincrono alberi ospiti per la nuova specie senza ereditare lo stato precedente (F09, REG-12)
+        if (lastProcessedDays != null && species.category == EcologicalCategory.ECTOMYCORRHIZAL) {
+            viewModelScope.launch {
+                val bonus = repository.fetchSpecificHabitatBonus(lastLat, lastLon, species)
+                if (bonus != null && bonus.elements.isNotEmpty()) {
+                    val bonusGenera = bonus.elements.mapNotNull { it.genus }.toSet()
+                    val currentEv = lastHabitatEvidence ?: HabitatEvidence.UNKNOWN_HABITAT
+                    lastHabitatEvidence = currentEv.copy(confirmedHostGenera = currentEv.confirmedHostGenera + bonusGenera)
+                    recalculateForSpecies()
+                }
+            }
+        }
     }
 
     fun setTargetSpeciesSheetVisibility(open: Boolean) {
@@ -365,14 +381,21 @@ class MushroomViewModel(
         val altScore = MushroomAlgorithms.calculateSpeciesAltitudeScore(lastElevation, species)
         val seasonScore = MushroomAlgorithms.calculateSpeciesSeasonalityScore(lastCurrentMonth, species)
 
-        val estimatedCanopy = when {
-            species.category == EcologicalCategory.SAPROTROPHIC && species.preferredCanopyTypes.any { it.contains("prat") || it.contains("radur") } -> 0.10
-            lastForestCount > 15 -> 0.85
-            lastForestCount > 4 -> 0.70
-            lastForestCount > 0 -> 0.45
-            else -> 0.20
-        }
-        val bufferedDays = if (estimatedCanopy > 0.001) MushroomAlgorithms.applyCanopyBuffering(days, estimatedCanopy) else days
+        // Copertura arborea stazionale: proprietà fisica ambientale del sito, indipendente dalla specie target (F18)
+        val evidence = lastHabitatEvidence ?: HabitatEvidence(
+            status = if (lastForestCount > 0) HabitatStatus.KNOWN_SUITABLE else HabitatStatus.UNKNOWN,
+            forestCoverFraction = when {
+                lastForestCount > 15 -> 0.85
+                lastForestCount > 4 -> 0.70
+                lastForestCount > 0 -> 0.45
+                else -> 0.20
+            },
+            meadowFraction = if (lastForestCount == 0) 0.50 else 0.10,
+            distanceToNearestForestMeters = if (lastForestCount > 0) 0.0 else 500.0,
+            confirmedHostGenera = emptySet()
+        )
+        val siteCanopyCover = evidence.forestCoverFraction
+        val bufferedDays = if (siteCanopyCover > 0.001) MushroomAlgorithms.applyCanopyBuffering(days, siteCanopyCover) else days
 
         val rawWeatherScore = MushroomAlgorithms.calculateWeatherScore(
             todayIndex,
@@ -380,16 +403,14 @@ class MushroomViewModel(
             lastSpunData?.hyphalDensity,
             species,
             config = EcologicalWeightsConfig.PHENOLOGICAL,
-            canopyCover = estimatedCanopy
+            canopyCover = siteCanopyCover
         )
 
-        // Ricalcolo ecologico dinamico dell'habitat per la specifica specie target (FEAT-15)
+        // Ricalcolo ecologico dinamico dell'habitat per la specifica specie target con HabitatEvidence (F08, F09)
         val speciesHab = MushroomAlgorithms.evaluateSpeciesHabitat(
-            forestCount = lastForestCount,
-            specificElementsCount = lastSpecificForestCount,
+            evidence = evidence,
             spunData = lastSpunData,
-            species = species,
-            canopyCover = estimatedCanopy
+            species = species
         )
         lastFinalHabitatScore = speciesHab.score
         lastHabitatBaseText = speciesHab.baseText
@@ -458,7 +479,7 @@ class MushroomViewModel(
             avgSoilMoisture0To7 = soil0To7,
             avgSoilMoisture7To28 = soil7To28,
             totalEvapotranspiration = et0,
-            canopyCover = estimatedCanopy,
+            canopyCover = siteCanopyCover,
             effectiveRainMm = effectiveRain
         )
 
@@ -471,7 +492,7 @@ class MushroomViewModel(
             month = lastCurrentMonth,
             spunHyphalDensity = lastSpunData?.hyphalDensity,
             terrainModifier = if (calculationMode == "WEATHER_ONLY") 1.0 else terrainEval.modifier,
-            canopyCover = estimatedCanopy,
+            canopyCover = siteCanopyCover,
             config = EcologicalWeightsConfig.PHENOLOGICAL
         )
 
@@ -1010,26 +1031,23 @@ class MushroomViewModel(
                     else -> displayName
                 }
 
-                // Calculate Habitat Score using Species-Aware Ecological Evaluation (FEAT-15)
+                // Calculate Habitat Evidence & Score using Species-Aware Ecological Evaluation (F08, F09)
                 val forestCount = habitat?.elements?.size ?: 0
                 val specificForestCount = habitatBonus?.elements?.size ?: 0
                 lastForestCount = forestCount
                 lastSpecificForestCount = specificForestCount
 
-                val initialCanopy = when {
-                    selectedSpecies.category == EcologicalCategory.SAPROTROPHIC && selectedSpecies.preferredCanopyTypes.any { it.contains("prat") || it.contains("radur") } -> 0.10
-                    forestCount > 15 -> 0.85
-                    forestCount > 4 -> 0.70
-                    forestCount > 0 -> 0.45
-                    else -> 0.20
-                }
+                val baseEvidence = repository.extractHabitatEvidence(habitat, lat, lon, searchRadius)
+                val bonusGenera = habitatBonus?.elements?.mapNotNull { it.genus }?.toSet() ?: emptySet()
+                val evidence = baseEvidence.copy(confirmedHostGenera = baseEvidence.confirmedHostGenera + bonusGenera)
+                lastHabitatEvidence = evidence
+
+                val siteCanopyCover = evidence.forestCoverFraction
 
                 val initialHabEval = MushroomAlgorithms.evaluateSpeciesHabitat(
-                    forestCount = forestCount,
-                    specificElementsCount = specificForestCount,
+                    evidence = evidence,
                     spunData = spunData,
-                    species = selectedSpecies,
-                    canopyCover = initialCanopy
+                    species = selectedSpecies
                 )
                 val finalHabitatScore = initialHabEval.score
                 val habitatBaseText = initialHabEval.baseText
@@ -1052,14 +1070,7 @@ class MushroomViewModel(
                 val growthPhaseVal = growthPhaseEval.phaseText
                 val moonPhase = MushroomAlgorithms.getMoonPhase()
 
-                val estimatedCanopy = when {
-                    selectedSpecies.category == EcologicalCategory.SAPROTROPHIC && selectedSpecies.preferredCanopyTypes.any { it.contains("prat") || it.contains("radur") } -> 0.10
-                    forestCount > 15 -> 0.85
-                    forestCount > 4 -> 0.70
-                    forestCount > 0 -> 0.45
-                    else -> 0.20
-                }
-                val bufferedDays = if (estimatedCanopy > 0.001) MushroomAlgorithms.applyCanopyBuffering(processedDays, estimatedCanopy) else processedDays
+                val bufferedDays = if (siteCanopyCover > 0.001) MushroomAlgorithms.applyCanopyBuffering(processedDays, siteCanopyCover) else processedDays
 
                 // Rain calculation with phenological integration
                 val effectiveRain = MushroomAlgorithms.calculateEffectiveRainfall(todayIndex, bufferedDays, selectedSpecies)
@@ -1086,7 +1097,7 @@ class MushroomViewModel(
                     spunHyphalDensity = spunData?.hyphalDensity,
                     species = selectedSpecies,
                     config = EcologicalWeightsConfig.PHENOLOGICAL,
-                    canopyCover = estimatedCanopy
+                    canopyCover = siteCanopyCover
                 )
 
                 // Assign states

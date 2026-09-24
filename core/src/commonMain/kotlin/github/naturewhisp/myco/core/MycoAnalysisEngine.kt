@@ -4,7 +4,17 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 class MycoAnalysisEngine {
-    fun analyze(input: AnalysisInputs): AnalysisResult {
+    fun analyze(input: AnalysisInputs): AnalysisResult = analyze(
+        input = input,
+        growthPhaseMultiplier = 1.0,
+        useHurdle = false,
+    )
+
+    fun analyze(
+        input: AnalysisInputs,
+        growthPhaseMultiplier: Double,
+        useHurdle: Boolean,
+    ): AnalysisResult {
         val species = SpeciesCatalog.byId(input.speciesId)
         val todayIndex = input.todayIndex.coerceIn(0, max(0, input.days.lastIndex))
         val current = input.days.getOrNull(todayIndex) ?: emptyDay()
@@ -28,13 +38,31 @@ class MycoAnalysisEngine {
         } else {
             probabilityHabitatScore
         }
-        val probability = MycoAlgorithms.growthProbability(weather, probabilityHabitatScore, altitude, seasonality, terrainModifier)
+        val probability = MycoAlgorithms.growthProbability(
+            weatherScore = weather,
+            habitatScore = probabilityHabitatScore,
+            altitudeScore = altitude,
+            seasonalityScore = seasonality,
+            terrainModifier = terrainModifier,
+            growthPhaseMultiplier = growthPhaseMultiplier,
+            species = species,
+            useHurdle = useHurdle,
+        )
         val windows = EnvironmentalWindows.derive(input.days, todayIndex)
         val factors = factors(input, windows, species, displayHabitatFactorScore, altitude, seasonality, terrain)
         val outlooks = input.days.drop(todayIndex).take(7).mapIndexed { offset, day ->
             val index = todayIndex + offset
             val dayWeather = MycoAlgorithms.weatherScore(index, input.days, species, input.spunHyphalDensity)
-            val dayProbability = MycoAlgorithms.growthProbability(dayWeather, probabilityHabitatScore, altitude, seasonality, terrainModifier)
+            val dayProbability = MycoAlgorithms.growthProbability(
+                weatherScore = dayWeather,
+                habitatScore = probabilityHabitatScore,
+                altitudeScore = altitude,
+                seasonalityScore = seasonality,
+                terrainModifier = terrainModifier,
+                growthPhaseMultiplier = growthPhaseMultiplier,
+                species = species,
+                useHurdle = useHurdle,
+            )
             DailyOutlook(day.dateIso, day.weatherCode, day.avgTemp, day.totalPrecipMm, day.avgHumidityPercent, dayProbability, ProbabilityTier.fromProbability(dayProbability))
         }
         val missing = input.missingSources.distinct()

@@ -11,7 +11,7 @@ enum class ProbabilityTier(
     LOW(1, 20, 39, "Innesco", "EMERGENTE • INNESCO MICELIARE"),
     MODERATE(2, 40, 59, "Discreto", "MODERATO • POTENZIALE DISCRETO"),
     HIGH(3, 60, 74, "Propizio", "PROPIZIO • BUTTATA IN CORSO"),
-    VERY_HIGH(4, 75, 100, "Culmine", "CULMINE • MASSIMA PROBABILITÀ");
+    VERY_HIGH(4, 75, 100, "Culmine", "CULMINE • MASSIMA FAVOREVOLEZZA");
 
     companion object {
         fun fromProbability(probability: Int): ProbabilityTier = when {
@@ -141,7 +141,9 @@ data class AnalysisResult(
     val dailyOutlooks: List<DailyOutlook>,
     val deterministicFieldNote: String,
     val missingSources: List<String>,
-)
+) {
+    val suitabilityScore: Int get() = probability
+}
 
 data class SpunRegionHeader(
     val version: Int,

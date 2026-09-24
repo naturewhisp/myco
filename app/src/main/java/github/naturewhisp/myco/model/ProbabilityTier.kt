@@ -70,7 +70,7 @@ enum class ProbabilityTier(
         minProbability = 75,
         maxProbability = 100,
         shortLabel = "Culmine",
-        descriptiveLabel = "CULMINE • MASSIMA PROBABILITÀ",
+        descriptiveLabel = "CULMINE • MASSIMA FAVOREVOLEZZA",
         colorTokenName = "Scale4",
         lightRgb = 0x9E262C,
         darkRgb = 0xD8343E

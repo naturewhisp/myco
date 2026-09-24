@@ -63,7 +63,8 @@ actor SpunBundleService {
         seasonalityScore: Double,
         altitudeScore: Double,
         speciesID: String,
-        isDark: Bool
+        isDark: Bool,
+        applySpunHyphalBonus: Bool = false
     ) throws -> SpunHeatmapRaster? {
         guard let raster = HeatmapEngine().generate(
             centerLatitude: latitude,
@@ -75,7 +76,8 @@ actor SpunBundleService {
             speciesId: speciesID,
             isDark: isDark,
             gridSize: 96,
-            radiusKm: 35
+            radiusKm: 35,
+            applySpunHyphalBonus: applySpunHyphalBonus
         ) else {
             return nil
         }

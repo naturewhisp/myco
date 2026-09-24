@@ -98,16 +98,46 @@ class ScientificRegressionBlock4Test {
             nonZeroPixels
         )
 
-        // 2. Parità matematica: pixel e scheda con identici input coincidono prima del rendering
+        // 2. A meteo favorevole (W > 0), verificare direttamente i pixel calcolati su raster e scheda
         val wScore = 75
-        val bioPot = 85.0 // Potenziale biologico 85%
-        val hScore = bioPot / 100.0
         val aScore = 0.90
         val sScore = 1.00
 
+        val favorableRaster = HeatmapGenerator.generateHeatmapRaster(
+            centerLat = lat,
+            centerLon = lon,
+            spunDataManager = manager,
+            baseWeatherScore = wScore.toDouble(),
+            seasonalityScore = sScore,
+            altitudeScore = aScore,
+            isDark = false,
+            config = HeatmapRenderConfig.DEFAULT,
+            species = edulis
+        )
+        assertNotNull("Il raster favorevole deve essere generato", favorableRaster)
+        val nonZeroFavPixels = favorableRaster!!.argbPixels.count { it != 0 }
+        assertTrue("A W=75 i pixel attivi della mappa devono essere presenti (trovati: $nonZeroFavPixels)", nonZeroFavPixels > 0)
+
+        // Verifica puntuale del pixel centrale calcolato direttamente su W > 0
+        val region = manager.getCurrentRegionData(lat, lon)!!
+        val header = region.header
+        val py = favorableRaster.height / 2
+        val px = favorableRaster.width / 2
+        val curLat = favorableRaster.north - (py.toDouble() / (favorableRaster.height - 1)) * (favorableRaster.north - favorableRaster.south)
+        val curLon = favorableRaster.west + (px.toDouble() / (favorableRaster.width - 1)) * (favorableRaster.east - favorableRaster.west)
+        val stepLon = (header.maxLon - header.minLon) / header.width
+        val stepLat = (header.maxLat - header.minLat) / header.height
+        val row = ((header.maxLat - curLat) / stepLat).toInt()
+        val col = ((curLon - header.minLon) / stepLon).toInt()
+        val idx = row * header.width + col
+        val centerEcm = region.ecmData[idx].toInt() and 0xFF
+        val centerEcmRatio = (centerEcm / 65.0f).coerceIn(0f, 1f)
+        val centerBioPot = (centerEcmRatio * 100.0f).toDouble()
+        val centerHabitatScore = (centerBioPot / 100.0).coerceIn(0.0, 1.0)
+
         val cardSuitability = MushroomAlgorithms.calculateSuitabilityScore(
             weatherScore = wScore,
-            habitatScore = hScore,
+            habitatScore = centerHabitatScore,
             altitudeScore = aScore,
             seasonalityScore = sScore,
             terrainModifier = 1.0,
@@ -115,21 +145,12 @@ class ScientificRegressionBlock4Test {
             species = edulis,
             growthPhaseMultiplier = 1.0
         )
+        val expectedCenterProb = cardSuitability.toInt().coerceIn(0, 100)
+        val expectedCenterColor = HeatmapGenerator.getHeatmapColor(expectedCenterProb, false, HeatmapRenderConfig.DEFAULT)
+        val actualCenterPixel = favorableRaster.argbPixels[py * favorableRaster.width + px]
+        assertEquals("Il pixel centrale su W>0 deve corrispondere al calcolo della scheda", expectedCenterColor, actualCenterPixel)
 
-        // Verifica che il calcolo della cella raster coincida esattamente con cardSuitability
-        val cellSuitability = MushroomAlgorithms.calculateSuitabilityScore(
-            weatherScore = wScore,
-            habitatScore = hScore,
-            altitudeScore = aScore,
-            seasonalityScore = sScore,
-            terrainModifier = 1.0,
-            config = EcologicalWeightsConfig.PHENOLOGICAL,
-            species = edulis,
-            growthPhaseMultiplier = 1.0
-        )
-        assertEquals(cardSuitability, cellSuitability, 0.000_001)
-
-        // 3. Verifica con il motore condiviso KMP HeatmapEngine
+        // 3. Verifica con il motore condiviso KMP HeatmapEngine (sia W=0 che W>0)
         val headerBytes = ByteArray(32).also { bytes ->
             "SPUN".encodeToByteArray().copyInto(bytes, 0)
             bytes.putShort(4, 1)
@@ -158,6 +179,40 @@ class ScientificRegressionBlock4Test {
         assertNotNull(sharedEngineZero)
         val sharedZeroCount = sharedEngineZero!!.argbPixels.count { it != 0 }
         assertEquals("Nel core KMP a W=0 nessun pixel deve essere colorato", 0, sharedZeroCount)
+
+        val sharedEngineFavorable = HeatmapEngine().generate(
+            centerLatitude = 44.0,
+            centerLongitude = 7.0,
+            grid = grid,
+            baseWeatherScore = 75.0,
+            seasonalityScore = 1.0,
+            altitudeScore = 0.90,
+            speciesId = "boletus_edulis",
+            isDark = false,
+            gridSize = 8,
+            radiusKm = 10.0
+        )
+        assertNotNull(sharedEngineFavorable)
+        val sharedFavCount = sharedEngineFavorable!!.argbPixels.count { it != 0 }
+        assertTrue("Nel core KMP a W=75 devono essere presenti pixel colorati", sharedFavCount > 0)
+        val ecmVal = 50
+        val ecmRatioCore = (ecmVal / 65.0).coerceIn(0.0, 1.0)
+        val cellHabCore = (ecmRatioCore * 100.0) / 100.0
+        val coreSpecies = SpeciesCatalog.byId("boletus_edulis")
+        val expectedCoreSuitability = MycoAlgorithms.calculateSuitabilityScore(
+            weatherScore = 75,
+            habitatScore = cellHabCore,
+            altitudeScore = 0.90,
+            seasonalityScore = 1.0,
+            terrainModifier = 1.0,
+            growthPhaseMultiplier = 1.0,
+            species = coreSpecies,
+            useHurdle = true
+        )
+        val expectedCoreProb = expectedCoreSuitability.toInt().coerceIn(0, 100)
+        val expectedCoreColor = HeatmapEngine().color(expectedCoreProb, false)
+        val centerKmpPixel = sharedEngineFavorable.argbPixels[3 * 8 + 3]
+        assertEquals("Il pixel KMP interno calcolato su W>0 deve corrispondere alla formula con hurdle", expectedCoreColor, centerKmpPixel)
     }
 
     private fun ByteArray.putShort(offset: Int, value: Int) {
@@ -322,6 +377,36 @@ class ScientificRegressionBlock4Test {
                 growthPhaseMultiplier = 1.0
             )
             assertEquals("Suitability formula parity a W=$w", appSuitability, coreSuitability, 0.000_001)
+
+            // 4. Parità formula di calibrazione con configurazione PHENOLOGICAL (con modello Hurdle attivo)
+            for ((appSpecies, coreSpecies) in listOf(edulis to coreEdulis, procera to coreProcera)) {
+                val appSuitabilityPheno = MushroomAlgorithms.calculateSuitabilityScore(
+                    weatherScore = w,
+                    habitatScore = 0.90,
+                    altitudeScore = 0.85,
+                    seasonalityScore = 0.95,
+                    terrainModifier = 1.02,
+                    config = EcologicalWeightsConfig.PHENOLOGICAL,
+                    species = appSpecies,
+                    growthPhaseMultiplier = 1.0
+                )
+                val coreSuitabilityPheno = MycoAlgorithms.calculateSuitabilityScore(
+                    weatherScore = w,
+                    habitatScore = 0.90,
+                    altitudeScore = 0.85,
+                    seasonalityScore = 0.95,
+                    terrainModifier = 1.02,
+                    growthPhaseMultiplier = 1.0,
+                    species = coreSpecies,
+                    useHurdle = true
+                )
+                assertEquals(
+                    "Suitability formula PHENOLOGICAL parity for ${appSpecies.id} a W=$w",
+                    appSuitabilityPheno,
+                    coreSuitabilityPheno,
+                    0.000_001
+                )
+            }
         }
     }
 

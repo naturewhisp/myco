@@ -57,7 +57,7 @@ class ScientificParityTest {
         val first = assertNotNull(HeatmapEngine().generate(45.0, 10.0, grid, 82.0, 1.0, 1.0, "boletus_edulis", false, 16, 25.0))
         val second = assertNotNull(HeatmapEngine().generate(45.0, 10.0, grid, 82.0, 1.0, 1.0, "boletus_edulis", false, 16, 25.0))
         assertContentEquals(first.argbPixels, second.argbPixels)
-        assertEquals(-4_568_036_496_626_547_972L, fnv1a(first.argbPixels))
+        assertEquals(-6_361_332_124_965_730_069L, fnv1a(first.argbPixels))
     }
 
     private fun fnv1a(values: IntArray): Long {

@@ -70,6 +70,8 @@ class HeatmapEngine {
                     seasonalityScore = seasonalityScore.coerceIn(0.0, 1.0),
                     terrainModifier = 1.0,
                     growthPhaseMultiplier = 1.0,
+                    species = species,
+                    useHurdle = true,
                 )
                 val probability = cellSuitability.toInt().coerceIn(0, 100)
                 var color = color(probability, isDark)

@@ -88,11 +88,18 @@ class CacheManager(
         }
     }
 
-    fun <T> saveCachedData(key: String, data: T, lat: Double? = null, lon: Double? = null, ttlMs: Long = 0) {
+    fun <T> saveCachedData(
+        key: String,
+        data: T,
+        lat: Double? = null,
+        lon: Double? = null,
+        ttlMs: Long = 0,
+        timestamp: Long = System.currentTimeMillis()
+    ) {
         if (!cacheEnabled) return
         try {
             val dataJson = gson.toJson(data)
-            cacheStore.put(key, dataJson, lat, lon, ttlMs)
+            cacheStore.put(key, dataJson, lat, lon, ttlMs, timestamp)
         } catch (_: Exception) {
             // Tolleranza guasti
         }

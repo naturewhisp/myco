@@ -1017,4 +1017,85 @@ class MushroomAlgorithmsTest {
         assertEquals(FactorLevel.FAVORABLE, rainFactor.level)
         assertTrue(rainFactor.detail.contains("fenologica"))
     }
+
+    @Test
+    fun testFormatLastSignificantRain_detectsRainPastDays() {
+        val days = listOf(
+            ProcessedDay(date = "2026-09-17", avgTemp = 17f, totalPrecip = 12.0f, avgHumidity = 80f, weatherCode = 61), // 11 days ago
+            ProcessedDay(date = "2026-09-18", avgTemp = 17f, totalPrecip = 0.0f, avgHumidity = 65f, weatherCode = 1),
+            ProcessedDay(date = "2026-09-19", avgTemp = 18f, totalPrecip = 0.0f, avgHumidity = 60f, weatherCode = 1),
+            ProcessedDay(date = "2026-09-20", avgTemp = 18f, totalPrecip = 0.0f, avgHumidity = 60f, weatherCode = 1),
+            ProcessedDay(date = "2026-09-21", avgTemp = 18f, totalPrecip = 0.0f, avgHumidity = 60f, weatherCode = 1),
+            ProcessedDay(date = "2026-09-22", avgTemp = 18f, totalPrecip = 0.0f, avgHumidity = 60f, weatherCode = 1),
+            ProcessedDay(date = "2026-09-23", avgTemp = 18f, totalPrecip = 0.0f, avgHumidity = 60f, weatherCode = 1),
+            ProcessedDay(date = "2026-09-24", avgTemp = 18f, totalPrecip = 0.0f, avgHumidity = 60f, weatherCode = 1),
+            ProcessedDay(date = "2026-09-25", avgTemp = 18f, totalPrecip = 0.0f, avgHumidity = 60f, weatherCode = 1),
+            ProcessedDay(date = "2026-09-26", avgTemp = 18f, totalPrecip = 0.0f, avgHumidity = 60f, weatherCode = 1),
+            ProcessedDay(date = "2026-09-27", avgTemp = 18f, totalPrecip = 0.0f, avgHumidity = 60f, weatherCode = 1),
+            ProcessedDay(date = "2026-09-28", avgTemp = 18f, totalPrecip = 0.0f, avgHumidity = 60f, weatherCode = 1) // Today (idx 11)
+        )
+        val result = MushroomAlgorithms.formatLastSignificantRain(todayIndex = 11, allData = days)
+        assertEquals("Ultima: 17\u00A0set (11\u00A0gg\u00A0fa)", result)
+    }
+
+    @Test
+    fun testFormatLastSignificantRain_todayAndYesterday() {
+        val todayRain = listOf(
+            ProcessedDay(date = "2026-09-27", avgTemp = 17f, totalPrecip = 0.0f, avgHumidity = 65f, weatherCode = 1),
+            ProcessedDay(date = "2026-09-28", avgTemp = 16f, totalPrecip = 8.5f, avgHumidity = 90f, weatherCode = 61)
+        )
+        assertEquals("Ultima: 28\u00A0set (oggi)", MushroomAlgorithms.formatLastSignificantRain(1, todayRain))
+
+        val yesterdayRain = listOf(
+            ProcessedDay(date = "2026-09-27", avgTemp = 17f, totalPrecip = 6.0f, avgHumidity = 85f, weatherCode = 61),
+            ProcessedDay(date = "2026-09-28", avgTemp = 18f, totalPrecip = 0.0f, avgHumidity = 60f, weatherCode = 1)
+        )
+        assertEquals("Ultima: 27\u00A0set (ieri)", MushroomAlgorithms.formatLastSignificantRain(1, yesterdayRain))
+    }
+
+    @Test
+    fun testFormatLastSignificantRain_noRain() {
+        val dryDays = List(15) { idx ->
+            ProcessedDay(date = "2026-09-${(idx + 1).toString().padStart(2, '0')}", avgTemp = 20f, totalPrecip = 0f, avgHumidity = 50f, weatherCode = 1)
+        }
+        val result = MushroomAlgorithms.formatLastSignificantRain(todayIndex = 14, allData = dryDays)
+        assertEquals("Nessuna recente (> 26\u00A0gg\u00A0fa)", result)
+    }
+
+    @Test
+    fun testFormatLastSignificantRain_outOfBoundsTodayIndex_doesNotCrash() {
+        val days = listOf(
+            ProcessedDay(date = "2026-09-27", avgTemp = 17f, totalPrecip = 6.0f, avgHumidity = 85f, weatherCode = 61),
+            ProcessedDay(date = "2026-09-28", avgTemp = 18f, totalPrecip = 0.0f, avgHumidity = 60f, weatherCode = 1)
+        )
+        // todayIndex 100 with only 2 days of data must not throw IndexOutOfBoundsException
+        val result = MushroomAlgorithms.formatLastSignificantRain(todayIndex = 100, allData = days)
+        assertEquals("Ultima: 27\u00A0set (ieri)", result)
+    }
+
+    @Test
+    fun testCalculateFactors_withLastSignificantRainText() {
+        val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+        val moon = MushroomAlgorithms.getMoonPhase()
+        val factors = MushroomAlgorithms.calculateFactors(
+            avgTemp = 16.0,
+            totalRain = 10.0,
+            avgHumidity = 75.0,
+            habitatScore = 0.9,
+            habitatText = "Ideale",
+            elevation = 900f,
+            month = 8,
+            growthPhaseText = "Buttata attiva",
+            moon = moon,
+            slopeText = "Sud",
+            species = edulis,
+            effectiveRainMm = 35.0,
+            lastSignificantRainText = "Ultima: 17\u00A0set (11\u00A0gg\u00A0fa)"
+        )
+        val rainFactor = factors.first { it.id == FactorId.PRECIPITATION }
+        assertEquals("Precipitazioni efficaci", rainFactor.label)
+        assertEquals("35 mm", rainFactor.formattedValue)
+        assertEquals(FactorLevel.FAVORABLE, rainFactor.level)
+        assertEquals("Finestra fenologica 26\u00A0gg • Ultima: 17\u00A0set (11\u00A0gg\u00A0fa)", rainFactor.detail)
+    }
 }

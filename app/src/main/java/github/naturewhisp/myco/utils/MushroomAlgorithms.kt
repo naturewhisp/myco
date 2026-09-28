@@ -2078,6 +2078,74 @@ object MushroomAlgorithms {
     }
 
     /**
+     * Calcola la dicitura dell'ultimo evento di pioggia significativo all'interno della finestra fenologica (26 gg).
+     *
+     * @param todayIndex Indice del giorno odierno nella lista dei giorni elaborati.
+     * @param allData Lista dei giorni elaborati [ProcessedDay].
+     * @param thresholdMm Soglia minima di pioggia giornaliera per considerare l'evento significativo (default 5.0 mm).
+     * @param maxMemoryDays Finestra temporale massima di memoria fenologica (default 26 giorni).
+     * @return Stringa descrittiva (es. "Ultima: 17 set (11 gg fa)") o indicazione di assenza.
+     */
+    fun formatLastSignificantRain(
+        todayIndex: Int,
+        allData: List<ProcessedDay>,
+        thresholdMm: Double = 5.0,
+        maxMemoryDays: Int = 26
+    ): String {
+        if (todayIndex < 0 || allData.isEmpty()) return "Nessuna recente"
+        val clampedTodayIndex = min(todayIndex, allData.size - 1)
+        val startIdx = max(0, clampedTodayIndex - maxMemoryDays)
+
+        // Cerca a ritroso dal giorno odierno l'ultimo giorno con pioggia >= thresholdMm (es. 5.0 mm)
+        var foundDay: ProcessedDay? = null
+        var foundDaysAgo = 0
+        for (i in clampedTodayIndex downTo startIdx) {
+            val day = allData[i]
+            if (day.totalPrecip >= thresholdMm) {
+                foundDay = day
+                foundDaysAgo = clampedTodayIndex - i
+                break
+            }
+        }
+
+        // Se non trovato con la soglia principale, cerca un evento di pioggia apprezzabile (>= 2.0 mm)
+        if (foundDay == null) {
+            for (i in clampedTodayIndex downTo startIdx) {
+                val day = allData[i]
+                if (day.totalPrecip >= 2.0f) {
+                    foundDay = day
+                    foundDaysAgo = clampedTodayIndex - i
+                    break
+                }
+            }
+        }
+
+        if (foundDay == null) {
+            return "Nessuna recente (> $maxMemoryDays\u00A0gg\u00A0fa)"
+        }
+
+        val formattedDate = try {
+            val parser = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            val date = parser.parse(foundDay.date)
+            if (date != null) {
+                java.text.SimpleDateFormat("d MMM", java.util.Locale.ITALIAN).format(date).replace(' ', '\u00A0')
+            } else {
+                foundDay.date
+            }
+        } catch (_: Exception) {
+            foundDay.date
+        }
+
+        val agoText = when (foundDaysAgo) {
+            0 -> "oggi"
+            1 -> "ieri"
+            else -> "$foundDaysAgo\u00A0gg\u00A0fa"
+        }
+
+        return "Ultima: $formattedDate ($agoText)"
+    }
+
+    /**
      * Scompone le variabili ambientali e geografiche nella lista tipizzata di fattori [Factor] per la visualizzazione Herbarium.
      *
      * @param avgTemp Temperatura media attuale in °C.
@@ -2094,6 +2162,7 @@ object MushroomAlgorithms {
      * @param spunEcmText Descrizione del livello di ectomicorrize SPUN, se disponibile.
      * @param spunHyphalText Descrizione della densità ifale SPUN, se disponibile.
      * @param terrainEvaluation Valutazione dettagliata di pendenza ed esposizione [TerrainAspectEvaluation], se disponibile.
+     * @param lastSignificantRainText Dicitura descrittiva dell'ultima pioggia significativa calcolata dalla serie temporale.
      * @return Lista ordinata di elementi [Factor] pronti per il rendering nelle schede ecologiche.
      */
     fun calculateFactors(
@@ -2115,7 +2184,8 @@ object MushroomAlgorithms {
         avgSoilMoisture7To28: Float? = null,
         totalEvapotranspiration: Float? = null,
         canopyCover: Double? = null,
-        effectiveRainMm: Double? = null
+        effectiveRainMm: Double? = null,
+        lastSignificantRainText: String? = null
     ): List<Factor> {
         val factors = mutableListOf<Factor>()
 
@@ -2151,7 +2221,9 @@ object MushroomAlgorithms {
             else -> FactorLevel.ADVERSE
         }
         val rainDetail = buildString {
-            if (effectiveRainMm != null) {
+            if (lastSignificantRainText != null) {
+                append("Finestra fenologica 26\u00A0gg • $lastSignificantRainText")
+            } else if (effectiveRainMm != null) {
                 append("Convoluzione fenologica f(τ)")
             } else {
                 append("Ultime 2 settimane")

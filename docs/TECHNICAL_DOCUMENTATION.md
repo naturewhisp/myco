@@ -917,12 +917,12 @@ Durante le escursioni micologiche in valli isolate e foreste dense, la copertura
 
 A partire dalla versione 1.2, Myco adotta una strategia di resilienza da campo a triplo livello:
 
-1. **Bypass Conservativo del TTL (`getIgnoreExpiry`):**
-   `PlatformCacheStore.getIgnoreExpiry(key)` consente di interrogare il record memorizzato nel database SQLite senza verificare la scadenza temporale e senza invocare la cancellazione automatica della riga.
+1. **Preservazione dei Record Scaduti e Bypass del TTL (`getIgnoreExpiry`):**
+   `PlatformCacheStore.get(key, expiryMs)` restituisce `null` alla scadenza del TTL senza cancellare la riga fisica (`remove(key)` rimosso), garantendo la piena reperibilità del dato per `getIgnoreExpiry(key)`. `getCacheAge(key)` calcola l'età reale senza clamping artificiale, consentendo all'interfaccia di visualizzare l'effettiva anzianità dello snapshot archiviato.
 2. **Fallback Trasparente del Repository (`MushroomRepository.kt`):**
    In caso di fallimento della chiamata remota (`fetchWeather`, `reverseGeocode`, `fetchHabitat`, `fetchSpecificHabitatBonus`, `fetchTerrainAspect`), il repository intercetta l'eccezione di rete e tenta il recupero del dato tramite `cacheManager.getCachedDataIgnoreExpiry()`. Se presente un payload memorizzato in passato, il dato viene restituito contrassegnando la sessione come attiva in modalità campo (`isOfflineFieldMode = true`).
 3. **Banner Informativo di Campo (`OfflineCacheNotice`):**
-   L'interfaccia utente notifica chiaramente lo stato di assenza di segnale tramite un banner ambrato con icona `Icons.Outlined.CloudOff`, segnalando che l'analisi è basata sull'ultimo snapshot meteorologico e cartografico archiviato.
+   L'interfaccia utente notifica chiaramente lo stato di assenza di segnale tramite un banner ambrato con icona `Icons.Outlined.CloudOff`, segnalando che l'analisi è basata sull'ultimo snapshot meteorologico e cartografico archiviato. Nessun latching speculativo anticipa la risposta della rete.
 4. **Tool di Archiviazione Offline Preventiva (`prefetchForOfflineUse`):**
    Nella schermata `SettingsScreen`, l'utente può avviare la sincronizzazione manuale di tutti i punti preferiti e recenti prima di partire per l'escursione. Il metodo `prefetchCompleteLocation(lat, lon, species)` pre-popola la cache locale eseguendo query concorrenti per meteo, habitat, alberi simbionti e DEM. L'avanzamento è visualizzato con `CircularProgressIndicator` e confermato da una notifica con conteggio formattato via plurals (`settings_sync_completed`).
 

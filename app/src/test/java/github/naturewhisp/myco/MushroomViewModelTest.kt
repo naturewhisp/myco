@@ -256,4 +256,44 @@ class MushroomViewModelTest {
         coVerify(exactly = 1) { repository.prefetchCompleteLocation(44.5, 8.0, any()) }
         coVerify(exactly = 1) { repository.prefetchCompleteLocation(45.0, 7.5, any()) }
     }
+
+    @Test
+    fun testSelectLocation_freshNetworkCleansCacheState() = runTest(testDispatcher) {
+        val lat = 44.2
+        val lon = 7.9
+        val rLat = String.format(Locale.US, "%.4f", lat)
+        val rLon = String.format(Locale.US, "%.4f", lon)
+        val weatherCacheKey = "weather_${rLat}_${rLon}"
+
+        // Simula risposta fresca salvata al momento della risposta di rete (timestamp = now)
+        cacheManager.saveCachedData(weatherCacheKey, createRealisticWeatherResponse(), timestamp = System.currentTimeMillis())
+
+        viewModel.selectLocation(lat, lon, "Garessio")
+        viewModel.dataFetchJob?.join()
+
+        assertFalse("Dato fresco da rete non deve risultare da cache obsoleta", viewModel.isFromCache)
+        org.junit.Assert.assertNull("cacheAgeText deve essere null su risposta fresca", viewModel.cacheAgeText)
+        assertFalse("isOfflineFieldMode deve essere false su risposta fresca", viewModel.isOfflineFieldMode)
+    }
+
+    @Test
+    fun testSelectLocation_offlineFallbackSetsOfflineFieldModeAndCacheAge() = runTest(testDispatcher) {
+        val lat = 44.5
+        val lon = 8.0
+        val rLat = String.format(Locale.US, "%.4f", lat)
+        val rLon = String.format(Locale.US, "%.4f", lon)
+        val weatherCacheKey = "weather_${rLat}_${rLon}"
+        val expiredTimestamp = System.currentTimeMillis() - 2 * 3600 * 1000L // 2 ore fa
+        val cachedResponse = createRealisticWeatherResponse()
+        cacheManager.saveCachedData(weatherCacheKey, cachedResponse, timestamp = expiredTimestamp)
+
+        coEvery { repository.fetchWeather(lat, lon) } returns cachedResponse
+
+        viewModel.selectLocation(lat, lon, "Località Offline")
+        viewModel.dataFetchJob?.join()
+
+        assertTrue("Dato da fallback offline deve impostare isFromCache = true", viewModel.isFromCache)
+        assertTrue("Cache > 1h deve attivare la modalità campo isOfflineFieldMode = true", viewModel.isOfflineFieldMode)
+        assertEquals("2h fa", viewModel.cacheAgeText)
+    }
 }

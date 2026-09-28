@@ -57,11 +57,22 @@ class CacheManagerTest {
     @Test
     fun testCacheExpiry() {
         data class TempData(val v: Int)
-        cacheManager.saveCachedData("expiring_key", TempData(42))
+        val expiredTimestamp = System.currentTimeMillis() - 2 * 3600 * 1000L
+        cacheManager.saveCachedData("expiring_key", TempData(42), timestamp = expiredTimestamp)
 
-        // Con expiryMs = 0 (scadenza immediata), deve restituire null
-        val expired = cacheManager.getCachedData("expiring_key", TempData::class.java, 0L)
-        assertNull(expired)
+        // Con expiryMs = 3600_000L (scaduto da 2h), get ordinario restituisce null
+        val expired = cacheManager.getCachedData("expiring_key", TempData::class.java, 3600_000L)
+        assertNull("Dato scaduto deve restituire null su get ordinario", expired)
+
+        // Bonifica: la riga NON deve essere cancellata dalla cache, getCachedDataIgnoreExpiry deve recuperarla
+        val fallback = cacheManager.getCachedDataIgnoreExpiry("expiring_key", TempData::class.java)
+        assertNotNull("Dato scaduto deve essere preservato per fallback offline", fallback)
+        assertEquals(42, fallback?.first?.v)
+
+        // getCacheAge non deve applicare clamping ma restituire l'età reale in ms (~2 ore)
+        val age = cacheStore.getCacheAge("expiring_key")
+        assertNotNull("getCacheAge non deve restituire null per record scaduti", age)
+        assertTrue("getCacheAge deve riflettere l'età effettiva", age!! >= 2 * 3600 * 1000L - 1000L)
     }
 
     @Test

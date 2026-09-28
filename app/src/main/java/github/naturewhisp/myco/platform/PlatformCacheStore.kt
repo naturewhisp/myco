@@ -46,8 +46,16 @@ interface PlatformCacheStore {
      * @param lat Latitudine opzionale per indicizzazione geospaziale.
      * @param lon Longitudine opzionale per indicizzazione geospaziale.
      * @param ttlMs Durata di vita massima in millisecondi (0 per indicare default o persistenza).
+     * @param timestamp Timestamp di salvataggio in millisecondi (default ora corrente di sistema).
      */
-    fun put(key: String, dataJson: String, lat: Double? = null, lon: Double? = null, ttlMs: Long = 0)
+    fun put(
+        key: String,
+        dataJson: String,
+        lat: Double? = null,
+        lon: Double? = null,
+        ttlMs: Long = 0,
+        timestamp: Long = System.currentTimeMillis()
+    )
 
     /**
      * Rimuove un elemento dalla cache in base alla chiave.

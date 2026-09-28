@@ -27,7 +27,7 @@ class InMemoryCacheStore : PlatformCacheStore {
         return if (now - entry.timestamp < effectiveExpiry) {
             entry.data
         } else {
-            entries.remove(key)
+            // Elemento scaduto: preserva la riga per eventuale fallback offline (getIgnoreExpiry)
             null
         }
     }
@@ -36,10 +36,17 @@ class InMemoryCacheStore : PlatformCacheStore {
         return entries[key]?.data
     }
 
-    override fun put(key: String, dataJson: String, lat: Double?, lon: Double?, ttlMs: Long) {
+    override fun put(
+        key: String,
+        dataJson: String,
+        lat: Double?,
+        lon: Double?,
+        ttlMs: Long,
+        timestamp: Long
+    ) {
         entries[key] = Entry(
             data = dataJson,
-            timestamp = System.currentTimeMillis(),
+            timestamp = timestamp,
             ttlMs = ttlMs,
             lat = lat,
             lon = lon
@@ -56,7 +63,7 @@ class InMemoryCacheStore : PlatformCacheStore {
 
     override fun getCacheAge(key: String): Long? {
         val entry = entries[key] ?: return null
-        return System.currentTimeMillis() - entry.timestamp
+        return maxOf(0L, System.currentTimeMillis() - entry.timestamp)
     }
 
     override fun getCacheStats(): CacheStats {

@@ -460,6 +460,7 @@ class MushroomViewModel(
         val soil7To28 = todayData?.avgSoilMoisture7To28cm
         val et0 = todayData?.totalEvapotranspiration
         val effectiveRain = MushroomAlgorithms.calculateEffectiveRainfall(todayIndex, bufferedDays, species)
+        val lastRainText = MushroomAlgorithms.formatLastSignificantRain(todayIndex, bufferedDays)
 
         factors = MushroomAlgorithms.calculateFactors(
             avgTemp = avgTemp,
@@ -480,7 +481,8 @@ class MushroomViewModel(
             avgSoilMoisture7To28 = soil7To28,
             totalEvapotranspiration = et0,
             canopyCover = siteCanopyCover,
-            effectiveRainMm = effectiveRain
+            effectiveRainMm = effectiveRain,
+            lastSignificantRainText = lastRainText
         )
 
         dailyOutlooks = MushroomAlgorithms.calculateDailyOutlooks(
@@ -952,6 +954,9 @@ class MushroomViewModel(
             isLoading = true
             loadingText = "Analisi micologica e ambientale in corso..."
             errorMessage = null
+            isFromCache = false
+            cacheAgeText = null
+            isOfflineFieldMode = false
 
             // Generazione istantanea della nuvola locale in background (<10ms)
             // Sfrutta i dati SPUN residenti in memoria senza attendere 3-5 secondi di chiamate di rete
@@ -973,16 +978,6 @@ class MushroomViewModel(
             }
 
             try {
-                // Check if weather is cached
-                val roundedLat = String.format(Locale.US, "%.4f", lat)
-                val roundedLon = String.format(Locale.US, "%.4f", lon)
-                val weatherCacheKey = "weather_${roundedLat}_${roundedLon}"
-                isFromCache = cacheManager.getCachedData(weatherCacheKey, github.naturewhisp.myco.model.WeatherResponse::class.java, 60 * 60 * 1000) != null
-
-                // Cache age text
-                val ageMs = cacheManager.getWeatherCacheAge(lat, lon)
-                cacheAgeText = ageMs?.let { formatCacheAge(it) }
-
                 // Se il nome è generico e non abbiamo una voce in cache, avvia il reverse geocoding in parallelo
                 val geocodeDeferred = if (isPlaceholder && cachedGeo == null) {
                     async { repository.reverseGeocode(lat, lon) }
@@ -1023,6 +1018,8 @@ class MushroomViewModel(
                     isOfflineFieldMode = finalAgeMs > 60 * 60 * 1000L
                     cacheAgeText = formatCacheAge(finalAgeMs)
                 } else {
+                    isFromCache = false
+                    cacheAgeText = null
                     isOfflineFieldMode = false
                 }
 
@@ -1287,6 +1284,9 @@ class MushroomViewModel(
             } catch (e: Exception) {
                 e.printStackTrace()
                 errorMessage = e.message ?: "Errore durante il caricamento e l'analisi dei dati."
+                isFromCache = false
+                cacheAgeText = null
+                isOfflineFieldMode = false
                 isLoading = false
             }
         }

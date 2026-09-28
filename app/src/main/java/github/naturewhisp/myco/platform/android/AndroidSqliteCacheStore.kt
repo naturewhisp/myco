@@ -84,8 +84,7 @@ class AndroidSqliteCacheStore(context: Context) : SQLiteOpenHelper(
                     if (now - timestamp < effectiveExpiry) {
                         data
                     } else {
-                        // Elemento scaduto: rimozione immediata
-                        remove(key)
+                        // Elemento scaduto: preserva la riga per eventuale fallback offline (getIgnoreExpiry)
                         null
                     }
                 } else {
@@ -116,13 +115,20 @@ class AndroidSqliteCacheStore(context: Context) : SQLiteOpenHelper(
         }
     }
 
-    override fun put(key: String, dataJson: String, lat: Double?, lon: Double?, ttlMs: Long) {
+    override fun put(
+        key: String,
+        dataJson: String,
+        lat: Double?,
+        lon: Double?,
+        ttlMs: Long,
+        timestamp: Long
+    ) {
         try {
             val db = writableDatabase
             val values = ContentValues().apply {
                 put(COL_KEY, key)
                 put(COL_DATA, dataJson)
-                put(COL_TIMESTAMP, System.currentTimeMillis())
+                put(COL_TIMESTAMP, timestamp)
                 put(COL_TTL, ttlMs)
                 if (lat != null) put(COL_LAT, lat) else putNull(COL_LAT)
                 if (lon != null) put(COL_LON, lon) else putNull(COL_LON)
@@ -154,7 +160,7 @@ class AndroidSqliteCacheStore(context: Context) : SQLiteOpenHelper(
     override fun getCacheAge(key: String): Long? {
         return try {
             val db = readableDatabase
-            val projection = arrayOf(COL_TIMESTAMP, COL_TTL)
+            val projection = arrayOf(COL_TIMESTAMP)
             val selection = "$COL_KEY = ?"
             val selectionArgs = arrayOf(key)
 
@@ -169,10 +175,7 @@ class AndroidSqliteCacheStore(context: Context) : SQLiteOpenHelper(
             ).use { cursor ->
                 if (cursor.moveToFirst()) {
                     val timestamp = cursor.getLong(0)
-                    val ttl = cursor.getLong(1)
-                    val age = System.currentTimeMillis() - timestamp
-                    val maxAge = if (ttl > 0) ttl else 60 * 60 * 1000L
-                    if (age < maxAge) age else null
+                    maxOf(0L, System.currentTimeMillis() - timestamp)
                 } else {
                     null
                 }

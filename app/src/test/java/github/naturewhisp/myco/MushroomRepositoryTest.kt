@@ -19,11 +19,13 @@ import github.naturewhisp.myco.model.OverpassElement
 import github.naturewhisp.myco.network.OverpassService
 import github.naturewhisp.myco.network.WeatherService
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -152,11 +154,17 @@ class MushroomRepositoryTest {
             daily = DailyData(emptyList(), emptyList())
         )
         val cacheKey = "weather_44.5000_8.0000"
-        cacheManager.saveCachedData(cacheKey, dummyResponse)
+        val expiredTimestamp = System.currentTimeMillis() - 2 * 3600 * 1000L // Record scaduto (2 ore fa)
+        cacheManager.saveCachedData(cacheKey, dummyResponse, timestamp = expiredTimestamp)
 
         val result = offlineRepo.fetchWeather(44.5, 8.0)
+        coVerify(exactly = 1) { weatherService.getForecast(any(), any(), any(), any(), any(), any(), any()) }
         assertNotNull("Deve restituire i dati meteo in cache anche se la rete fallisce", result)
         assertEquals(750f, result.elevation, 0.01f)
+
+        val age = cacheManager.getWeatherCacheAge(44.5, 8.0)
+        assertNotNull("L'età della cache scaduta deve essere recuperabile senza clamping", age)
+        assertTrue("L'età della cache deve riflettere il dato reale (~2 ore)", age!! >= 2 * 3600 * 1000L - 1000L)
     }
 
     @Test

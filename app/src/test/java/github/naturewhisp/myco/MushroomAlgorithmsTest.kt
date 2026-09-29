@@ -1035,7 +1035,7 @@ class MushroomAlgorithmsTest {
             ProcessedDay(date = "2026-09-28", avgTemp = 18f, totalPrecip = 0.0f, avgHumidity = 60f, weatherCode = 1) // Today (idx 11)
         )
         val result = MushroomAlgorithms.formatLastSignificantRain(todayIndex = 11, allData = days)
-        assertEquals("Ultima: 17\u00A0set (11\u00A0gg\u00A0fa)", result)
+        assertEquals("Ultima: 17\u00A0set (12\u00A0mm, 11\u00A0gg\u00A0fa)", result)
     }
 
     @Test
@@ -1044,13 +1044,13 @@ class MushroomAlgorithmsTest {
             ProcessedDay(date = "2026-09-27", avgTemp = 17f, totalPrecip = 0.0f, avgHumidity = 65f, weatherCode = 1),
             ProcessedDay(date = "2026-09-28", avgTemp = 16f, totalPrecip = 8.5f, avgHumidity = 90f, weatherCode = 61)
         )
-        assertEquals("Ultima: 28\u00A0set (oggi)", MushroomAlgorithms.formatLastSignificantRain(1, todayRain))
+        assertEquals("Ultima: 28\u00A0set (9\u00A0mm, oggi)", MushroomAlgorithms.formatLastSignificantRain(1, todayRain))
 
         val yesterdayRain = listOf(
             ProcessedDay(date = "2026-09-27", avgTemp = 17f, totalPrecip = 6.0f, avgHumidity = 85f, weatherCode = 61),
             ProcessedDay(date = "2026-09-28", avgTemp = 18f, totalPrecip = 0.0f, avgHumidity = 60f, weatherCode = 1)
         )
-        assertEquals("Ultima: 27\u00A0set (ieri)", MushroomAlgorithms.formatLastSignificantRain(1, yesterdayRain))
+        assertEquals("Ultima: 27\u00A0set (6\u00A0mm, ieri)", MushroomAlgorithms.formatLastSignificantRain(1, yesterdayRain))
     }
 
     @Test
@@ -1070,7 +1070,7 @@ class MushroomAlgorithmsTest {
         )
         // todayIndex 100 with only 2 days of data must not throw IndexOutOfBoundsException
         val result = MushroomAlgorithms.formatLastSignificantRain(todayIndex = 100, allData = days)
-        assertEquals("Ultima: 27\u00A0set (ieri)", result)
+        assertEquals("Ultima: 27\u00A0set (6\u00A0mm, ieri)", result)
     }
 
     @Test
@@ -1090,12 +1090,12 @@ class MushroomAlgorithmsTest {
             slopeText = "Sud",
             species = edulis,
             effectiveRainMm = 35.0,
-            lastSignificantRainText = "Ultima: 17\u00A0set (11\u00A0gg\u00A0fa)"
+            lastSignificantRainText = "Ultima: 17\u00A0set (25\u00A0mm, 11\u00A0gg\u00A0fa)"
         )
         val rainFactor = factors.first { it.id == FactorId.PRECIPITATION }
         assertEquals("Precipitazioni efficaci", rainFactor.label)
         assertEquals("35 mm", rainFactor.formattedValue)
         assertEquals(FactorLevel.FAVORABLE, rainFactor.level)
-        assertEquals("Finestra fenologica 26\u00A0gg • Ultima: 17\u00A0set (11\u00A0gg\u00A0fa)", rainFactor.detail)
+        assertEquals("Finestra fenologica 26\u00A0gg • Ultima: 17\u00A0set (25\u00A0mm, 11\u00A0gg\u00A0fa)", rainFactor.detail)
     }
 }

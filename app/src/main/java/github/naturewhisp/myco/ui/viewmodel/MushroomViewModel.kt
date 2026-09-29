@@ -460,7 +460,7 @@ class MushroomViewModel(
         val soil7To28 = todayData?.avgSoilMoisture7To28cm
         val et0 = todayData?.totalEvapotranspiration
         val effectiveRain = MushroomAlgorithms.calculateEffectiveRainfall(todayIndex, bufferedDays, species)
-        val lastRainText = MushroomAlgorithms.formatLastSignificantRain(todayIndex, bufferedDays)
+        val lastRainText = MushroomAlgorithms.formatLastSignificantRain(todayIndex, days)
 
         factors = MushroomAlgorithms.calculateFactors(
             avgTemp = avgTemp,

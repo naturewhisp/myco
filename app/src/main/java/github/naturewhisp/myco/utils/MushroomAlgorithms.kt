@@ -2136,13 +2136,14 @@ object MushroomAlgorithms {
             foundDay.date
         }
 
+        val precipFormatted = String.format(java.util.Locale.ITALIAN, "%.0f\u00A0mm", foundDay.totalPrecip)
         val agoText = when (foundDaysAgo) {
             0 -> "oggi"
             1 -> "ieri"
             else -> "$foundDaysAgo\u00A0gg\u00A0fa"
         }
 
-        return "Ultima: $formattedDate ($agoText)"
+        return "Ultima: $formattedDate ($precipFormatted, $agoText)"
     }
 
     /**

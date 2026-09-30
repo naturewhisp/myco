@@ -4,6 +4,7 @@ import github.naturewhisp.myco.core.AnalysisInputs
 import github.naturewhisp.myco.core.EnvironmentalWindows
 import github.naturewhisp.myco.core.MycoAnalysisEngine
 import github.naturewhisp.myco.core.ProcessedDay as CoreDay
+import github.naturewhisp.myco.model.EcologicalWeightsConfig
 import github.naturewhisp.myco.model.FactorId
 import github.naturewhisp.myco.model.ProcessedDay
 import github.naturewhisp.myco.model.SPECIES_CATALOG
@@ -60,6 +61,7 @@ class FullAnalysisResultParityTest {
             legacyDays,
             case.input.spunHyphalDensity?.toFloat(),
             legacySpecies,
+            config = EcologicalWeightsConfig(applySpunHyphalBonus = false),
         )
         val effectiveHabitat = probabilityHabitat(case.input)
         val legacyProbability = MushroomAlgorithms.dailyGrowthProbability(
@@ -104,6 +106,7 @@ class FullAnalysisResultParityTest {
                 legacyDays,
                 case.input.spunHyphalDensity?.toFloat(),
                 legacySpecies,
+                config = EcologicalWeightsConfig(applySpunHyphalBonus = false),
             )
             val dailyProbability = MushroomAlgorithms.dailyGrowthProbability(
                 dailyWeather,

@@ -605,23 +605,26 @@ $$\frac{\partial z}{\partial x} = \frac{z_E - z_W}{2\Delta}, \qquad \frac{\parti
     * $\tau \le 0.75 \cdot \tau_{\text{peak}}$: *Incubazione primordi* (differenziazione dei primordi ipogei, moltiplicatore $0.50 \dots 0.85$);
     * $\tau \le 1.35 \cdot \tau_{\text{peak}}$: *Buttata attiva* (finestra ottimale di raccolta e culmine epigeo, moltiplicatore $0.85 \dots 1.00$);
     * $\tau > 1.35 \cdot \tau_{\text{peak}}$: *Flusso in esaurimento* (buttata al termine, moltiplicatore decrescente $0.30 \dots 0.70$).
-  * **Risoluzione Biometeorologica degli Inneschi Idrologici (Rovesci Secondari vs Nuove Piogge Primarie):**
-    Gli eventi piovosi entro una finestra temporale di 2 giorni vengono raggruppati in cluster idrologici distinti. L'innesco idrologico attivo predefinito è l'evento precipitativo più recente (`recentTrigger`).
-    Un evento precedente può mantenere una buttata attiva in corso solo se vengono soddisfatte congiuntamente tre condizioni biometeorologiche:
-    1. L'evento precedente si colloca nella finestra fisiologica di raccolta attiva: $\tau_{\text{earlier}} \in (\text{hydrationThreshold} + 1 \dots \text{fruitingThreshold})$;
-    2. L'evento precedente ha costituito una ricarica idrica primaria saturante: $R_{\text{earlier}} \ge \max(25.0\text{ mm}, 0.70 \cdot R_{\text{target}})$;
-    3. La pioggia recente è strettamente un rovescio secondario minore che non altera la cinetica di maturazione in atto: $R_{\text{recent}} < 0.70 \cdot R_{\text{earlier}}$.
-    Se invece la pioggia recente è quantitativamente rilevante ($R_{\text{recent}} \ge 0.70 \cdot R_{\text{earlier}}$) o la pioggia pregressa non era saturante (es. seguita da siccità), il ciclo si riazzera fisiologicamente a *Idratazione miceliare* ($\tau = \tau_{\text{recent}}$) con moltiplicatore $\Phi_{\text{phase}} \le 0.50$, eliminando categoricamente sovrastime e falsi positivi precoci sul campo a pochi giorni da un temporale estivo/autunnale.
-  * **Barriera di Protezione Algoritmica & Test di Invarianti (Adversarial Gate 3, `PhenologicalInvariantsTest`):**
-    Per evitare in modo permanente anomalie di calcolo da interazioni temporali non-locali, l'architettura di calcolo è presidiata da 20 test formalizzati basati su proprietà invarianti:
+  * **Risoluzione Biometeorologica degli Inneschi Idrologici & Raccordo Continuo Lipschitziano (REV2-03):**
+    Gli eventi piovosi entro una finestra temporale di 2 giorni vengono raggruppati in cluster idrologici distinti (`clusterRainEvents`). L'innesco idrologico attivo predefinito è l'evento precipitativo più recente (`recentTrigger`).
+    Per eliminare gradini duri (precedentemente posti a soglia rigida $25\text{ mm}$ o $70\%$), l'influenza tra l'evento precedente (`earlierCandidate`) e l'evento recente viene raccordata tramite transizioni continue $C^1$ smoothstep:
+    * Saturazione continua dell'evento pregresso: $\text{saturationFactor} = \text{smoothstep}(15.0, 25.0, R_{\text{earlier}})$;
+    * Transizione continua del rapporto pluviometrico: $\text{transition} = \text{smoothstep}(0.50, 0.90, R_{\text{recent}} / R_{\text{earlier}})$;
+    * Ponderazione d'inerzia: $\text{weight}_{\text{earlier}} = (1.0 - \text{transition}) \cdot \text{saturationFactor}$, garantendo continuità lipschitziana ($|\Delta S| \le 5\%$ per $\Delta R \approx 0.02\text{ mm}$).
+  * **Gate di Disseccamento Idrologico Superficiale (REV2-03 / Mindino Gate):**
+    Il modello fenologico non si affida esclusivamente al tempo trascorso $\tau$. Se dopo un innesco piovoso si susseguono $N_{\text{dry}} \ge 5$ giorni asciutti ($P_{\text{liq}} < 1.0\text{ mm}$) e l'orizzonte idrico superficiale del suolo ($0\dots 7\text{ cm}$) scende a $\bar{\theta}_{0\dots 7} \le 0.22\text{ m}^3/\text{m}^3$, la fase fenologica subisce un decadimento continuo:
+    $$\Phi_{\text{drought}} = \text{smoothstep}(0.14, 0.22, \bar{\theta}_{0\dots 7}) \in [0.20, 1.00]$$
+    Se $\Phi_{\text{drought}} \le 0.50$, i primordi sono compromessi dalla siccità: lo stadio transita tassativamente a `GrowthStage.WANING` con dicitura *"Fase: Stress idrico e disseccamento superficiale (primordi compromessi dalla siccità)."*, limitando l'idoneità a $S \le 35/100$ e impedendo categoricamente falsi positivi di buttata in corso.
+  * **Barriera di Protezione Algoritmica & Test di Invarianti (`PhenologicalInvariantsTest`):**
+    Per evitare in modo permanente anomalie di calcolo da interazioni temporali non-locali, l'architettura di calcolo è presidiata da test formalizzati basati su proprietà invarianti:
     * *Invariante di Latenza Minima (Liebig):* A $\tau \le 2$ giorni da una pioggia primaria $\ge 25\text{ mm}$, $\Phi_{\text{phase}} \le 0.45$ con stadio tassativamente impostato su `MYCELIAL_HYDRATION`.
-    * *Invariante di Predominanza dell'Innesco Primario:* Se $R_{\text{recent}} \ge 0.70 \cdot R_{\text{earlier}}$, l'evento recente prevale sempre resettando il timer fenologico.
+    * *Invariante di Continuità C1 (Lipschitz):* Variazioni attorno a $25\text{ mm}$ (24.99 mm vs 25.01 mm) generano variazioni di idoneità $\le 5\%$.
+    * *Mindino Gate (Adversarial Boundary Invariant):* 25 mm di pioggia seguiti da 11–12 giorni di siccità superficiale abortiscono la buttata ($S \le 35/100$, stadio `WANING`), invalidando il falso picco epigeo.
     * *Invariante di Siccità Assoluta:* Con piogge nulle su 28 giorni, stadio `WAITING_FOR_RAIN`, $\Phi_{\text{phase}} = 0.25$, probabilità $\le 20\%$.
     * *Invariante di Gelo Notturno Letale:* Minime $< 0^\circ\text{C}$ deprimono l'inibizione termica a $0.30$.
     * *Invariante di Anossia Pedologica (van Genuchten):* Suoli saturi $\theta > 0.44\text{ m}^3/\text{m}^3$ abbattono la risposta edafica verso il fondo biologico $0.15 \dots 0.20$.
     * *Invariante di Monotonia DTR:* L'aumento dell'escursione termica sopra i $12^\circ\text{C}$ non può mai incrementare la probabilità (funzione smoothstep $C^1$).
-    * *Invariante di Continuità (Lipschitz):* Variazioni infinitesimali dei parametri $(\pm 0.5\text{ mm}, \pm 0.2^\circ\text{C})$ producono variazioni di probabilità $\le 5\%$.
-    * *Benchmark Empirici Ground Truth:* Validazione permanente e bloccante su serie storiche reali (Mindino 18 set $\le 35\%$, Mindino 21 set $20\% \dots 50\%$, Mindino 26 set $\ge 65\%$, Val di Taro $65\% \dots 88\%$, Garfagnana estiva $\le 40\%$, Carnia allagata $\le 20\%$, pascolo per *Macrolepiota* $\ge 60\%$).
+    * *Benchmark Empirici Ground Truth:* Validazione permanente e bloccante su serie storiche reali (Mindino 18 set $\le 35\%$, Mindino 21 set $20\% \dots 50\%$, Mindino Gate 28-29 set $\le 35\%$, Val di Taro $65\% \dots 88\%$, Garfagnana estiva $\le 40\%$, Carnia allagata $\le 20\%$, pascolo per *Macrolepiota* $\ge 60\%$).
     * *Fuzzing Generativo su 500 Scenari:* Verifica automatica di coerenza, bound $[0, 92]$ e assenza di eccezioni/NaN su 500 serie casuali per ogni build.
   * La compatibilità con la UI preesistente è garantita dal delegato `calculateGrowthPhase` che estrae `phaseText`.
 * **Fase Lunare (`getMoonPhase`, `MushroomAlgorithms.kt:166`):**

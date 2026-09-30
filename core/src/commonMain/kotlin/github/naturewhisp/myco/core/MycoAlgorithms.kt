@@ -15,16 +15,17 @@ object MycoAlgorithms {
         days: List<ProcessedDay>,
         species: MushroomSpecies,
         spunHyphalDensity: Double?,
-        applySpunHyphalBonus: Boolean = true,
+        applySpunHyphalBonus: Boolean = false,
     ): Int {
         if (dayIndex !in days.indices) return 0
 
         val windows = EnvironmentalWindows.derive(days, dayIndex)
         val totalRain = windows.rainWindowTotalMm
+        val effectiveSpunBonus = applySpunHyphalBonus && species.category == EcologicalCategory.ECTOMYCORRHIZAL
         var rainScore = rainResponse(totalRain, species) * 40.0
-        if (applySpunHyphalBonus && spunHyphalDensity != null && spunHyphalDensity >= 5.0 && totalRain >= 12.0) {
+        if (effectiveSpunBonus && spunHyphalDensity != null && spunHyphalDensity >= 5.0 && totalRain >= 12.0) {
             rainScore = min(40.0, rainScore + 6.0)
-        } else if (applySpunHyphalBonus && spunHyphalDensity != null && spunHyphalDensity < 2.5) {
+        } else if (effectiveSpunBonus && spunHyphalDensity != null && spunHyphalDensity < 2.5) {
             rainScore = max(0.0, rainScore - 4.0)
         }
 
@@ -47,7 +48,7 @@ object MycoAlgorithms {
         var shockScore = 0.0
         if (dayIndex > 4 && totalRain >= 12.0) {
             val drop = windows.temperatureDropC ?: 0.0
-            val minimumDrop = if (applySpunHyphalBonus && spunHyphalDensity != null && spunHyphalDensity >= 5.0) 2.0 else 3.0
+            val minimumDrop = if (effectiveSpunBonus && spunHyphalDensity != null && spunHyphalDensity >= 5.0) 2.0 else 3.0
             if (drop > minimumDrop) {
                 shockScore = 15.0 * ((drop - minimumDrop) / 3.0).coerceIn(0.0, 1.0) *
                     (totalRain / 25.0).coerceIn(0.0, 1.0)

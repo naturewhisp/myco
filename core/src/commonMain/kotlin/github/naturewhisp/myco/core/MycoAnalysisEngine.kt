@@ -150,7 +150,7 @@ class MycoAnalysisEngine {
         val strongest = listOf("meteo" to weather / 100.0, "habitat" to habitat, "altitudine" to altitude, "stagione" to seasonality).maxBy { it.second }.first
         val weakest = listOf("meteo" to weather / 100.0, "habitat" to habitat, "altitudine" to altitude, "stagione" to seasonality).minBy { it.second }.first
         val coverage = if (missing.isEmpty()) "Tutte le fonti scientifiche sono disponibili." else "Fonti non disponibili: ${missing.joinToString()}. Il risultato è parziale."
-        return "Probabilità stimata $probability%. Fattore più favorevole: $strongest; principale limite: $weakest. $coverage"
+        return "Indice di idoneità stimato $probability/100. Fattore più favorevole: $strongest; principale limite: $weakest. $coverage"
     }
 
     private fun emptyDay() = ProcessedDay("", 0.0, 0.0, 0.0, null, null, null, null)

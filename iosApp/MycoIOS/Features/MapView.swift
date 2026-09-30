@@ -92,7 +92,7 @@ struct MapView: View {
                     if viewModel.isLoadingEnvironment { ProgressView() }
                 }
                 if let analysis = viewModel.analysis {
-                    Text("\(analysis.probability)% · \(analysis.tier.shortLabel)").font(.title3.bold())
+                    Text("\(analysis.probability)/100 · \(analysis.tier.shortLabel)").font(.title3.bold())
                     if viewModel.heatmap == nil {
                         Label("Heatmap non disponibile per quest'area", systemImage: "square.slash")
                             .font(.caption).foregroundStyle(colors.inkSoft)

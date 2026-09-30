@@ -219,15 +219,15 @@ struct RegistryView: View {
         if viewModel.isLoadingEnvironment {
             Section { HStack { ProgressView(); Text("Analisi ambientale e scientifica") } }
         } else if let analysis = viewModel.analysis {
-            Section("Probabilità di fruttificazione") {
+            Section("Idoneità ambientale (Percorso A)") {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("\(analysis.probability)%").font(.system(.largeTitle, design: .rounded, weight: .bold))
+                    Text("\(analysis.probability)/100").font(.system(.largeTitle, design: .rounded, weight: .bold))
                     Text(analysis.tier.descriptiveLabel).font(.headline)
                     ProgressView(value: Double(analysis.probability), total: 100).tint(tierColor(index: Int(analysis.tier.tierIndex)))
                 }
                 .padding(.vertical, 8)
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel("Probabilità \(analysis.probability) percento, livello \(analysis.tier.shortLabel)")
+                .accessibilityLabel("Indice di idoneità \(analysis.probability) su 100, livello \(analysis.tier.shortLabel)")
             }
             Section("Fattori ecologici") {
                 ForEach(Array(analysis.factors.enumerated()), id: \.offset) { _, factor in

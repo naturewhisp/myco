@@ -51,7 +51,8 @@ object HeatmapGenerator {
         altitudeScore: Double,
         isDark: Boolean = false,
         config: HeatmapRenderConfig = HeatmapRenderConfig.DEFAULT,
-        species: MushroomSpecies = SPECIES_CATALOG[0]
+        species: MushroomSpecies = SPECIES_CATALOG[0],
+        applySpunHyphalBonus: Boolean = false
     ): HeatmapRaster? = withContext(Dispatchers.Default) {
         val region = spunDataManager.getCurrentRegionData(centerLat, centerLon) ?: return@withContext null
         val header = region.header
@@ -114,15 +115,19 @@ object HeatmapGenerator {
                         val hypRatio = (hyp / 7.0f).coerceIn(0f, 1f)
                         val bioPotential = when (species.category) {
                             EcologicalCategory.SAPROTROPHIC -> {
-                                // I funghi saprofiti praticoli/da lettiera (es. Macrolepiota) dipendono dalla biomassa ifale
-                                // sotterranea senza vincolo di ectomicorrize arboree
-                                (hypRatio * 80.0f + 20.0f)
+                                // I funghi saprotrofi praticoli/lettiera non dipendono dalle ife AM (Glomeromycota)
+                                50.0f // Potenziale basale uniforme
                             }
                             EcologicalCategory.PARASITIC -> {
-                                (hypRatio * 70.0f + ecmRatio * 30.0f)
+                                // I funghi parassiti del legno dipendono dalla matrice arborea ospite (ecmRatio)
+                                (ecmRatio * 100.0f)
                             }
                             EcologicalCategory.ECTOMYCORRHIZAL -> {
-                                (ecmRatio * 100.0f)
+                                if (applySpunHyphalBonus) {
+                                    (ecmRatio * 55.0f + hypRatio * 45.0f)
+                                } else {
+                                    (ecmRatio * 100.0f)
+                                }
                             }
                         }
 

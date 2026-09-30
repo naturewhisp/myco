@@ -13,6 +13,7 @@
     <issue id="GradleDependency" severity="informational" />
     <issue id="NewerVersionAvailable" severity="informational" />
     <issue id="OldTargetApi" severity="informational" />
+    <issue id="AndroidGradlePluginVersion" severity="informational" />
 
     <!-- Code Quality & Best Practices (elevate critical issues) -->
     <issue id="DefaultLocale" severity="error" />

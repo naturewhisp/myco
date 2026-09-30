@@ -437,7 +437,7 @@ class MushroomViewModel(
         )
         lastTerrainEvaluation = terrainEval
         
-        val growthPhaseEval = MushroomAlgorithms.evaluateGrowthPhase(days, species, todayIndex)
+        val growthPhaseEval = MushroomAlgorithms.evaluateGrowthPhase(bufferedDays, species, todayIndex)
         growthPhase = growthPhaseEval.phaseText
         lastGrowthPhaseVal = growthPhaseEval.phaseText
 
@@ -1064,11 +1064,10 @@ class MushroomViewModel(
                 val calendar = Calendar.getInstance()
                 val currentMonth = calendar.get(Calendar.MONTH) // 0-indexed
                 val seasonalityScore = MushroomAlgorithms.calculateSpeciesSeasonalityScore(currentMonth, selectedSpecies)
-                val growthPhaseEval = MushroomAlgorithms.evaluateGrowthPhase(processedDays, selectedSpecies, todayIndex)
+                val bufferedDays = if (siteCanopyCover > 0.001) MushroomAlgorithms.applyCanopyBuffering(processedDays, siteCanopyCover) else processedDays
+                val growthPhaseEval = MushroomAlgorithms.evaluateGrowthPhase(bufferedDays, selectedSpecies, todayIndex)
                 val growthPhaseVal = growthPhaseEval.phaseText
                 val moonPhase = MushroomAlgorithms.getMoonPhase()
-
-                val bufferedDays = if (siteCanopyCover > 0.001) MushroomAlgorithms.applyCanopyBuffering(processedDays, siteCanopyCover) else processedDays
 
                 // Rain calculation with phenological integration
                 val effectiveRain = MushroomAlgorithms.calculateEffectiveRainfall(todayIndex, bufferedDays, selectedSpecies)

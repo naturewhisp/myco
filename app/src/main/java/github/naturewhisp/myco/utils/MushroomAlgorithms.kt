@@ -641,9 +641,10 @@ object MushroomAlgorithms {
 
         // Modulatore biologico SPUN: rete ifale densa (>5.0 m/cm3) amplifica la risposta a piogge moderate.
         // Isolato nel modello operativo PHENOLOGICAL in conformità a F10 (biomassa AM non coincidente con macromiceti).
-        if (config.applySpunHyphalBonus && spunHyphalDensity != null && spunHyphalDensity >= 5.0f && effectiveRain >= config.minRainForShockMm) {
+        val effectiveSpunBonus = config.applySpunHyphalBonus && (!config.usePhenologicalInertia || species.category == EcologicalCategory.ECTOMYCORRHIZAL)
+        if (effectiveSpunBonus && spunHyphalDensity != null && spunHyphalDensity >= 5.0f && effectiveRain >= config.minRainForShockMm) {
             rainScore = min(config.rainWeight, rainScore + 6.0)
-        } else if (config.applySpunHyphalBonus && spunHyphalDensity != null && spunHyphalDensity < 2.5f) {
+        } else if (effectiveSpunBonus && spunHyphalDensity != null && spunHyphalDensity < 2.5f) {
             rainScore = max(0.0, rainScore - 4.0)
         }
 
@@ -728,7 +729,7 @@ object MushroomAlgorithms {
 
         // Calcolo continuo dello shock termico induttivo dei primordi
         var shockScore = 0.0
-        val minDrop = if (config.applySpunHyphalBonus && spunHyphalDensity != null && spunHyphalDensity >= 5.0f) {
+        val minDrop = if (effectiveSpunBonus && spunHyphalDensity != null && spunHyphalDensity >= 5.0f) {
             config.spunAssistedThermalDropMin
         } else {
             config.standardThermalDropMin
@@ -843,12 +844,9 @@ object MushroomAlgorithms {
 
         val distinctEvents = clusterRainEvents(candidateEvents)
         val recentTrigger = distinctEvents.first()
-        val targetRain = species.minRainAccumulation
         val earlierCandidate = distinctEvents.drop(1).firstOrNull { earlier ->
             val daysSinceEarlier = effectiveToday - earlier.triggerIndex
-            val inFruitingWindow = daysSinceEarlier in (hydrationThreshold + 1)..fruitingThreshold
-            val isSaturatingRain = earlier.rainAmount >= max(25.0f, targetRain * 0.70f)
-            inFruitingWindow && isSaturatingRain
+            daysSinceEarlier in (hydrationThreshold + 1)..fruitingThreshold && earlier.rainAmount > 15.0f
         }
 
         val evalRecent = evaluateStageFromTrigger(
@@ -861,30 +859,74 @@ object MushroomAlgorithms {
             tauPeak = tauPeak
         )
 
+        val baseEval: GrowthPhaseEvaluation
+        val activeTriggerForDrought: RainTrigger
+
         if (earlierCandidate == null) {
-            return evalRecent
-        }
-
-        val evalEarlier = evaluateStageFromTrigger(
-            activeTrigger = earlierCandidate,
-            effectiveToday = effectiveToday,
-            species = species,
-            hydrationThreshold = hydrationThreshold,
-            incubationThreshold = incubationThreshold,
-            fruitingThreshold = fruitingThreshold,
-            tauPeak = tauPeak
-        )
-
-        // Raccordo continuo Lipschitziano (F04 / REG-03) attorno al reset 0.70
-        val ratio = (recentTrigger.rainAmount / earlierCandidate.rainAmount.coerceAtLeast(1.0f)).toDouble()
-        val transition = smoothstep(0.50, 0.90, ratio)
-        val blendedMultiplier = (1.0 - transition) * evalEarlier.multiplier + transition * evalRecent.multiplier
-
-        return if (transition < 0.5) {
-            evalEarlier.copy(multiplier = blendedMultiplier)
+            baseEval = evalRecent
+            activeTriggerForDrought = recentTrigger
         } else {
-            evalRecent.copy(multiplier = blendedMultiplier)
+            val evalEarlier = evaluateStageFromTrigger(
+                activeTrigger = earlierCandidate,
+                effectiveToday = effectiveToday,
+                species = species,
+                hydrationThreshold = hydrationThreshold,
+                incubationThreshold = incubationThreshold,
+                fruitingThreshold = fruitingThreshold,
+                tauPeak = tauPeak
+            )
+
+            // Raccordo continuo Lipschitziano (F04 / REG-03) e modulazione saturazione continua (C1)
+            val saturationFactor = smoothstep(15.0, 25.0, earlierCandidate.rainAmount.toDouble())
+            val ratio = (recentTrigger.rainAmount / earlierCandidate.rainAmount.coerceAtLeast(1.0f)).toDouble()
+            val transition = smoothstep(0.50, 0.90, ratio)
+            val weightEarlier = (1.0 - transition) * saturationFactor
+            val blendedMultiplier = weightEarlier * evalEarlier.multiplier + (1.0 - weightEarlier) * evalRecent.multiplier
+
+            baseEval = if (weightEarlier >= 0.5) {
+                evalEarlier.copy(multiplier = blendedMultiplier)
+            } else {
+                evalRecent.copy(multiplier = blendedMultiplier)
+            }
+            activeTriggerForDrought = if (weightEarlier >= 0.5) earlierCandidate else recentTrigger
         }
+
+        // Gate di Disseccamento Idrologico Superficiale (REV2-03 / Mindino Gate)
+        val postTriggerStart = activeTriggerForDrought.triggerIndex + 1
+        if (postTriggerStart <= effectiveToday) {
+            var nDry = 0
+            for (idx in effectiveToday downTo postTriggerStart) {
+                if (processedData[idx].liquidPrecip < 1.0f) {
+                    nDry++
+                } else {
+                    break
+                }
+            }
+
+            val postTriggerDays = processedData.subList(postTriggerStart, effectiveToday + 1)
+            val soilValues = postTriggerDays.mapNotNull { it.avgSoilMoisture0To7cm?.toDouble() }
+            if (nDry >= 5 && soilValues.isNotEmpty()) {
+                val avgSoil0To7 = soilValues.average()
+                val recentSoil = postTriggerDays.takeLast(min(5, postTriggerDays.size)).mapNotNull { it.avgSoilMoisture0To7cm?.toDouble() }
+                val currentSoil = postTriggerDays.lastOrNull()?.avgSoilMoisture0To7cm?.toDouble()
+                val effectiveSoil = listOfNotNull(avgSoil0To7, if (recentSoil.isNotEmpty()) recentSoil.average() else null, currentSoil).minOrNull() ?: avgSoil0To7
+                if (effectiveSoil <= 0.22) {
+                    val phiDrought = smoothstep(0.14, 0.22, effectiveSoil).coerceIn(0.20, 1.0)
+                    val decayedMultiplier = baseEval.multiplier * phiDrought
+                    return if (phiDrought <= 0.50) {
+                        baseEval.copy(
+                            phaseText = "Fase: Stress idrico e disseccamento superficiale (primordi compromessi dalla siccità).",
+                            multiplier = decayedMultiplier,
+                            stage = GrowthStage.WANING
+                        )
+                    } else {
+                        baseEval.copy(multiplier = decayedMultiplier)
+                    }
+                }
+            }
+        }
+
+        return baseEval
     }
 
     internal fun extractCandidateRainEvents(
@@ -2357,8 +2399,13 @@ object MushroomAlgorithms {
 
         // 7. Fase miceliare
         val cleanPhase = growthPhaseText.replace("Fase: ", "").trim()
-        val phaseName = cleanPhase.substringBefore(" (")
-        val phaseDetail = cleanPhase.substringAfter("(", "").replace(")", "").ifEmpty { "Cronologia e latenza piogge" }
+        val isDroughtStress = cleanPhase.contains("Stress idrico") || cleanPhase.contains("disseccamento")
+        val phaseName = if (isDroughtStress) "Stress idrico" else cleanPhase.substringBefore(" (")
+        val phaseDetail = if (isDroughtStress) {
+            "Disseccamento superficiale: primordi compromessi dalla siccità"
+        } else {
+            cleanPhase.substringAfter("(", "").replace(")", "").ifEmpty { "Cronologia e latenza piogge" }
+        }
         val phaseLevel = when {
             cleanPhase.contains("ottimale") || cleanPhase.contains("attiva") -> FactorLevel.FAVORABLE
             cleanPhase.contains("Incubazione") || cleanPhase.contains("Idratazione") -> FactorLevel.NEUTRAL
@@ -2482,7 +2529,7 @@ object MushroomAlgorithms {
 
         for (i in startIndex until processedDays.size) {
             val weatherScore = calculateWeatherScore(i, processedDays, spunHyphalDensity, species, config, canopyCover)
-            val growthPhaseMultiplier = evaluateGrowthPhase(processedDays, species, i).multiplier
+            val growthPhaseMultiplier = evaluateGrowthPhase(effectiveDays, species, i).multiplier
             val prob = dailyGrowthProbability(
                 weatherScore = weatherScore,
                 habitatScore = effectiveHabScore,

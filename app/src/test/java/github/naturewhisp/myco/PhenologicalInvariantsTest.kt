@@ -8,6 +8,7 @@ import github.naturewhisp.myco.utils.GrowthStage
 import github.naturewhisp.myco.utils.MushroomAlgorithms
 import github.naturewhisp.myco.utils.RainTrigger
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -260,6 +261,37 @@ class PhenologicalInvariantsTest {
         assertTrue("La variazione di probabilità per perturbazioni infinitesimali deve essere <= 5% (attuale: ${abs(p1 - p2)}%)", abs(p1 - p2) <= 5)
     }
 
+    @Test
+    fun invariant14_lipschitzContinuityAcross25mmRainBoundary() {
+        // Verifica continuità C1: la transizione per piogge attorno a 25 mm non deve presentare salti
+        val days2499 = createSyntheticSeries(
+            rainMap = mapOf(13 to 24.99f, 24 to 10.0f),
+            avgTemp = 16.0f
+        )
+        val days2501 = createSyntheticSeries(
+            rainMap = mapOf(13 to 25.01f, 24 to 10.0f),
+            avgTemp = 16.0f
+        )
+
+        val evalA = MushroomAlgorithms.evaluateGrowthPhase(days2499, edulis, dayIndex = 24)
+        val evalB = MushroomAlgorithms.evaluateGrowthPhase(days2501, edulis, dayIndex = 24)
+
+        assertTrue(
+            "La differenza nei moltiplicatori fenologici tra 24.99mm e 25.01mm deve essere <= 0.05 (attuale: ${abs(evalA.multiplier - evalB.multiplier)})",
+            abs(evalA.multiplier - evalB.multiplier) <= 0.05
+        )
+
+        val wA = MushroomAlgorithms.calculateWeatherScore(24, days2499, species = edulis, config = EcologicalWeightsConfig.PHENOLOGICAL)
+        val wB = MushroomAlgorithms.calculateWeatherScore(24, days2501, species = edulis, config = EcologicalWeightsConfig.PHENOLOGICAL)
+        val pA = MushroomAlgorithms.dailyGrowthProbability(wA, 0.9, 0.9, 1.0, 1.0, config = EcologicalWeightsConfig.PHENOLOGICAL, growthPhaseMultiplier = evalA.multiplier, species = edulis)
+        val pB = MushroomAlgorithms.dailyGrowthProbability(wB, 0.9, 0.9, 1.0, 1.0, config = EcologicalWeightsConfig.PHENOLOGICAL, growthPhaseMultiplier = evalB.multiplier, species = edulis)
+
+        assertTrue(
+            "Il salto di idoneità tra 24.99mm e 25.01mm deve essere <= 5 punti (attuale: ${abs(pA - pB)})",
+            abs(pA - pB) <= 5
+        )
+    }
+
     // =========================================================================
     // SEZIONE 3: BENCHMARK EMPIRICI GROUND TRUTH (CASI STUDIO REALI)
     // =========================================================================
@@ -353,34 +385,61 @@ class PhenologicalInvariantsTest {
     }
 
     /**
-     * Benchmark 3: Mindino Weekend 26 Settembre 2026 (Proiezione a 9 giorni).
-     * A 9 giorni dalla perturbazione saturante, l'incubazione primordiale si completa
-     * e la probabilità deve salire naturalmente verso la finestra di fruttificazione (>= 65%).
+     * Mindino Gate (Adversarial Boundary Invariant / Mindino Case Study):
+     * Pioggia di 25.3 mm al 17 settembre (Day 23) seguita da 12 giorni di siccità (28-29 settembre, Day 34 e 35).
+     * Il disseccamento dell'orizzonte superficiale (theta_0-7 <= 0.18 m3/m3) deve attivare Phi_drought <= 0.50,
+     * abortendo la buttata (WANING, P <= 35%) invece di segnalare ACTIVE_FRUITING.
      */
     @Test
-    fun benchmark03_mindinoProjectedWeekendPeakSep26() {
-        // Estendiamo la serie con giorni stabili post-pioggia
-        val extendedDays = createMindinoHistoricalSeries().toMutableList()
-        val startDate = java.time.LocalDate.of(2026, 8, 25)
-        for (i in 28..32) {
-            val validDate = startDate.plusDays(i.toLong()).toString()
-            extendedDays.add(
-                ProcessedDay(
-                    date = validDate,
-                    avgTemp = 15.0f,
-                    minTemp = 10.0f,
-                    maxTemp = 19.0f,
-                    totalPrecip = 0.0f,
-                    avgHumidity = 80.0f,
-                    weatherCode = 1
-                )
+    fun testMindinoGate_severeDroughtPostTriggerAbortsFruiting() {
+        val days = createMindinoHistoricalSeries()
+
+        for (dayIdx in listOf(34, 35)) {
+            val eval = MushroomAlgorithms.evaluateGrowthPhase(days, edulis, dayIndex = dayIdx)
+
+            assertEquals(
+                "A 11-12 giorni di secco post-trigger con suolo superficiale secco, lo stadio deve essere WANING",
+                GrowthStage.WANING,
+                eval.stage
+            )
+            assertNotEquals(
+                "Non deve essere in ACTIVE_FRUITING",
+                GrowthStage.ACTIVE_FRUITING,
+                eval.stage
+            )
+            assertEquals(
+                "Il testo di fase deve indicare stress idrico e disseccamento",
+                "Fase: Stress idrico e disseccamento superficiale (primordi compromessi dalla siccità).",
+                eval.phaseText
+            )
+            assertTrue(
+                "Il moltiplicatore fenologico deve essere <= 0.45 a causa del gate di siccità (attuale: ${eval.multiplier})",
+                eval.multiplier <= 0.45
+            )
+
+            val w = MushroomAlgorithms.calculateWeatherScore(
+                dayIdx,
+                days,
+                species = edulis,
+                config = EcologicalWeightsConfig.PHENOLOGICAL,
+                canopyCover = 0.70
+            )
+            val p = MushroomAlgorithms.dailyGrowthProbability(
+                weatherScore = w,
+                habitatScore = 0.80,
+                altitudeScore = 0.85,
+                seasonalityScore = 1.0,
+                terrainModifier = 1.00,
+                config = EcologicalWeightsConfig.PHENOLOGICAL,
+                growthPhaseMultiplier = eval.multiplier,
+                species = edulis
+            )
+
+            assertTrue(
+                "La probabilità a Mindino nei giorni 34-35 con suolo superficiale secco non deve superare 35% (attuale: $p%)",
+                p <= 35
             )
         }
-
-        val evalSep26 = MushroomAlgorithms.evaluateGrowthPhase(extendedDays, edulis, dayIndex = 32)
-        assertEquals(GrowthStage.ACTIVE_FRUITING, evalSep26.stage)
-        assertEquals(9, evalSep26.daysSinceTrigger)
-        assertTrue("Il moltiplicatore fenologico a 9 giorni deve essere >= 0.85 (attuale: ${evalSep26.multiplier})", evalSep26.multiplier >= 0.85)
     }
 
     /**
@@ -595,8 +654,19 @@ class PhenologicalInvariantsTest {
         // Day 23 (17 set): 25.3 mm (pioggia primaria consistente)
         // Day 24 (18 set): giorno della visita sul campo (0 funghi)
         // Day 27 (21 set): 4 giorni dopo pioggia
+        // Day 34 (28 set): 11 giorni dopo pioggia (siccità superficiale e aborto primordi)
+        // Day 35 (29 set): 12 giorni dopo pioggia (siccità superficiale e aborto primordi)
         val startDate = java.time.LocalDate.of(2026, 8, 25)
-        return (0 until 28).map { i ->
+        return (0 until 36).map { i ->
+            val soil0To7 = when {
+                i < 16 -> 0.18f
+                i == 16 -> 0.24f
+                i in 17..22 -> (0.24f - (i - 16) * 0.01f).coerceAtLeast(0.18f)
+                i == 23 -> 0.25f
+                i == 24 -> 0.24f
+                i in 25..31 -> (0.24f - (i - 24) * 0.012f).coerceAtLeast(0.16f)
+                else -> 0.16f
+            }
             ProcessedDay(
                 date = startDate.plusDays(i.toLong()).toString(),
                 avgTemp = 16.0f,
@@ -611,7 +681,9 @@ class PhenologicalInvariantsTest {
                 weatherCode = when (i) {
                     16, 23 -> 61
                     else -> 1
-                }
+                },
+                avgSoilMoisture0To7cm = soil0To7,
+                avgSoilMoisture7To28cm = 0.22f
             )
         }
     }

@@ -54,8 +54,8 @@ class HeatmapEngine {
                 val ecmRatio = (ecm / 65.0).coerceIn(0.0, 1.0)
                 val hyphalRatio = (hyphal / 7.0).coerceIn(0.0, 1.0)
                 val biologicalPotential = when (species.category) {
-                    EcologicalCategory.SAPROTROPHIC -> hyphalRatio * 80.0 + 20.0
-                    EcologicalCategory.PARASITIC -> hyphalRatio * 70.0 + ecmRatio * 30.0
+                    EcologicalCategory.SAPROTROPHIC -> 50.0
+                    EcologicalCategory.PARASITIC -> ecmRatio * 100.0
                     EcologicalCategory.ECTOMYCORRHIZAL -> if (applySpunHyphalBonus) {
                         ecmRatio * 55.0 + hyphalRatio * 45.0
                     } else {

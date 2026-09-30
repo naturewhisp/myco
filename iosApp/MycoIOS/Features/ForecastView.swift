@@ -14,21 +14,21 @@ struct ForecastView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 24) {
                             Label(selectedLocation.name, systemImage: "mappin.and.ellipse").font(.headline)
-                            Text("Probabilità prodotta dal core condiviso per \(viewModel.selectedSpecies.vernacularName).")
+                            Text("Indice di idoneità prodotto dal core condiviso per \(viewModel.selectedSpecies.vernacularName).")
                                 .font(.subheadline).foregroundStyle(colors.inkSoft)
 
                             Chart(viewModel.environmentalDays.prefix(7)) { day in
-                                LineMark(x: .value("Giorno", day.date, unit: .day), y: .value("Probabilità", day.probability))
+                                LineMark(x: .value("Giorno", day.date, unit: .day), y: .value("Indice", day.probability))
                                     .foregroundStyle(colors.warning)
                                     .symbol(Circle())
-                                PointMark(x: .value("Giorno", day.date, unit: .day), y: .value("Probabilità", day.probability))
-                                    .annotation(position: .top) { Text("\(day.probability)%").font(.caption2) }
+                                PointMark(x: .value("Giorno", day.date, unit: .day), y: .value("Indice", day.probability))
+                                    .annotation(position: .top) { Text("\(day.probability)/100").font(.caption2) }
                             }
                             .chartYScale(domain: 0...100)
-                            .chartYAxisLabel("Probabilità %")
+                            .chartYAxisLabel("Indice (0–100)")
                             .chartXAxis { AxisMarks(values: .stride(by: .day)) { _ in AxisGridLine(); AxisValueLabel(format: .dateTime.weekday(.narrow)) } }
                             .frame(height: 240)
-                            .accessibilityLabel("Probabilità di fruttificazione nei prossimi sette giorni")
+                            .accessibilityLabel("Indice di idoneità ambientale nei prossimi sette giorni")
 
                             Chart(viewModel.environmentalDays.prefix(7)) { day in
                                 LineMark(x: .value("Giorno", day.date, unit: .day), y: .value("Temperatura", day.averageTemperature))
@@ -44,7 +44,7 @@ struct ForecastView: View {
                             ForEach(viewModel.environmentalDays.prefix(7)) { day in
                                 HStack {
                                     Text(day.date.formatted(.dateTime.weekday(.abbreviated).day().month())).frame(maxWidth: .infinity, alignment: .leading)
-                                    Text("\(day.probability)% · \(day.tierLabel)").fontWeight(.semibold)
+                                    Text("\(day.probability)/100 · \(day.tierLabel)").fontWeight(.semibold)
                                 }
                                 .frame(minHeight: 44)
                                 .accessibilityElement(children: .combine)

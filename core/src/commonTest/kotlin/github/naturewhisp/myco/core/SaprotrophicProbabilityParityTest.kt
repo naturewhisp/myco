@@ -57,7 +57,7 @@ class SaprotrophicProbabilityParityTest {
         habitatScore: Double,
         canopyTypes: List<String> = emptyList(),
         spunEcmRichness: Double? = null,
-    ): AnalysisResult = MycoAnalysisEngine().analyze(
+    ): AnalysisResult = MycoAnalysisEngine().analyzeLegacy(
         AnalysisInputs(
             days = List(21) { index ->
                 ProcessedDay(

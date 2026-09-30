@@ -10,58 +10,485 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 object MycoAlgorithms {
+    fun applyCanopyBuffering(
+        day: ProcessedDay,
+        canopyCover: Double = 0.80,
+    ): ProcessedDay {
+        val c = canopyCover.coerceIn(0.0, 1.0)
+        if (c <= 0.001) return day
+
+        val rawMax = day.maxTemp
+        val rawMin = day.minTemp
+        val rawAvg = day.avgTemp
+
+        // 1. Cooling diurno sulle massime
+        val excessMax = max(0.0, rawMax - 18.0)
+        val deltaMax = c * min(4.0, 1.0 + 0.15 * excessMax)
+        val subMaxTemp = rawMax - deltaMax
+
+        // 2. Warming notturno sulle minime
+        val coldDeficit = smoothstep(0.0, 10.0, 10.0 - rawMin)
+        val deltaMin = c * (1.2 + 0.5 * coldDeficit)
+        val subMinTemp = rawMin + deltaMin
+
+        // 3. Attenuazione DTR
+        val subDtr = max(0.5, subMaxTemp - subMinTemp)
+        val rawDtr = max(0.5, rawMax - rawMin)
+        val dtrRatio = (subDtr / rawDtr).coerceIn(0.4, 1.0)
+        val subAvgTemp = rawMin + deltaMin + (rawAvg - rawMin) * dtrRatio
+
+        // 4. Intercettazione chioma e Throughfall
+        val precip = day.liquidPrecipMm
+        val throughfall = if (precip > 0.0) {
+            val lossFraction = c * (0.15 + 0.20 * kotlin.math.exp(-precip / 8.0))
+            (precip * (1.0 - lossFraction)).coerceAtLeast(0.0)
+        } else {
+            0.0
+        }
+
+        // 5. Umidità relativa sub-canopy
+        val rawHum = day.avgHumidityPercent
+        val humBoost = c * 6.0 * (1.0 - rawHum / 100.0)
+        val subHumidity = min(100.0, rawHum + humBoost)
+
+        return day.copy(
+            avgTemp = subAvgTemp,
+            minTemp = subMinTemp,
+            maxTemp = subMaxTemp,
+            totalPrecipMm = throughfall,
+            avgHumidityPercent = subHumidity,
+        )
+    }
+
+    fun applyCanopyBuffering(
+        days: List<ProcessedDay>,
+        canopyCover: Double = 0.80,
+    ): List<ProcessedDay> {
+        if (canopyCover <= 0.001) return days
+        return days.map { applyCanopyBuffering(it, canopyCover) }
+    }
+
+    fun phenologyKernel(
+        tauDays: Double,
+        tauPeak: Double,
+        alpha: Double = 4.0,
+    ): Double {
+        if (tauDays <= 0.0 || tauPeak <= 0.0) return 0.0
+        val ratio = tauDays / tauPeak
+        return ratio.pow(alpha) * kotlin.math.exp(-alpha * (ratio - 1.0))
+    }
+
+    fun calculateEffectiveRainfall(
+        dayIndex: Int,
+        days: List<ProcessedDay>,
+        species: MushroomSpecies,
+    ): Double {
+        if (dayIndex !in days.indices) return 0.0
+        val maxMemoryDays = 26
+        val chillingStart = max(0, dayIndex - 14)
+        val chillingWindow = days.slice(chillingStart until dayIndex)
+        val hasChilling = chillingWindow.any { it.minTemp < species.toleratedTempMin }
+        val effectiveTauPeak = if (hasChilling) {
+            species.phenologyLatencyPeakDays + 2.0
+        } else {
+            species.phenologyLatencyPeakDays
+        }
+        val memoryWindowStart = max(0, dayIndex - maxMemoryDays)
+        var weightedRain = 0.0
+        val pastDeepSoilList = mutableListOf<Double>()
+        for (i in memoryWindowStart until dayIndex) {
+            val tau = (dayIndex - i).toDouble()
+            val precip = days[i].liquidPrecipMm
+            if (precip > 0.0) {
+                val weight = phenologyKernel(
+                    tauDays = tau,
+                    tauPeak = effectiveTauPeak,
+                    alpha = species.phenologyShapeAlpha,
+                )
+                weightedRain += precip * weight
+            }
+            days[i].soilMoisture7To28?.let { pastDeepSoilList.add(it) }
+        }
+        val avgPastDeepSoil = if (pastDeepSoilList.isNotEmpty()) pastDeepSoilList.average() else null
+        val comp = deepSoilMoistureCompensation(avgPastDeepSoil)
+        return (weightedRain * comp).coerceAtLeast(0.0)
+    }
+
+    fun calculateDtrPenalty(dtr: Double, usePhenologicalInertia: Boolean = true): Double {
+        return if (usePhenologicalInertia) {
+            1.0 - 0.20 * smoothstep(12.0, 18.0, dtr)
+        } else {
+            if (dtr > 15.0) 0.8 else 1.0
+        }
+    }
+
+    fun evaluateGrowthPhase(
+        processedData: List<ProcessedDay>,
+        species: MushroomSpecies,
+        dayIndex: Int,
+    ): GrowthPhaseEvaluation {
+        val effectiveToday = min(dayIndex, processedData.size - 1)
+        if (effectiveToday < 0 || processedData.isEmpty()) {
+            return GrowthPhaseEvaluation(
+                phaseText = "Fase: Dati insufficienti per il calcolo fenologico.",
+                multiplier = 0.25,
+                stage = GrowthStage.WAITING_FOR_RAIN,
+            )
+        }
+
+        val tauPeak = species.phenologyLatencyPeakDays
+        val hydrationThreshold = max(2, (0.35 * tauPeak).roundToInt())
+        val incubationThreshold = max(hydrationThreshold + 1, (0.75 * tauPeak).roundToInt())
+        val fruitingThreshold = max(incubationThreshold + 1, (1.35 * tauPeak).roundToInt())
+        val maxLookback = max(0, effectiveToday - (2.5 * tauPeak).roundToInt())
+
+        val candidateEvents = extractCandidateRainEvents(processedData, effectiveToday, maxLookback)
+        if (candidateEvents.isEmpty()) {
+            return GrowthPhaseEvaluation(
+                phaseText = "Fase: Crescita assente (in attesa di precipitazioni).",
+                multiplier = 0.25,
+                stage = GrowthStage.WAITING_FOR_RAIN,
+            )
+        }
+
+        val distinctEvents = clusterRainEvents(candidateEvents)
+        val recentTrigger = distinctEvents.first()
+        val earlierCandidate = distinctEvents.drop(1).firstOrNull { earlier ->
+            val daysSinceEarlier = effectiveToday - earlier.triggerIndex
+            daysSinceEarlier in (hydrationThreshold + 1)..fruitingThreshold && earlier.rainAmount > 15.0
+        }
+
+        val evalRecent = evaluateStageFromTrigger(
+            activeTrigger = recentTrigger,
+            effectiveToday = effectiveToday,
+            species = species,
+            hydrationThreshold = hydrationThreshold,
+            incubationThreshold = incubationThreshold,
+            fruitingThreshold = fruitingThreshold,
+            tauPeak = tauPeak,
+        )
+
+        val baseEval: GrowthPhaseEvaluation
+        val activeTriggerForDrought: RainTrigger
+
+        if (earlierCandidate == null) {
+            baseEval = evalRecent
+            activeTriggerForDrought = recentTrigger
+        } else {
+            val evalEarlier = evaluateStageFromTrigger(
+                activeTrigger = earlierCandidate,
+                effectiveToday = effectiveToday,
+                species = species,
+                hydrationThreshold = hydrationThreshold,
+                incubationThreshold = incubationThreshold,
+                fruitingThreshold = fruitingThreshold,
+                tauPeak = tauPeak,
+            )
+
+            val saturationFactor = smoothstep(15.0, 25.0, earlierCandidate.rainAmount)
+            val ratio = recentTrigger.rainAmount / earlierCandidate.rainAmount.coerceAtLeast(1.0)
+            val transition = smoothstep(0.50, 0.90, ratio)
+            val weightEarlier = (1.0 - transition) * saturationFactor
+            val blendedMultiplier = weightEarlier * evalEarlier.multiplier + (1.0 - weightEarlier) * evalRecent.multiplier
+
+            baseEval = if (weightEarlier >= 0.5) {
+                evalEarlier.copy(multiplier = blendedMultiplier)
+            } else {
+                evalRecent.copy(multiplier = blendedMultiplier)
+            }
+            activeTriggerForDrought = if (weightEarlier >= 0.5) earlierCandidate else recentTrigger
+        }
+
+        // Gate di Disseccamento Idrologico Superficiale (REV2-03 / Mindino Gate)
+        val postTriggerStart = activeTriggerForDrought.triggerIndex + 1
+        if (postTriggerStart <= effectiveToday) {
+            var nDry = 0
+            for (idx in effectiveToday downTo postTriggerStart) {
+                if (processedData[idx].liquidPrecipMm < 1.0) {
+                    nDry++
+                } else {
+                    break
+                }
+            }
+
+            val postTriggerDays = processedData.subList(postTriggerStart, effectiveToday + 1)
+            val soilValues = postTriggerDays.mapNotNull { it.soilMoisture0To7 }
+            if (nDry >= 5 && soilValues.isNotEmpty()) {
+                val avgSoil0To7 = soilValues.average()
+                val recentSoil = postTriggerDays.takeLast(min(5, postTriggerDays.size)).mapNotNull { it.soilMoisture0To7 }
+                val currentSoil = postTriggerDays.lastOrNull()?.soilMoisture0To7
+                val effectiveSoil = listOfNotNull(avgSoil0To7, if (recentSoil.isNotEmpty()) recentSoil.average() else null, currentSoil).minOrNull() ?: avgSoil0To7
+                if (effectiveSoil <= 0.22) {
+                    val phiDrought = smoothstep(0.14, 0.22, effectiveSoil).coerceIn(0.20, 1.0)
+                    val decayedMultiplier = baseEval.multiplier * phiDrought
+                    return if (phiDrought <= 0.50) {
+                        baseEval.copy(
+                            phaseText = "Fase: Stress idrico e disseccamento superficiale (primordi compromessi dalla siccità).",
+                            multiplier = decayedMultiplier,
+                            stage = GrowthStage.WANING,
+                        )
+                    } else {
+                        baseEval.copy(multiplier = decayedMultiplier)
+                    }
+                }
+            }
+        }
+
+        return baseEval
+    }
+
+    internal fun extractCandidateRainEvents(
+        processedData: List<ProcessedDay>,
+        effectiveToday: Int,
+        maxLookback: Int,
+    ): List<RainTrigger> {
+        val candidateEvents = mutableListOf<RainTrigger>()
+        var i = effectiveToday
+        while (i >= maxLookback) {
+            val precip = processedData[i].liquidPrecipMm
+            if (precip >= 10.0) {
+                candidateEvents.add(RainTrigger(i, precip))
+                i--
+            } else if (precip >= 0.5 && i >= 2) {
+                val threeDayRain = processedData[i].liquidPrecipMm +
+                    processedData[i - 1].liquidPrecipMm +
+                    processedData[i - 2].liquidPrecipMm
+                if (threeDayRain >= 17.5) {
+                    candidateEvents.add(RainTrigger(i - 2, threeDayRain))
+                    i -= 3
+                } else if (i >= 4) {
+                    val fiveDayRain = threeDayRain +
+                        processedData[i - 3].liquidPrecipMm +
+                        processedData[i - 4].liquidPrecipMm
+                    if (fiveDayRain >= 24.0) {
+                        candidateEvents.add(RainTrigger(i - 4, fiveDayRain))
+                        i -= 5
+                    } else {
+                        i--
+                    }
+                } else {
+                    i--
+                }
+            } else {
+                i--
+            }
+        }
+        return candidateEvents
+    }
+
+    internal fun clusterRainEvents(events: List<RainTrigger>): List<RainTrigger> {
+        if (events.isEmpty()) return emptyList()
+        val distinctEvents = mutableListOf<RainTrigger>()
+        var currentClusterTriggerIndex = events[0].triggerIndex
+        var currentClusterRain = events[0].rainAmount
+
+        for (k in 1 until events.size) {
+            val ev = events[k]
+            if (kotlin.math.abs(ev.triggerIndex - currentClusterTriggerIndex) <= 2) {
+                currentClusterRain += ev.rainAmount
+                currentClusterTriggerIndex = min(currentClusterTriggerIndex, ev.triggerIndex)
+            } else {
+                distinctEvents.add(RainTrigger(currentClusterTriggerIndex, currentClusterRain))
+                currentClusterTriggerIndex = ev.triggerIndex
+                currentClusterRain = ev.rainAmount
+            }
+        }
+        distinctEvents.add(RainTrigger(currentClusterTriggerIndex, currentClusterRain))
+        return distinctEvents
+    }
+
+    internal fun evaluateStageFromTrigger(
+        activeTrigger: RainTrigger,
+        effectiveToday: Int,
+        species: MushroomSpecies,
+        hydrationThreshold: Int,
+        incubationThreshold: Int,
+        fruitingThreshold: Int,
+        tauPeak: Double,
+    ): GrowthPhaseEvaluation {
+        val daysSince = effectiveToday - activeTrigger.triggerIndex
+        val multiplier: Double
+        val phaseText: String
+        val stage: GrowthStage
+
+        when {
+            daysSince <= hydrationThreshold -> {
+                stage = GrowthStage.MYCELIAL_HYDRATION
+                multiplier = 0.35 + 0.15 * (daysSince.toDouble() / hydrationThreshold.coerceAtLeast(1))
+                phaseText = "Fase: Idratazione miceliare (${daysSince} gg dall'innesco)."
+            }
+            daysSince <= incubationThreshold -> {
+                stage = GrowthStage.PRIMORDIA_INCUBATION
+                val span = (incubationThreshold - hydrationThreshold).coerceAtLeast(1)
+                multiplier = 0.50 + 0.35 * ((daysSince - hydrationThreshold).toDouble() / span)
+                phaseText = "Fase: Incubazione primordi (${daysSince} gg dall'innesco)."
+            }
+            daysSince <= fruitingThreshold -> {
+                stage = GrowthStage.ACTIVE_FRUITING
+                multiplier = if (daysSince.toDouble() <= tauPeak) {
+                    val span = (tauPeak - incubationThreshold).coerceAtLeast(1.0)
+                    0.85 + 0.15 * ((daysSince - incubationThreshold).toDouble() / span)
+                } else {
+                    val span = (fruitingThreshold - tauPeak).coerceAtLeast(1.0)
+                    1.00 - 0.15 * ((daysSince - tauPeak) / span)
+                }
+                phaseText = "Fase: Buttata attiva e culmine epigeo (${daysSince} gg dall'innesco)."
+            }
+            else -> {
+                stage = GrowthStage.WANING
+                val extraDays = (daysSince - fruitingThreshold).toDouble()
+                multiplier = (0.70 - 0.05 * extraDays).coerceIn(0.30, 0.70)
+                phaseText = "Fase: Flusso in esaurimento (${daysSince} gg dall'innesco)."
+            }
+        }
+
+        return GrowthPhaseEvaluation(
+            phaseText = phaseText,
+            multiplier = multiplier.coerceIn(0.20, 1.0),
+            daysSinceTrigger = daysSince,
+            stage = stage,
+        )
+    }
+
     fun weatherScore(
         dayIndex: Int,
         days: List<ProcessedDay>,
         species: MushroomSpecies,
         spunHyphalDensity: Double?,
         applySpunHyphalBonus: Boolean = false,
+        usePhenologicalInertia: Boolean = true,
+        canopyCover: Double = 0.0,
     ): Int {
         if (dayIndex !in days.indices) return 0
 
-        val windows = EnvironmentalWindows.derive(days, dayIndex)
-        val totalRain = windows.rainWindowTotalMm
-        val effectiveSpunBonus = applySpunHyphalBonus && species.category == EcologicalCategory.ECTOMYCORRHIZAL
-        var rainScore = rainResponse(totalRain, species) * 40.0
-        if (effectiveSpunBonus && spunHyphalDensity != null && spunHyphalDensity >= 5.0 && totalRain >= 12.0) {
+        val effectiveCanopy = canopyCover.coerceIn(0.0, 1.0)
+        val effectiveData = if (effectiveCanopy > 0.001) applyCanopyBuffering(days, effectiveCanopy) else days
+
+        val effectiveRain: Double
+        if (usePhenologicalInertia) {
+            effectiveRain = calculateEffectiveRainfall(dayIndex, effectiveData, species)
+        } else {
+            val rainStart = max(0, dayIndex - 10)
+            val rainEnd = max(0, dayIndex - 2)
+            val rainWindow = if (rainStart < rainEnd && rainEnd <= effectiveData.size) {
+                effectiveData.slice(rainStart until rainEnd)
+            } else {
+                emptyList()
+            }
+            effectiveRain = rainWindow.sumOf { it.liquidPrecipMm }
+        }
+
+        val effectiveSpunBonus = applySpunHyphalBonus && (!usePhenologicalInertia || species.category == EcologicalCategory.ECTOMYCORRHIZAL)
+        var rainScore = rainResponse(effectiveRain, species) * 40.0
+        if (effectiveSpunBonus && spunHyphalDensity != null && spunHyphalDensity >= 5.0 && effectiveRain >= 12.0) {
             rainScore = min(40.0, rainScore + 6.0)
         } else if (effectiveSpunBonus && spunHyphalDensity != null && spunHyphalDensity < 2.5) {
             rainScore = max(0.0, rainScore - 4.0)
         }
 
-        val minTempRecent = if (windows.temperature.isNotEmpty()) {
-            windows.temperature.minOf { it.avgTemp }
+        val tempStart = max(0, dayIndex - 5)
+        val tempWindow = if (tempStart < dayIndex && dayIndex <= effectiveData.size) {
+            effectiveData.slice(tempStart until dayIndex)
         } else {
-            windows.averageTempWindowC
+            emptyList()
         }
+        val avgTempLast5Days = if (tempWindow.isNotEmpty()) tempWindow.sumOf { it.avgTemp } / tempWindow.size else 0.0
+        val minTempRecent = if (tempWindow.isNotEmpty()) tempWindow.minOf { it.minTemp } else avgTempLast5Days
         val nocturnalInhibition = nocturnalChillingInhibition(minTempRecent, species)
 
-        val tempScore = temperatureResponse(windows.averageTempWindowC, species) * 30.0 * nocturnalInhibition
+        val currentDay = if (dayIndex < effectiveData.size) effectiveData[dayIndex] else effectiveData.lastOrNull()
+        val dtr = if (currentDay != null) currentDay.maxTemp - currentDay.minTemp else 0.0
+        val dtrPenalty = calculateDtrPenalty(dtr, usePhenologicalInertia)
 
-        val humidityScore = if (windows.averageSoil0To7 != null || windows.averageSoil7To28 != null) {
-            val soil = soilMoistureResponse(windows.averageSoil0To7, windows.averageSoil7To28, windows.averageEt0)
-            (0.40 * humidityResponse(windows.averageHumidityWindowPercent) + 0.60 * soil) * 15.0
+        val effectiveTempScore: Double
+        if (usePhenologicalInertia && dayIndex >= 10) {
+            val mediumStart = max(0, dayIndex - 20)
+            val mediumEnd = max(0, dayIndex - 5)
+            val mediumWindow = if (mediumStart < mediumEnd && mediumEnd <= effectiveData.size) {
+                effectiveData.slice(mediumStart until mediumEnd)
+            } else {
+                emptyList()
+            }
+            val avgTempMedium = if (mediumWindow.isNotEmpty()) mediumWindow.sumOf { it.avgTemp } / mediumWindow.size else avgTempLast5Days
+            val mediumScore = ctmi(
+                temp = avgTempMedium,
+                tMin = species.toleratedTempMin,
+                tOpt = species.optimalTemp,
+                tMax = species.toleratedTempMax,
+            )
+            val shortScore = temperatureResponse(avgTempLast5Days, species)
+            effectiveTempScore = 0.75 * shortScore + 0.25 * mediumScore
         } else {
-            humidityResponse(windows.averageHumidityWindowPercent) * 15.0
+            effectiveTempScore = temperatureResponse(avgTempLast5Days, species)
+        }
+
+        val tempScore = effectiveTempScore * 30.0 * nocturnalInhibition * dtrPenalty
+
+        val humStart = max(0, dayIndex - 3)
+        val humEnd = min(effectiveData.size, dayIndex + 1)
+        val humWindow = if (humStart < humEnd) effectiveData.slice(humStart until humEnd) else emptyList()
+        val avgHum = if (humWindow.isNotEmpty()) humWindow.sumOf { it.avgHumidityPercent } / humWindow.size else 0.0
+
+        val soil0To7Vals = humWindow.mapNotNull { it.soilMoisture0To7 }
+        val soil7To28Vals = humWindow.mapNotNull { it.soilMoisture7To28 }
+        val et0Vals = humWindow.mapNotNull { it.evapotranspiration }
+        val hasSoilMoisture = soil0To7Vals.isNotEmpty() || soil7To28Vals.isNotEmpty()
+
+        val humScore = if (hasSoilMoisture) {
+            val avgSoil0To7 = if (soil0To7Vals.isNotEmpty()) soil0To7Vals.average() else null
+            val avgSoil7To28 = if (soil7To28Vals.isNotEmpty()) soil7To28Vals.average() else null
+            val avgET0 = if (et0Vals.isNotEmpty()) et0Vals.average() else null
+            val soilNorm = soilMoistureResponse(avgSoil0To7, avgSoil7To28, avgET0)
+            val airHumNorm = humidityResponse(avgHum)
+            (0.40 * airHumNorm + 0.60 * soilNorm) * 15.0
+        } else {
+            humidityResponse(avgHum) * 15.0
         }
 
         var shockScore = 0.0
-        if (dayIndex > 4 && totalRain >= 12.0) {
-            val drop = windows.temperatureDropC ?: 0.0
-            val minimumDrop = if (effectiveSpunBonus && spunHyphalDensity != null && spunHyphalDensity >= 5.0) 2.0 else 3.0
-            if (drop > minimumDrop) {
-                shockScore = 15.0 * ((drop - minimumDrop) / 3.0).coerceIn(0.0, 1.0) *
-                    (totalRain / 25.0).coerceIn(0.0, 1.0)
+        if (usePhenologicalInertia) {
+            if (dayIndex >= 2 && effectiveRain >= 12.0) {
+                var bestShock = 0.0
+                for (j in 2 until dayIndex) {
+                    val tempBefore = effectiveData[max(0, j - 3)].avgTemp
+                    val tempAfter = effectiveData[j].avgTemp
+                    val drop = tempBefore - tempAfter
+                    val minDrop = if (effectiveSpunBonus && spunHyphalDensity != null && spunHyphalDensity >= 5.0) 2.0 else 3.0
+                    if (drop > minDrop) {
+                        val tau = (dayIndex - j).toDouble()
+                        val phenoWeight = phenologyKernel(
+                            tauDays = tau,
+                            tauPeak = species.phenologyLatencyPeakDays,
+                            alpha = species.phenologyShapeAlpha,
+                        )
+                        val dropFactor = ((drop - minDrop) / 3.0).coerceIn(0.0, 1.0)
+                        val rainFactor = (effectiveRain / 25.0).coerceIn(0.0, 1.0)
+                        val candidateShock = 15.0 * dropFactor * rainFactor * phenoWeight
+                        if (candidateShock > bestShock) {
+                            bestShock = candidateShock
+                        }
+                    }
+                }
+                shockScore = bestShock
+            }
+        } else {
+            if (dayIndex > 4 && effectiveRain >= 12.0) {
+                val drop = effectiveData[dayIndex - 4].avgTemp - effectiveData[dayIndex - 1].avgTemp
+                val minimumDrop = if (effectiveSpunBonus && spunHyphalDensity != null && spunHyphalDensity >= 5.0) 2.0 else 3.0
+                if (drop > minimumDrop) {
+                    shockScore = 15.0 * ((drop - minimumDrop) / 3.0).coerceIn(0.0, 1.0) *
+                        (effectiveRain / 25.0).coerceIn(0.0, 1.0)
+                }
             }
         }
 
-        val rawWeather = (rainScore + tempScore + humidityScore + shockScore)
+        val rawWeather = (rainScore + tempScore + humScore + shockScore)
         val thermalViability = when {
-            windows.averageTempWindowC < species.toleratedTempMin -> {
-                smoothstep(species.toleratedTempMin - 3.0, species.toleratedTempMin, windows.averageTempWindowC)
+            avgTempLast5Days < species.toleratedTempMin -> {
+                smoothstep(species.toleratedTempMin - 3.0, species.toleratedTempMin, avgTempLast5Days)
             }
-            windows.averageTempWindowC > species.toleratedTempMax -> {
-                1.0 - smoothstep(species.toleratedTempMax, species.toleratedTempMax + 3.0, windows.averageTempWindowC)
+            avgTempLast5Days > species.toleratedTempMax -> {
+                1.0 - smoothstep(species.toleratedTempMax, species.toleratedTempMax + 3.0, avgTempLast5Days)
             }
             else -> 1.0
         }

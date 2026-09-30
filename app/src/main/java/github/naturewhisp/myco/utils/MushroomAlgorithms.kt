@@ -82,31 +82,8 @@ data class SpeciesHabitatEvaluation(
     val standDensityScore: Double
 )
 
-/**
- * Fasi biologiche evolutive del ciclo di fruttificazione macrofungina.
- */
-enum class GrowthStage {
-    WAITING_FOR_RAIN,
-    MYCELIAL_HYDRATION,
-    PRIMORDIA_INCUBATION,
-    ACTIVE_FRUITING,
-    WANING
-}
-
-/**
- * Valutazione strutturata della fase fenologica di crescita fungina.
- *
- * @property phaseText Stringa discorsiva completa formattata per la UI.
- * @property multiplier Moltiplicatore di probabilità fenologica continua (0.25..1.00).
- * @property daysSinceTrigger Giorni trascorsi dall'evento pluviometrico scatenante.
- * @property stage Fase biologica discreta corrispondente [GrowthStage].
- */
-data class GrowthPhaseEvaluation(
-    val phaseText: String,
-    val multiplier: Double,
-    val daysSinceTrigger: Int? = null,
-    val stage: GrowthStage = GrowthStage.WAITING_FOR_RAIN
-)
+typealias GrowthStage = github.naturewhisp.myco.core.GrowthStage
+typealias GrowthPhaseEvaluation = github.naturewhisp.myco.core.GrowthPhaseEvaluation
 
 /**
  * Motore matematico e biologico per la modellazione della crescita e fruttificazione fungina.

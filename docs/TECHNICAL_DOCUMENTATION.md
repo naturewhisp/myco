@@ -727,6 +727,46 @@ Per integrare osservazioni opportunistiche sul campo salvaguardando il "dilemma 
    - Regolarizzazione $L_2$ ottimale $\tau = 3 \times 10^{-4}$ e mini-batch compatti $|B| = 128$ ($|B| \in [100, 250]$) che approssimano la funzione di partizione inducendo smooth territoriali naturali ed evitando picchi spuri su singole coordinate.
    - Validazione incrociata a blocchi spaziali (Spatial Blocking a 10-fold) su macro-celle H3 Res 4 per garantire affidabilità predittiva su territori non campionati.
 
+### 4.10 Registro Formale dei Parametri Scientifici & Pipeline Unificata KMP (`core`)
+
+In conformità ai requisiti di rigore del Percorso A (REV2-04, REV2-09), Myco formalizza tutti i coefficienti biologici e idrologici in un registro centralizzato tipizzato e unifica l'intera pipeline di calcolo all'interno del modulo Kotlin Multiplatform `:core` (`commonMain`).
+
+#### 1. Tipizzazione e Provenienza dei Parametri (`ParameterRegistry.kt`)
+Ogni parametro numerico impiegato negli algoritmi è accompagnato dal suo inquadramento epistemologico (`ParameterProvenance`), che documenta l'origine empirica o teorica del valore:
+* **`MEASURED`**: Costante biofisica direttamente misurata o derivata dalla letteratura agrometeorologica/selvicolturale con solida base empirica (es. intercettazione canopica $S \approx 1.2\text{ mm}$, attenuazione De Frenne).
+* **`FITTED`**: Parametro calibrato mediante fitting statistico o regressione su serie storiche e osservazioni fenologiche (es. memoria idrica a 26 giorni, esponente $\alpha = 2.5$ del kernel gamma).
+* **`EXPERT_PRIOR`**: Valore basato su conoscenza micologica consolidata, linee guida tassonomiche ed evidenze aneddotiche prima del fitting formale Citizen Science (es. soglie del modello a due stadi Hurdle per saprotrofi).
+
+| Chiave Parametro | Valore | Unità | Provenienza | Descrizione & Riferimento Bibliografico |
+|---|:---:|:---:|:---:|---|
+| `soil_water_retention_optimal_min` | 0.20 | $\text{m}^3/\text{m}^3$ | `MEASURED` | Soglia inferiore di idratazione ottimale orizzonte $0\dots 7\text{ cm}$ (ERA5-Land). |
+| `soil_water_retention_optimal_max` | 0.38 | $\text{m}^3/\text{m}^3$ | `MEASURED` | Soglia superiore di idratazione ottimale prima del principio di anossia. |
+| `soil_water_anoxia_threshold` | 0.44 | $\text{m}^3/\text{m}^3$ | `MEASURED` | Soglia di saturazione critica: asfissia radicale e decadimento verso il fondo biologico ($0.15 \dots 0.20$). |
+| `canopy_tmax_attenuation_coeff` | 0.15 | $\text{adim.}$ | `MEASURED` | Coefficiente di attenuazione massime forestali De Frenne et al. (*Nature Ecol Evol* 2019). |
+| `canopy_tmin_insulation_base` | 1.20 | $^\circ\text{C}$ | `MEASURED` | Isolamento termico notturno minimo sottobosco rispetto a campo aperto. |
+| `canopy_interception_storage_mm` | 1.20 | $\text{mm}$ | `MEASURED` | Capacità media di ritenzione idrica canopica delle latifoglie/conifere europee. |
+| `dtr_penalty_onset_celsius` | 12.0 | $^\circ\text{C}$ | `MEASURED` | Soglia di escursione termica giornaliera oltre la quale si attiva la penalizzazione DTR. |
+| `dtr_penalty_max_celsius` | 18.0 | $^\circ\text{C}$ | `MEASURED` | Soglia DTR di massima penalizzazione fisiologica (smorzamento fino a 0.80). |
+| `rainfall_phenology_memory_days` | 26 | giorni | `FITTED` | Finestra mobile fenologica fissa per la convoluzione della pioggia efficace. |
+| `phenology_alpha_shape` | 2.5 | $\text{adim.}$ | `FITTED` | Esponente di forma del kernel fenologico continuo unimodale $f(\tau)$. |
+| `mindino_drought_decay_days` | 5.0 | giorni | `EXPERT_PRIOR` | Giorni minimi di siccità consecutiva post-innesco per attivare il gate di disseccamento. |
+| `mindino_drought_soil_threshold` | 0.22 | $\text{m}^3/\text{m}^3$ | `EXPERT_PRIOR` | Umidità superficiale critica $\bar{\theta}_{0\dots 7}$ sotto la quale abortisce la fase fenologica. |
+
+#### 2. Pipeline Operativa Unificata (`MycoAnalysisEngine.analyze`)
+Per garantire convergenza assoluta tra le piattaforme Android e iOS, l'analisi standard attraversa una pipeline unica deterministica in `:core`:
+1. **Microclima De Frenne (`applyCanopyBuffering`):** Conversione delle temperature aperte Open-Meteo in microclima sub-canopy a partire dalla copertura forestale effettiva del sito.
+2. **Fase Fenologica Dinamica (`evaluateGrowthPhase`):** Convoluzione idrologica continua, clustering delle precipitazioni e gate di disseccamento superficiale Mindino ($\Phi_{\text{drought}}$).
+3. **Modello Hurdle a Due Stadi (`hurdleOccurrenceProbability`):** Filtraggio ecologico primario basato su macro-habitat e gilda nutrizionale ($p_{\text{hurdle}}$).
+4. **Calibrazione Asintotica (`calculateSuitabilityScore`):** Calcolo della favorevolezza $S_{\text{raw}}$ e applicazione della compressione asintotica con $\tanh$ per valori $> 70.0$.
+5. **Outlook Multi-Day con Rollover Dinamico:** Proiezione a 7 giorni con ricalcolo del mese gregoriano per ciascuna data e propagazione coerente dei moltiplicatori fenologici.
+
+#### 3. Suite di Validazione Comparativa (`ComparativeValidationTest.kt`)
+La robustezza scientifica della pipeline è validata da test formali di non-regressione e validazione comparativa:
+* **Superiorità rispetto a Baseline Climatologica:** In condizioni ideali di innesco piovoso e temperatura ottimale, il modello ottiene un vantaggio informativo $\ge +40$ punti rispetto al modello nullo di persistenza climatologica.
+* **Concordanza di Ranking Ecologico:** Ordinamento rigoroso e decrescente verificato tra stazioni eterogenee:
+  $$S_{\text{ottimale}} > S_{\text{post-pioggia-giorno-1}} > S_{\text{siccità-mindino}} > S_{\text{asfissia-diluvio}} \ge S_{\text{gelo-invernale}}$$
+* **Sensibilità Parametrica Lipschitziana ($\pm 10\%$):** Per perturbazioni del $\pm 10\%$ sui parametri canonici, la variazione dell'indice di favorevolezza rimane rigorosamente confinata entro il $|\Delta S| \le 10\%$, garantendo assenza di biforcazioni caotiche o instabilità numeriche.
+
 ---
 
 ## 5. Sottosistema Cartografico OsmDroid

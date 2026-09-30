@@ -322,7 +322,8 @@ final class MycoViewModel: ObservableObject {
             monthIndex: Int32(month),
             spunEcmRichness: spunSample.map { KotlinDouble(double: $0.ecmRichness) },
             spunHyphalDensity: spunSample.map { KotlinDouble(double: $0.hyphalDensity) },
-            missingSources: spunSample == nil ? missingSources + ["SPUN"] : missingSources
+            missingSources: spunSample == nil ? missingSources + ["SPUN"] : missingSources,
+            canopyCover: habitat.score >= 0.6 ? habitat.score : 0.0
         )
         guard isCurrentEnvironment(generation) else { return }
         self.forecast = forecast

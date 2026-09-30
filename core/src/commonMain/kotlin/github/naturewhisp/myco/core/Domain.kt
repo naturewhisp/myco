@@ -84,6 +84,26 @@ data class MushroomSpecies(
         get() = id == "general"
 }
 
+enum class GrowthStage {
+    WAITING_FOR_RAIN,
+    MYCELIAL_HYDRATION,
+    PRIMORDIA_INCUBATION,
+    ACTIVE_FRUITING,
+    WANING,
+}
+
+data class GrowthPhaseEvaluation(
+    val phaseText: String,
+    val multiplier: Double,
+    val daysSinceTrigger: Int? = null,
+    val stage: GrowthStage = GrowthStage.WAITING_FOR_RAIN,
+)
+
+data class RainTrigger(
+    val triggerIndex: Int,
+    val rainAmount: Double,
+)
+
 data class ProcessedDay(
     val dateIso: String,
     val avgTemp: Double,
@@ -93,9 +113,33 @@ data class ProcessedDay(
     val soilMoisture0To7: Double?,
     val soilMoisture7To28: Double?,
     val evapotranspiration: Double?,
+    val minTemp: Double = avgTemp,
+    val maxTemp: Double = avgTemp,
 ) {
     val liquidPrecipMm: Double
         get() = if (isSnowDay(weatherCode, avgTemp)) 0.0 else totalPrecipMm
+
+    constructor(
+        dateIso: String,
+        avgTemp: Double,
+        totalPrecipMm: Double,
+        avgHumidityPercent: Double,
+        weatherCode: Int?,
+        soilMoisture0To7: Double?,
+        soilMoisture7To28: Double?,
+        evapotranspiration: Double?,
+    ) : this(
+        dateIso = dateIso,
+        avgTemp = avgTemp,
+        totalPrecipMm = totalPrecipMm,
+        avgHumidityPercent = avgHumidityPercent,
+        weatherCode = weatherCode,
+        soilMoisture0To7 = soilMoisture0To7,
+        soilMoisture7To28 = soilMoisture7To28,
+        evapotranspiration = evapotranspiration,
+        minTemp = avgTemp,
+        maxTemp = avgTemp,
+    )
 
     companion object {
         fun isSnowDay(weatherCode: Int?, avgTemp: Double): Boolean {
@@ -138,7 +182,35 @@ data class AnalysisInputs(
     val spunEcmRichness: Double?,
     val spunHyphalDensity: Double?,
     val missingSources: List<String>,
-)
+    val canopyCover: Double = 0.0,
+) {
+    constructor(
+        days: List<ProcessedDay>,
+        todayIndex: Int,
+        speciesId: String,
+        habitatScore: Double,
+        habitatDescription: String,
+        canopyTypes: List<String>,
+        elevationSamples: List<Double>,
+        monthIndex: Int,
+        spunEcmRichness: Double?,
+        spunHyphalDensity: Double?,
+        missingSources: List<String>,
+    ) : this(
+        days = days,
+        todayIndex = todayIndex,
+        speciesId = speciesId,
+        habitatScore = habitatScore,
+        habitatDescription = habitatDescription,
+        canopyTypes = canopyTypes,
+        elevationSamples = elevationSamples,
+        monthIndex = monthIndex,
+        spunEcmRichness = spunEcmRichness,
+        spunHyphalDensity = spunHyphalDensity,
+        missingSources = missingSources,
+        canopyCover = 0.0,
+    )
+}
 
 data class AnalysisResult(
     val probability: Int,
@@ -152,6 +224,7 @@ data class AnalysisResult(
     val dailyOutlooks: List<DailyOutlook>,
     val deterministicFieldNote: String,
     val missingSources: List<String>,
+    val growthPhase: GrowthPhaseEvaluation? = null,
 ) {
     val suitabilityScore: Int get() = probability
 }

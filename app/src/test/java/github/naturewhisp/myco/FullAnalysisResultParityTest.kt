@@ -43,7 +43,7 @@ class FullAnalysisResultParityTest {
     @Test fun sevenDayOutlook() = assertParity(fixture(days = 21))
 
     private fun assertParity(case: Fixture) {
-        val shared = MycoAnalysisEngine().analyze(case.input)
+        val shared = MycoAnalysisEngine().analyzeLegacy(case.input)
         val legacySpecies = legacySpecies(case.input.speciesId)
         val legacyDays = case.input.days.map(::legacyDay)
         val terrain = MushroomAlgorithms.calculateTerrainAspect(case.input.elevationSamples.map(Double::toFloat))

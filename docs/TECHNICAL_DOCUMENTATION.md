@@ -396,8 +396,15 @@ $$P_{\text{calibrated}} = \begin{cases} P_{\text{raw}} & \text{se } P_{\text{raw
 Dove:
 * **$W \in [0, 100]$:** Punteggio meteorologico combinato (con esponente di sensitività **$1.2$**).
 * **$H \in [0.10, 1.00]$:** Punteggio dell'habitat forestale e micorrizico (`evaluateSpeciesHabitat`).
-* **$A \in [0.40, 1.00]$:** Punteggio altitudinale specifico della specie (`calculateSpeciesAltitudeScore`).
-* **$S \in [0.10, 1.00]$:** Punteggio fenologico stagionale del mese in corso (`calculateSpeciesSeasonalityScore`).
+* **$A \in [0.40, 1.00]$:** Punteggio altitudinale specifico della specie (`calculateSpeciesAltitudeScore`, `evaluateAltitude`). A partire dalla v1.3.4 (REV2-08), il gradino discontinuo del 20% alle quote limite è stato sostituito da un raccordo continuo $C^1$ smoothstep su un margine di 100 m:
+  $$A(h) = \begin{cases}
+  0.40 & \text{se } h < H_{\min} - 100 \\
+  0.40 + 0.20 \cdot \text{smoothstep}(H_{\min} - 100, H_{\min}, h) & \text{se } H_{\min} - 100 \le h < H_{\min} \\
+  0.60 + 0.40 \cdot \dots & \text{all'interno del range idoneo} \\
+  0.40 + 0.20 \cdot (1.0 - \text{smoothstep}(H_{\max}, H_{\max} + 100, h)) & \text{se } H_{\max} \le h \le H_{\max} + 100 \\
+  0.40 & \text{se } h > H_{\max} + 100
+  \end{cases}$$
+* **$S \in [0.10, 1.00]$:** Punteggio fenologico stagionale (`calculateSpeciesSeasonalityScore`). Negli outlook proiettati a più giorni (REV2-08), il mese non è statico ma viene ricalcolato dinamicamente dalla data ISO di ciascun giorno (`effectiveDays[i].date`), garantendo perfetta continuità e correttezza a cavallo di fine mese.
 * **$T \in [0.50, 1.10]$:** Modificatore continuo del versante orografico (pendenza ed esposizione solare).
 * **$p_{\text{hurdle}} \in [0.0, 1.0]$:** Probabilità di superamento dell'hurdle ecologico (Weibull CDF); $1.0$ nel modello polifito standard.
 * **$\Phi_{\text{phase}} \in [0.35, 1.00]$:** Moltiplicatore biologico della fase fenologica (`evaluateGrowthPhase`): attua la Legge del Minimo di Liebig limitando la probabilità a $\sim 35\%\dots 50\%$ durante l'idratazione iniziale del micelio e l'incubazione dei primordi ($\tau < 0.6 \cdot \tau_{\text{peak}}$), evitando falsi positivi precoci prima dell'effettiva carpogenesi.
@@ -512,6 +519,7 @@ I dati meteorologici macroclimatici convenzionali (Open-Meteo, ERA5-Land a 2 met
 * **Restringimento Escursione Termica Diurna ($\text{DTR}_{\text{subcanopy}} < \text{DTR}_{\text{macro}}$):** Mitiga la penalizzazione per stress termico $DTR > 15^\circ\text{C}$ quando il bosco isola efficacemente i primordi.
 * **Intercettazione Idrica e Throughfall ($P_{\text{throughfall}}$):** Trattiene quote di precipitazione sulle chiome ($S_{\text{canopy}} \approx 1.2\text{ mm}$), riducendo le piogge deboli ($~30\%$ di perdita) e consentendo il passaggio quasi integrale ($>80\%$) dei forti temporali:
   $$P_{\text{throughfall}} = P \cdot \left(1.0 - C_f \cdot \left(0.15 + 0.20 \cdot \exp\left(-\frac{P}{8.0}\right)\right)\right)$$
+* **Separazione Idrologica Neve vs Pioggia Liquida (REV2-05):** A partire dalla v1.3.4, la precipitazione nevosa (giorni con $T_{\text{avg}} \le 0^\circ\text{C}$ o neve registrata) viene rigorosamente segregata dalla precipitazione liquida ($P_{\text{liq}} = 0.0$). La neve non penetra immediatamente nella lettiera del suolo e non alimenta la memoria idrica liquida a breve termine dei macromiceti. L'intercettazione di chioma (*throughfall*, De Frenne) viene applicata coerentemente sulla sola componente liquida ($P_{\text{liq}}$) sia nella rilevazione degli inneschi fenologici (`evaluateGrowthPhase`), sia nel calcolo della memoria di pioggia efficace (`calculateEffectiveRainfall`), sia nella diagnostica dell'ultima pioggia significativa.
 * **Umidità Relativa Sub-Canopy:** Contenimento dei venti ed evaporazione interna aumentano l'umidità dell'aria fino a $+6\%$:
   $$\text{RH}_{\text{subcanopy}} = \min\left(100.0,\; \text{RH} + C_f \cdot 6.0 \cdot \left(1.0 - \frac{\text{RH}}{100.0}\right)\right)$$
 * La copertura canopica $C_f$ è trattata rigorosamente come proprietà fisica ambientale del luogo geografico (`siteCanopyCover`), disaccoppiata dall'ecologia del fungo selezionato (F18, REG-18). Viene stimata dinamicamente a partire dall'evidenza vegetazionale (`HabitatEvidence.forestCoverFraction`) derivata dalle geometrie OSM dell'intorno. La risposta specifica del taxon alla copertura del luogo è governata unicamente dalla curva ecologica alometrica (`standDensityResponseUnimodal`) e dalla valutazione dell'habitat (`evaluateSpeciesHabitat`).
@@ -538,7 +546,7 @@ La resa carpogenica nei popolamenti forestali non segue una funzione monotona cr
    * **Stati Tipizzati (`HabitatStatus`):**
      - `KNOWN_SUITABLE`: presenza confermata di bosco, foresta o pascolo idoneo.
      - `KNOWN_UNSUITABLE`: presenza confermata di area urbana, commerciale o edificata (`score \le 0.20`).
-     - `UNKNOWN`: assenza di connettività o timeout API OSM, trattato con stima neutrale (`score = 0.50`), evitando l'attribuzione fallace del massimo punteggio praticolo in aree cittadine prive di dati.
+     - `UNKNOWN`: assenza di connettività o risposta priva di elementi da Overpass OSM. A partire dalla v1.3.4 (REV2-06), `UNKNOWN` viene rigorosamente neutralizzato: la copertura forestale fittizia è stata azzerata (`forestCoverFraction = 0.0`, `meadowFraction = 0.0`), evitando alterazioni artificiali del microclima De Frenne sul sito. Contestualmente, la risposta di densità stand viene fissata a `standScore = 1.0` (anziché penalizzare ingiustificatamente a ~0.30 per assenza di alberi), garantendo che l'habitat assuma esattamente la valutazione neutrale (`score = 0.50`). Inoltre, `KNOWN_UNSUITABLE` viene assegnato esclusivamente in presenza accertata di elementi urbani dominanti.
    * **Invarianza al Partizionamento Poligonale (REG-09, REG-11):** La copertura spaziale viene calcolata mediante discretizzazione angolare a 8 settori geografici attorno al punto target. La frammentazione di un grande poligono forestale in decine di micro-poligoni produce identica frazione di occupazione ($\Delta \le \pm 2\%$).
    * **Specificità Rigorosa del Genere Ospite (REG-10):** Il bonus per essenze simbionti viene accordato esclusivamente in presenza di un riscontro tassonomico sul genere (`genus` o primo epiteto binomiale in `species`), escludendo tag fogliari generici (`leaf_type=broadleaved|needleleaved`).
    * **Isolamento delle Cache e Reattività (REG-12):** Le chiavi di cache incorporano esplicitamente il raggio di scansione (`habitat_${radius}m_...`, `habitat_bonus_${species}_${radius}m_...`), impedendo interferenze tra scansioni a 500m e 5000m. Il cambio specie nel ViewModel elimina ogni condivisione di conteggi pregressi, rivalutando l'habitat in tempo reale.
@@ -649,6 +657,8 @@ La distribuzione geografica della probabilità su scala territoriale è calcolat
     $$\text{bioPotential} = \text{ecmRatio} \times 50.0 + \text{hypRatio} \times 50.0$$
   * **Parassiti Lignicoli (`PARASITIC`, es. *Armillaria mellea*):**
     $$\text{bioPotential} = 30.0 + \text{ecmRatio} \times 35.0 + \text{hypRatio} \times 35.0$$
+* **Contratto Cartografico della Heatmap come «Layer di Contesto Ecologico e Biomassa Simbiotica» (REV2-07):**
+  Per evitare fraintendimenti cognitivi (l'utente potrebbe interpretare la mappa come una proiezione meteorologica puntuale estrapolata nello spazio), a partire dalla v1.3.4 la Heatmap è formalizzata e intitolata in interfaccia come «CONTESTO ECOLOGICO E BIOMASSA (0–100)». La legenda esplicita che si tratta di un layer territoriale basato sulla distribuzione dei macromiceti, biomassa micorrizica (SPUN) e copertura boschiva, rimandando alla Scheda di dettaglio per microclima e fenologia puntuale. Ogni riferimento a `%` e `Probabilità` è stato rigorosamente rimosso dai badge della mappa sia su Android che su iOS (`Indice $prob/100`), e la mappa si azzera a trasparenza integrale se $W=0$.
 * **Parità Matematica Heatmap e Scheda Puntuale (F11 / Blocco 4):**
   A partire dalla versione 1.3.3, è stato rimosso l'arbitrario incremento numerico non calibrato (`multiplier = 0.60 + ... * 0.60`), riconducendo il calcolo del raster alla medesima equazione unificata della scheda puntuale:
   $$\text{suitability}_{\text{cell}} = \text{calculateSuitabilityScore}\left(W,\; \frac{\text{bioPotential}}{100},\; A,\; S,\; \text{terrain} = 1.0,\; \Phi = 1.0\right)$$

@@ -467,7 +467,7 @@ object MushroomAlgorithms {
         val pastDeepSoilList = mutableListOf<Double>()
         for (i in memoryWindowStart until dayIndex) {
             val tau = (dayIndex - i).toDouble()
-            val precip = allData[i].totalPrecip.toDouble()
+            val precip = allData[i].liquidPrecip.toDouble()
             if (precip > 0.0) {
                 val weight = phenologyKernel(
                     tauDays = tau,
@@ -544,7 +544,7 @@ object MushroomAlgorithms {
         val subAvgTemp = (day.avgTemp + deltaAvg).coerceIn(subMinTemp.toDouble(), subMaxTemp.toDouble()).toFloat()
 
         // 4. Intercettazione idrica chiome e throughfall (Bonet et al. / CTFC)
-        val grossPrecip = day.totalPrecip.toDouble()
+        val grossPrecip = day.liquidPrecip.toDouble()
         val throughfall = if (grossPrecip > 0.0) {
             val interceptionLossFraction = c * (0.15 + 0.20 * kotlin.math.exp(-grossPrecip / 8.0))
             (grossPrecip * (1.0 - interceptionLossFraction)).coerceAtLeast(0.0)
@@ -635,7 +635,7 @@ object MushroomAlgorithms {
             } else {
                 emptyList()
             }
-            effectiveRain = rainWindow.sumOf { it.totalPrecip.toDouble() }
+            effectiveRain = rainWindow.sumOf { it.liquidPrecip.toDouble() }
         }
         var rainScore = rainScoreSmooth(effectiveRain, species) * config.rainWeight
 
@@ -1656,15 +1656,22 @@ object MushroomAlgorithms {
      */
     fun calculateSpeciesAltitudeScore(elevation: Float, species: MushroomSpecies): ScoreResult {
         val score = when {
-            elevation < species.minElevation || elevation > species.maxElevation -> 0.4
+            elevation < species.minElevation -> {
+                val decay = smoothstep((species.minElevation - 100.0), species.minElevation.toDouble(), elevation.toDouble())
+                0.40 + 0.20 * decay
+            }
+            elevation > species.maxElevation -> {
+                val decay = 1.0 - smoothstep(species.maxElevation.toDouble(), (species.maxElevation + 100.0), elevation.toDouble())
+                0.40 + 0.20 * decay
+            }
             elevation in species.idealElevationMin.toFloat()..species.idealElevationMax.toFloat() -> 1.0
             elevation < species.idealElevationMin -> {
                 val span = species.idealElevationMin - species.minElevation
-                if (span > 0) 0.6 + 0.4 * ((elevation - species.minElevation).toDouble() / span) else 0.6
+                if (span > 0) 0.60 + 0.40 * ((elevation - species.minElevation).toDouble() / span) else 0.60
             }
             else -> {
                 val span = species.maxElevation - species.idealElevationMax
-                if (span > 0) 0.6 + 0.4 * ((species.maxElevation - elevation).toDouble() / span) else 0.6
+                if (span > 0) 0.60 + 0.40 * ((species.maxElevation - elevation).toDouble() / span) else 0.60
             }
         }.coerceIn(0.0, 1.0)
 
@@ -1823,7 +1830,7 @@ object MushroomAlgorithms {
     ): SpeciesHabitatEvaluation {
         val effectiveCanopy = evidence.forestCoverFraction.coerceIn(0.0, 1.0)
         val basalArea = canopyCoverToBasalArea(effectiveCanopy).toFloat()
-        val standScore = standDensityResponseUnimodal(effectiveCanopy, species)
+        val standScore = if (evidence.status == HabitatStatus.UNKNOWN) 1.0 else standDensityResponseUnimodal(effectiveCanopy, species)
 
         val rawScore: Double
         val baseText: String
@@ -2143,7 +2150,7 @@ object MushroomAlgorithms {
         var foundDaysAgo = 0
         for (i in clampedTodayIndex downTo startIdx) {
             val day = allData[i]
-            if (day.totalPrecip >= thresholdMm) {
+            if (day.liquidPrecip >= thresholdMm) {
                 foundDay = day
                 foundDaysAgo = clampedTodayIndex - i
                 break
@@ -2154,7 +2161,7 @@ object MushroomAlgorithms {
         if (foundDay == null) {
             for (i in clampedTodayIndex downTo startIdx) {
                 val day = allData[i]
-                if (day.totalPrecip >= 2.0f) {
+                if (day.liquidPrecip >= 2.0f) {
                     foundDay = day
                     foundDaysAgo = clampedTodayIndex - i
                     break
@@ -2178,7 +2185,7 @@ object MushroomAlgorithms {
             foundDay.date
         }
 
-        val precipFormatted = String.format(java.util.Locale.ITALIAN, "%.0f\u00A0mm", foundDay.totalPrecip)
+        val precipFormatted = String.format(java.util.Locale.ITALIAN, "%.0f\u00A0mm", foundDay.liquidPrecip)
         val agoText = when (foundDaysAgo) {
             0 -> "oggi"
             1 -> "ieri"
@@ -2530,11 +2537,18 @@ object MushroomAlgorithms {
         for (i in startIndex until processedDays.size) {
             val weatherScore = calculateWeatherScore(i, processedDays, spunHyphalDensity, species, config, canopyCover)
             val growthPhaseMultiplier = evaluateGrowthPhase(effectiveDays, species, i).multiplier
+            val dayMonth = try {
+                val parts = effectiveDays[i].date.split("-")
+                if (parts.size >= 2) parts[1].toInt() - 1 else month
+            } catch (_: Exception) {
+                month
+            }
+            val daySeasonScore = if (isWeatherOnly) 1.0 else calculateSpeciesSeasonalityScore(dayMonth, species).score
             val prob = dailyGrowthProbability(
                 weatherScore = weatherScore,
                 habitatScore = effectiveHabScore,
                 altitudeScore = altScore,
-                seasonalityScore = seasonScore,
+                seasonalityScore = daySeasonScore,
                 terrainModifier = effectiveTerrainMod,
                 config = config,
                 species = species,

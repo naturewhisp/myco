@@ -268,12 +268,23 @@ object MycoAlgorithms {
     }
 
     fun altitudeScore(elevation: Double, species: MushroomSpecies): Double = when {
-        elevation < species.minElevation || elevation > species.maxElevation -> 0.4
+        elevation < species.minElevation -> {
+            val decay = smoothstep(species.minElevation - 100.0, species.minElevation.toDouble(), elevation)
+            0.40 + 0.20 * decay
+        }
+        elevation > species.maxElevation -> {
+            val decay = 1.0 - smoothstep(species.maxElevation.toDouble(), species.maxElevation + 100.0, elevation)
+            0.40 + 0.20 * decay
+        }
         elevation in species.idealElevationMin.toDouble()..species.idealElevationMax.toDouble() -> 1.0
-        elevation < species.idealElevationMin -> 0.6 + 0.4 *
-            ((elevation - species.minElevation) / (species.idealElevationMin - species.minElevation))
-        else -> 0.6 + 0.4 *
-            ((species.maxElevation - elevation) / (species.maxElevation - species.idealElevationMax))
+        elevation < species.idealElevationMin -> {
+            val span = species.idealElevationMin - species.minElevation
+            if (span > 0) 0.60 + 0.40 * ((elevation - species.minElevation) / span) else 0.60
+        }
+        else -> {
+            val span = species.maxElevation - species.idealElevationMax
+            if (span > 0) 0.60 + 0.40 * ((species.maxElevation - elevation) / span) else 0.60
+        }
     }.coerceIn(0.0, 1.0)
 
     fun seasonalityScore(monthIndex: Int, species: MushroomSpecies): Double {
@@ -341,7 +352,7 @@ object MycoAlgorithms {
         return if (terrain.slopeDegrees > 38.0) min(modifier, 0.92) else modifier
     }
 
-    private fun smoothstep(edge0: Double, edge1: Double, value: Double): Double {
+    internal fun smoothstep(edge0: Double, edge1: Double, value: Double): Double {
         val t = ((value - edge0) / (edge1 - edge0)).coerceIn(0.0, 1.0)
         return t * t * (3.0 - 2.0 * t)
     }

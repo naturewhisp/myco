@@ -53,11 +53,18 @@ class MycoAnalysisEngine {
         val outlooks = input.days.drop(todayIndex).take(7).mapIndexed { offset, day ->
             val index = todayIndex + offset
             val dayWeather = MycoAlgorithms.weatherScore(index, input.days, species, input.spunHyphalDensity)
+            val dayMonth = try {
+                val parts = day.dateIso.split("-")
+                if (parts.size >= 2) parts[1].toInt() - 1 else input.monthIndex
+            } catch (_: Exception) {
+                input.monthIndex
+            }
+            val daySeasonality = MycoAlgorithms.seasonalityScore(dayMonth, species)
             val dayProbability = MycoAlgorithms.growthProbability(
                 weatherScore = dayWeather,
                 habitatScore = probabilityHabitatScore,
                 altitudeScore = altitude,
-                seasonalityScore = seasonality,
+                seasonalityScore = daySeasonality,
                 terrainModifier = terrainModifier,
                 growthPhaseMultiplier = growthPhaseMultiplier,
                 species = species,

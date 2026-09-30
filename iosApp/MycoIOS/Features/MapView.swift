@@ -94,7 +94,7 @@ struct MapView: View {
                 if let analysis = viewModel.analysis {
                     Text("\(analysis.probability)/100 · \(analysis.tier.shortLabel)").font(.title3.bold())
                     if viewModel.heatmap == nil {
-                        Label("Heatmap non disponibile per quest'area", systemImage: "square.slash")
+                        Label("Layer ecologico non disponibile per quest'area", systemImage: "square.slash")
                             .font(.caption).foregroundStyle(colors.inkSoft)
                     }
                     Button("Apri indicazioni", systemImage: "arrow.triangle.turn.up.right.diamond") {

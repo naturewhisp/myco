@@ -257,14 +257,7 @@ class MushroomRepository(
         }
         val elements = response.elements
         if (elements.isEmpty()) {
-            return HabitatEvidence(
-                status = HabitatStatus.KNOWN_UNSUITABLE,
-                forestCoverFraction = 0.0,
-                meadowFraction = 0.0,
-                distanceToNearestForestMeters = searchRadiusMeters.toDouble(),
-                confirmedHostGenera = emptySet(),
-                dominantLeafType = null
-            )
+            return HabitatEvidence.UNKNOWN_HABITAT
         }
 
         val forestElements = elements.filter { it.isWoodOrForest }
@@ -325,11 +318,12 @@ class MushroomRepository(
         }
         val meadowFraction = (meadowSectors.count { it } / 8.0).coerceIn(0.0, 1.0)
 
-        val isUrbanDominant = urbanElements.size > (forestElements.size + meadowElements.size) && forestCoverFraction < 0.20
+        val isUrbanDominant = urbanElements.isNotEmpty() && urbanElements.size > (forestElements.size + meadowElements.size) && forestCoverFraction < 0.20
         val status = when {
             isUrbanDominant -> HabitatStatus.KNOWN_UNSUITABLE
             forestCoverFraction > 0.10 || meadowFraction > 0.10 -> HabitatStatus.KNOWN_SUITABLE
-            else -> HabitatStatus.KNOWN_UNSUITABLE
+            urbanElements.isNotEmpty() -> HabitatStatus.KNOWN_UNSUITABLE
+            else -> HabitatStatus.UNKNOWN
         }
 
         return HabitatEvidence(

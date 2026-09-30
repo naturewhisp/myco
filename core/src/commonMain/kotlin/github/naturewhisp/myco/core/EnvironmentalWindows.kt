@@ -62,7 +62,7 @@ data class EnvironmentalWindows(
                 humidity = humidity,
                 soil = humidity,
                 evapotranspiration = humidity,
-                rainWindowTotalMm = rain.sumOf { it.totalPrecipMm },
+                rainWindowTotalMm = rain.sumOf { it.liquidPrecipMm },
                 averageTempWindowC = temperature.averageOfOrZero { it.avgTemp },
                 averageHumidityWindowPercent = humidity.averageOfOrZero { it.avgHumidityPercent },
                 averageSoil0To7 = shallow.averageOrNull(),

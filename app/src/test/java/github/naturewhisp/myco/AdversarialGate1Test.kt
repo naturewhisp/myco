@@ -47,7 +47,7 @@ class AdversarialGate1Test {
         } else {
             emptyList()
         }
-        val totalRainLast10Days = rainWindow.sumOf { it.totalPrecip.toDouble() }
+        val totalRainLast10Days = rainWindow.sumOf { it.liquidPrecip.toDouble() }
         var rainScore = MushroomAlgorithms.rainScoreSmooth(totalRainLast10Days, species) * 40.0
 
         if (spunHyphalDensity != null && spunHyphalDensity >= 5.0f && totalRainLast10Days >= 12.0) {

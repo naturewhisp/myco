@@ -93,7 +93,18 @@ data class ProcessedDay(
     val soilMoisture0To7: Double?,
     val soilMoisture7To28: Double?,
     val evapotranspiration: Double?,
-)
+) {
+    val liquidPrecipMm: Double
+        get() = if (isSnowDay(weatherCode, avgTemp)) 0.0 else totalPrecipMm
+
+    companion object {
+        fun isSnowDay(weatherCode: Int?, avgTemp: Double): Boolean {
+            val isSnowWmo = weatherCode in listOf(71, 73, 75, 77, 85, 86)
+            return isSnowWmo || avgTemp <= 0.0
+        }
+    }
+}
+
 
 data class DailyOutlook(
     val dateIso: String,

@@ -108,11 +108,18 @@ class FullAnalysisResultParityTest {
                 legacySpecies,
                 config = EcologicalWeightsConfig(applySpunHyphalBonus = false),
             )
+            val dayMonth = try {
+                val parts = android.date.split("-")
+                if (parts.size >= 2) parts[1].toInt() - 1 else case.input.monthIndex
+            } catch (_: Exception) {
+                case.input.monthIndex
+            }
+            val dailySeasonality = MushroomAlgorithms.calculateSpeciesSeasonalityScore(dayMonth, legacySpecies).score
             val dailyProbability = MushroomAlgorithms.dailyGrowthProbability(
                 dailyWeather,
                 effectiveHabitat,
                 altitude,
-                seasonality,
+                dailySeasonality,
                 terrainEvaluation.modifier,
             )
             assertEquals(android.date, kmp.dateIso)
@@ -170,9 +177,10 @@ class FullAnalysisResultParityTest {
         missing: List<String> = emptyList(),
         days: Int = 21,
     ): Fixture {
+        val monthStr = (month + 1).toString().padStart(2, '0')
         val samples = List(days) { index ->
             CoreDay(
-                dateIso = "2026-09-${(index + 1).toString().padStart(2, '0')}",
+                dateIso = "2026-$monthStr-${(index + 1).toString().padStart(2, '0')}",
                 avgTemp = temperature,
                 totalPrecipMm = if (index in 4..11) rain else 0.0,
                 avgHumidityPercent = humidity,

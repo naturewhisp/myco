@@ -388,13 +388,13 @@ class MushroomViewModel(
                 lastForestCount > 15 -> 0.85
                 lastForestCount > 4 -> 0.70
                 lastForestCount > 0 -> 0.45
-                else -> 0.20
+                else -> 0.0
             },
-            meadowFraction = if (lastForestCount == 0) 0.50 else 0.10,
+            meadowFraction = if (lastForestCount == 0) 0.0 else 0.10,
             distanceToNearestForestMeters = if (lastForestCount > 0) 0.0 else 500.0,
             confirmedHostGenera = emptySet()
         )
-        val siteCanopyCover = evidence.forestCoverFraction
+        val siteCanopyCover = if (evidence.status == HabitatStatus.UNKNOWN) 0.0 else evidence.forestCoverFraction
         val bufferedDays = if (siteCanopyCover > 0.001) MushroomAlgorithms.applyCanopyBuffering(days, siteCanopyCover) else days
 
         val rawWeatherScore = MushroomAlgorithms.calculateWeatherScore(
@@ -424,8 +424,10 @@ class MushroomViewModel(
         val tempWindow = if (todayIndex >= 5) bufferedDays.subList(todayIndex - 5, todayIndex) else emptyList()
         val avgTemp = if (tempWindow.isNotEmpty()) tempWindow.sumOf { it.avgTemp.toDouble() } / tempWindow.size else 0.0
         val rainWindow = if (todayIndex >= 10) bufferedDays.subList(todayIndex - 10, todayIndex - 2) else emptyList()
-        val totalRain = rainWindow.sumOf { it.totalPrecip.toDouble() }
-        val humWindow = bufferedDays.subList(todayIndex - 3, min(bufferedDays.size, todayIndex + 1))
+        val totalRain = rainWindow.sumOf { it.liquidPrecip.toDouble() }
+        val humStart = max(0, todayIndex - 3)
+        val humEnd = min(bufferedDays.size, todayIndex + 1)
+        val humWindow = if (humStart < humEnd) bufferedDays.subList(humStart, humEnd) else emptyList()
         val avgHum = if (humWindow.isNotEmpty()) humWindow.sumOf { it.avgHumidity.toDouble() } / humWindow.size else 0.0
 
         val terrainEval = MushroomAlgorithms.evaluateTerrainAspect(
@@ -1040,7 +1042,7 @@ class MushroomViewModel(
                 val evidence = baseEvidence.copy(confirmedHostGenera = baseEvidence.confirmedHostGenera + bonusGenera)
                 lastHabitatEvidence = evidence
 
-                val siteCanopyCover = evidence.forestCoverFraction
+                val siteCanopyCover = if (evidence.status == HabitatStatus.UNKNOWN) 0.0 else evidence.forestCoverFraction
 
                 val initialHabEval = MushroomAlgorithms.evaluateSpeciesHabitat(
                     evidence = evidence,
@@ -1057,7 +1059,11 @@ class MushroomViewModel(
                 val todayIndex = MushroomAlgorithms.deriveTodayIndex(processedDays, weather.timezone)
                 
                 // Forecast grid: next 5 days starting today (todayIndex to todayIndex+4)
-                forecastDays = processedDays.subList(todayIndex, min(processedDays.size, todayIndex + 5))
+                forecastDays = if (todayIndex in processedDays.indices) {
+                    processedDays.subList(todayIndex, min(processedDays.size, todayIndex + 5))
+                } else {
+                    emptyList()
+                }
 
                 val elevation = weather.elevation
                 val altitudeScore = MushroomAlgorithms.calculateSpeciesAltitudeScore(elevation, selectedSpecies)
@@ -1076,7 +1082,7 @@ class MushroomViewModel(
 
                 // Temp window calculation (last 5 days)
                 val tempStart = max(0, todayIndex - 5)
-                val tempWindow = bufferedDays.subList(tempStart, todayIndex)
+                val tempWindow = if (todayIndex > 0) bufferedDays.subList(tempStart, todayIndex) else emptyList()
                 val avgTempLast5Days = if (tempWindow.isNotEmpty()) {
                     tempWindow.sumOf { it.avgTemp.toDouble() } / tempWindow.size
                 } else {

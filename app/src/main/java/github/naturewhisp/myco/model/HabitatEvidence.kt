@@ -44,8 +44,8 @@ data class HabitatEvidence(
          */
         val UNKNOWN_HABITAT = HabitatEvidence(
             status = HabitatStatus.UNKNOWN,
-            forestCoverFraction = 0.50,
-            meadowFraction = 0.30,
+            forestCoverFraction = 0.0,
+            meadowFraction = 0.0,
             distanceToNearestForestMeters = 500.0,
             confirmedHostGenera = emptySet(),
             dominantLeafType = null

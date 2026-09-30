@@ -23,6 +23,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.util.Locale
 import kotlin.math.abs
 
 /**
@@ -435,4 +436,150 @@ class ScientificRegressionBlock2Test {
             0.001f
         )
     }
+
+    // =========================================================================
+    // REV2-05: Esclusione della precipitazione nevosa dalla memoria idrica e throughfall
+    // =========================================================================
+    @Test
+    fun rev2_05_snowfallExcludedFromEffectiveRainfallAndThroughfall() {
+        val snowDay = ProcessedDay(
+            date = "2026-01-15",
+            avgTemp = -2.0f,
+            minTemp = -5.0f,
+            maxTemp = 0.0f,
+            totalPrecip = 35.0f,
+            avgHumidity = 90.0f,
+            weatherCode = 71 // WMO Moderate Snow
+        )
+        assertEquals("liquidPrecip deve essere 0.0 per nevicata", 0.0f, snowDay.liquidPrecip, 0.001f)
+
+        val seriesWithSnow = (0 until 25).map { i ->
+            if (i == 15) {
+                snowDay
+            } else {
+                ProcessedDay(
+                    date = String.format(Locale.US, "2026-01-%02d", i + 1),
+                    avgTemp = -1.0f,
+                    minTemp = -4.0f,
+                    maxTemp = 1.0f,
+                    totalPrecip = 0.0f,
+                    avgHumidity = 75.0f,
+                    weatherCode = 0
+                )
+            }
+        }
+
+        val effRain = MushroomAlgorithms.calculateEffectiveRainfall(dayIndex = 20, allData = seriesWithSnow, species = edulis)
+        assertEquals("La precipitazione nevosa non deve contribuire alla pioggia efficace", 0.0, effRain, 0.001)
+
+        val bufferedSnow = MushroomAlgorithms.applyCanopyBuffering(snowDay, canopyCover = 0.80)
+        assertEquals("Throughfall di pioggia liquida sottochioma deve essere 0.0 per neve", 0.0f, bufferedSnow.totalPrecip, 0.001f)
+        assertEquals(0.0f, bufferedSnow.liquidPrecip, 0.001f)
+
+        val lastRainText = MushroomAlgorithms.formatLastSignificantRain(todayIndex = 20, allData = seriesWithSnow)
+        assertTrue("La nevicata non deve essere etichettata come ultima pioggia", lastRainText.contains("Nessuna recente"))
+    }
+
+    // =========================================================================
+    // REV2-06: Query Overpass vuota restituisce UNKNOWN e non falsa la chioma forestale
+    // =========================================================================
+    @Test
+    fun rev2_06_emptyOsmOverpassReturnsUnknownStatusAndZeroCanopy() {
+        val emptyResponse = OverpassResponse(elements = emptyList())
+        val evidence = repository.extractHabitatEvidence(emptyResponse, 44.2149, 7.9755, 1000)
+        assertEquals("Query Overpass vuota deve produrre HabitatStatus.UNKNOWN", HabitatStatus.UNKNOWN, evidence.status)
+        assertEquals("Frazione forestale deve essere 0.0 in assenza di dati", 0.0, evidence.forestCoverFraction, 0.001)
+        assertEquals("Frazione prativa deve essere 0.0 in assenza di dati", 0.0, evidence.meadowFraction, 0.001)
+
+        // evaluateSpeciesHabitat con UNKNOWN produce stima neutrale 0.50 senza distorsioni
+        val edulisHab = MushroomAlgorithms.evaluateSpeciesHabitat(evidence, null, edulis)
+        assertEquals("Stima neutrale per EcM su habitat UNKNOWN", 0.50, edulisHab.score, 0.001)
+        assertTrue(edulisHab.baseText.contains("non disponibili"))
+
+        val macroHab = MushroomAlgorithms.evaluateSpeciesHabitat(evidence, null, macrolepiota)
+        assertEquals("Stima neutrale per saprotrofi su habitat UNKNOWN", 0.50, macroHab.score, 0.001)
+        assertTrue(macroHab.baseText.contains("non disponibili"))
+    }
+
+    // =========================================================================
+    // REV2-08: Continuità C1 altimetrica e assenza di gradino del 20% a 300m e 1800m
+    // =========================================================================
+    @Test
+    fun rev2_08_altitudeSmoothstepContinuityAtBoundaries() {
+        // Verifica intorno al limite inferiore (minElevation = 300 m per Boletus edulis)
+        for (step in 0..40) {
+            val elevA = 298.0f + (step * 0.1f)
+            val elevB = elevA + 0.1f
+            val scoreA = MushroomAlgorithms.calculateSpeciesAltitudeScore(elevA, edulis).score
+            val scoreB = MushroomAlgorithms.calculateSpeciesAltitudeScore(elevB, edulis).score
+            val diff = abs(scoreB - scoreA)
+            assertTrue(
+                "Discontinuità altimetrica a elev=$elevA -> $elevB: delta=$diff > 0.005",
+                diff <= 0.005
+            )
+        }
+
+        // Verifica intorno al limite superiore (maxElevation = 1800 m per Boletus edulis)
+        for (step in 0..40) {
+            val elevA = 1798.0f + (step * 0.1f)
+            val elevB = elevA + 0.1f
+            val scoreA = MushroomAlgorithms.calculateSpeciesAltitudeScore(elevA, edulis).score
+            val scoreB = MushroomAlgorithms.calculateSpeciesAltitudeScore(elevB, edulis).score
+            val diff = abs(scoreB - scoreA)
+            assertTrue(
+                "Discontinuità altimetrica a elev=$elevA -> $elevB: delta=$diff > 0.005",
+                diff <= 0.005
+            )
+        }
+
+        // Retrocompatibilità con i punti di Golden Master a 150m e 1900m
+        assertEquals(0.40, MushroomAlgorithms.calculateSpeciesAltitudeScore(150.0f, edulis).score, 0.001)
+        assertEquals(0.40, MushroomAlgorithms.calculateSpeciesAltitudeScore(1900.0f, edulis).score, 0.001)
+        assertEquals(0.60, MushroomAlgorithms.calculateSpeciesAltitudeScore(300.0f, edulis).score, 0.001)
+        assertEquals(0.60, MushroomAlgorithms.calculateSpeciesAltitudeScore(1800.0f, edulis).score, 0.001)
+    }
+
+    // =========================================================================
+    // REV2-08: Rollover dinamico del mese nell'outlook a 7 giorni
+    // =========================================================================
+    @Test
+    fun rev2_08_dynamicMonthRolloverInOutlooks() {
+        // Serie che attraversa la fine di settembre (mese 8) e l'inizio di ottobre (mese 9)
+        val dates = listOf(
+            "2026-09-28", "2026-09-29", "2026-09-30",
+            "2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04"
+        )
+        val testDays = dates.map { dateStr ->
+            ProcessedDay(
+                date = dateStr,
+                avgTemp = 16.0f,
+                minTemp = 12.0f,
+                maxTemp = 20.0f,
+                totalPrecip = 0.0f,
+                avgHumidity = 75.0f,
+                weatherCode = 0
+            )
+        }
+
+        val outlooks = MushroomAlgorithms.calculateDailyOutlooks(
+            processedDays = testDays,
+            startIndex = 0,
+            species = edulis,
+            month = 8 // Settembre
+        )
+
+        assertEquals(7, outlooks.size)
+        // I giorni 0, 1, 2 sono in settembre (2026-09-28..30)
+        assertEquals("2026-09-28", outlooks[0].dateIso)
+        assertEquals("2026-09-30", outlooks[2].dateIso)
+        // I giorni 3..6 sono in ottobre (2026-10-01..04)
+        assertEquals("2026-10-01", outlooks[3].dateIso)
+        assertEquals("2026-10-04", outlooks[6].dateIso)
+
+        // Verifichiamo che i giorni di ottobre abbiano ricevuto il ricalcolo stagionale dinamico
+        val septSeason = MushroomAlgorithms.calculateSpeciesSeasonalityScore(8, edulis).score
+        val octSeason = MushroomAlgorithms.calculateSpeciesSeasonalityScore(9, edulis).score
+        assertEquals("Boletus edulis è attivo in entrambi i mesi autunnali", septSeason, octSeason, 0.001)
+    }
 }
+

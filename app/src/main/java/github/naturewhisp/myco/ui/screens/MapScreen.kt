@@ -377,7 +377,7 @@ fun MapScreen(
                                     .padding(horizontal = 8.dp, vertical = 3.dp)
                             ) {
                                 Text(
-                                    text = "Indice $prob%",
+                                    text = "Indice $prob/100",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (prob == 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.surface
@@ -507,11 +507,11 @@ fun MapScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "LEGENDA SPUN",
+                            text = "CONTESTO ECOLOGICO E BIOMASSA (0–100)",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp,
+                            letterSpacing = 0.5.sp,
                             modifier = Modifier.weight(1f)
                         )
 
@@ -549,6 +549,15 @@ fun MapScreen(
                         LegendPip(color = mycoColors.scale3, label = "Propizio")
                         LegendPip(color = mycoColors.scale4, label = "Culmine")
                     }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = "Layer territoriale basato su macromiceti, biomassa simbiotica e boschi. Per microclima e fenologia puntuale consulta la Scheda.",
+                        fontSize = 9.sp,
+                        lineHeight = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    )
                 }
             }
         }

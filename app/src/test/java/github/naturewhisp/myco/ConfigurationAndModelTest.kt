@@ -88,23 +88,23 @@ class ConfigurationAndModelTest {
 
     @Test
     fun testProbabilityTierProperties() {
-        assertEquals("Inattivo", ProbabilityTier.VERY_LOW.shortLabel)
+        assertEquals("Molto bassa", ProbabilityTier.VERY_LOW.shortLabel)
         assertEquals(0, ProbabilityTier.VERY_LOW.minProbability)
         assertEquals(19, ProbabilityTier.VERY_LOW.maxProbability)
 
-        assertEquals("Innesco", ProbabilityTier.LOW.shortLabel)
+        assertEquals("Bassa", ProbabilityTier.LOW.shortLabel)
         assertEquals(20, ProbabilityTier.LOW.minProbability)
         assertEquals(39, ProbabilityTier.LOW.maxProbability)
 
-        assertEquals("Discreto", ProbabilityTier.MODERATE.shortLabel)
+        assertEquals("Media", ProbabilityTier.MODERATE.shortLabel)
         assertEquals(40, ProbabilityTier.MODERATE.minProbability)
         assertEquals(59, ProbabilityTier.MODERATE.maxProbability)
 
-        assertEquals("Propizio", ProbabilityTier.HIGH.shortLabel)
+        assertEquals("Alta", ProbabilityTier.HIGH.shortLabel)
         assertEquals(60, ProbabilityTier.HIGH.minProbability)
         assertEquals(74, ProbabilityTier.HIGH.maxProbability)
 
-        assertEquals("Culmine", ProbabilityTier.VERY_HIGH.shortLabel)
+        assertEquals("Molto alta", ProbabilityTier.VERY_HIGH.shortLabel)
         assertEquals(75, ProbabilityTier.VERY_HIGH.minProbability)
         assertEquals(100, ProbabilityTier.VERY_HIGH.maxProbability)
     }

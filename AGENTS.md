@@ -89,6 +89,10 @@ docs/
   - The label must specify `Modifier.weight(1f, fill = false)` or `Modifier.weight(1f)` to guarantee responsive space allocation.
   - Action buttons inside compact headers must use bounded internal padding (e.g. `contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)`) and bounded height (`Modifier.heightIn(min = 32.dp)`).
   - An explicit horizontal `Spacer(Modifier.width(8.dp))` must separate label and action button to guarantee zero overlap across all screen widths.
+- **Pluviometric Memory vs Current Soil Reserve Layout Contract**:
+  - The rainfall memory factor must be labeled `"Apporto ponderato per latenza"`.
+  - The right-aligned value slot must strictly receive compact atomic tokens (e.g. `"28 mm ponderati"`, `"35 mm ponderati"`), never allowing text to wrap or starve horizontal space.
+  - The left-aligned detail slot must contain the explanatory disclaimer: `"Indicatore fenologico temporale; non misura la riserva idrica residua nel suolo"` along with the date/latency details.
 
 ### 4.5 Design Tokens, Iconography & Resource Cleanliness
 - **Zero Hardcoded Colors**: `Color(0x...)` definitions must reside exclusively in `ui/theme/Color.kt`. Composable functions must access colors via `MaterialTheme.colorScheme` or custom theme attributes (`HerbariumTheme`).
@@ -103,6 +107,10 @@ docs/
   - **Balanced Progressive Opacity**: Overlays placed atop dense topographic maps (contours, elevation relief, roads) must never use flat low opacity (e.g. 50% washes out) nor heavy opacity (>80% blinds underlying topography). Opacity must scale dynamically across probability tiers within a balanced window ($115 \dots 180$, $\sim 45\% \dots 70\%$).
   - **Chromatic Anchor Separation**: Multi-tier palettes must span distinct, readable spectral anchors (botanical green $\to$ golden amber $\to$ cinnabar terracotta $\to$ crimson garnet) rather than clustering in narrow monochromatic brown/pastel hues that camouflage against mountain terrain.
   - **Smoothstep Zonal Delineation**: To make probability zones identifiable without pixelation or stair-stepping, each tier must maintain a distinct core color plateau with smooth $C^1$ smoothstep transitions around boundary thresholds.
+- **Heatmap Stationary Potential Decoupling**:
+  - The cartographic raster must reflect stationary geographical/ecological potential ($W = 100, S = 1.0$), completely decoupled from hourly point weather oscillations.
+  - Ecological guilds not supported by the SPUN EcM atlas (wood-decay `PARASITIC` and meadow `SAPROTROPHIC`) must be marked `HeatmapLayerStatus.UNAVAILABLE_GUILD_NOT_SUPPORTED` without arbitrary flat scores (e.g. no flat 50.0).
+  - Cell validity is strictly determined by $\text{ecm} > 0$ (AM hyphal density alone does not validate an EcM raster cell).
 
 ### 4.7 Scientific & Ecological Modeling Standards (Revisione v1.3 & Percorso A/B)
 - **Continuous Biological Curves**: Model environmental variables (temperature, soil moisture, precipitation, elevation) with continuous normalized response functions ($0.0 \dots 1.0$) rather than discrete step functions. Small continuous parameter perturbations must never create abrupt step jumps.
@@ -138,11 +146,29 @@ docs/
 - **Testing & Verification Policy (REG-01..20)**:
   - All modifications must satisfy the regression test suite REG-01..20, verifying Lipschitz continuity ($|\Delta S| \le 5\%$ for small perturbations), mass conservation, cardinal temperature validity, absence of NaN/infinite values, and real-world calendar correctness (no fictitious dates).
   - Synthetic scenario tests must be strictly segregated from empirical historical observation benchmarks.
-- **Drought Decay & Primordial Desiccation Gate**: The phenological growth phase cannot rely solely on elapsed time $\tau$. If the superficial soil moisture horizon ($0\dots 7\text{ cm}$) drops below the stress threshold ($\theta < 0.20\text{ m}^3/\text{m}^3$) under prolonged post-trigger drought ($N_{\text{dry}} \ge 5\text{ days}$ with $\sum \text{ET}_0 > P_{\text{trigger}}$), the growth phase must decay continuously via $\Phi_{\text{drought}}(\bar{\theta}_{0\dots 7}) \in [0.20, 1.0]$ down to stasis/drying ($S \le 35/100$), never classifying active fruiting.
+- **Strict $C^1$ Hermite Smoothstep Continuity & Zero Drizzle Discontinuity**:
+  - Environmental stress responses and soil moisture gating must be continuously differentiable ($C^1$) across their entire domain. Do NOT use non-smooth operators like `max(floor, product)` or hard caps that introduce derivative kinks or sharp step jumps.
+  - Implement a continuous Hermite cubic smoothstep over the retrospective 3-day superficial horizon $[t-2, t-1, t]$ ($\bar{\theta}_{0\dots 7}$):
+    $$u = \text{clamp}\left(\frac{\bar{\theta}_{0\dots 7} - \theta_{\min}}{\theta_{\max} - \theta_{\min}}, 0.0, 1.0\right), \quad \Phi_{\text{soil}} = y_{\min} + (1.0 - y_{\min}) \cdot (3u^2 - 2u^3)$$
+    guaranteeing analytical and numerical derivatives equal to zero at boundaries $\theta \le \theta_{\min}$ and $\theta \ge \theta_{\max}$.
+  - Drought recovery and phenological phases must NEVER depend on rain volume thresholds (e.g. $P > 1\text{ mm}$) that cause artificial cliff-resets. At constant soil moisture $\theta$, it must strictly hold that $\Delta \Phi_{\text{soil}} = 0$.
+  - Missing soil moisture data must degrade data quality (`DataQualityStatus.DEGRADED_MISSING_SOIL`), leaving the factor neutral ($\Phi_{\text{soil}} = 1.0$) rather than imposing arbitrary mathematical caps ($S \le 60$).
+- **Epistemological Integrity & Incident Reconstruction**:
+  - When analyzing historical anomalies, user bug reports, or benchmark cases (e.g. Mindino Sept 2026), a retrospective mathematical combination matching the output demonstrates ONLY computational compatibility, NEVER definitive historical proof.
+  - In the absence of original runtime execution traces (logs, exact unrounded payloads, active strictness flags), explicitly classify the scenario as an "open reconstruction" (ricostruzione aperta).
+  - Scope scientific literature claims to the reviewed corpus; never make absolute negative assertions (e.g. write "sources examined do not provide a validated, transferable quantitative relationship...", never "no basis exists in mycological literature").
+- **Heuristic Parameter Governance (`EXPERT_PRIOR`)**:
+  - Mathematical smoothness ($C^1$) does NOT validate empirical biological truth. All algorithmic thresholds, calibration limits, and floor multipliers (e.g. $\theta_{\min}=0.14, \theta_{\max}=0.22, y_{\min}=0.20$) must be explicitly registered in `ParameterRegistry` with status `EXPERT_PRIOR` and subjected to sensitivity testing, avoiding speculative physiological claims without field ground-truth.
 - **Adversarial Boundary Invariants**: Algorithmic models must pass three boundary conditions: (1) *Mindino Gate*: 25 mm rain followed by 12 dry days $\implies S \le 35$; (2) *Diluvio Gate*: 180 mm persistent rain in 3 days $\implies S \le 35$ (hypoxia/waterlogging); (3) *Nocturnal Frost Gate*: post-trigger nights with $T_{\min} \le -2^\circ\text{C} \implies S \le 20$ (frost damage).
 - **Runtime Phenological Configuration Parity**: All production runtime invocations of algorithmic entrypoints in `MushroomViewModel`, background tasks, or summary generators MUST explicitly supply `config = EcologicalWeightsConfig.PHENOLOGICAL`. Silent fallback to `EcologicalWeightsConfig.DEFAULT` is strictly reserved for legacy oracle regression tests.
 
 ### 4.8 Lifecycle, Hardware Sensors & Concurrency Invariants
+- **Day-Rollover, Obsolescence & Triple Timestamps**:
+  - Upon `Lifecycle.Event.ON_RESUME`, the ViewModel/Activity must inspect whether the current calendar date has rolled over compared to `targetAnalysisDate` or if cached state is stale, triggering an atomic re-evaluation (`checkDayChangeAndRefresh`).
+  - The UI and analysis models must expose three separate, unambiguous timestamps in the location's timezone:
+    1. Target Analysis Date (`targetAnalysisDate`);
+    2. Data Acquisition Timestamp (`dataAcquisitionTimestamp`);
+    3. Computation Timestamp (`analysisAsOfTimestamp`).
 - **Lifecycle-Bound Hardware Sensors**: Do NOT use naked `DisposableEffect(Unit)` for battery-intensive hardware listeners (GPS updates, rotation vector compass, barometer). Sensors must be bound to `LocalLifecycleOwner.current` via `LifecycleEventObserver`, starting exclusively on `Lifecycle.Event.ON_RESUME` (or `ON_START`) and stopping immediately on `Lifecycle.Event.ON_PAUSE` (or `ON_STOP`).
 - **Geospatial Hardware Sensor Isolation**: Physical device hardware sensors (rotation vector compass, orientation, gyroscope, barometer) must ONLY be queried or applied if:
   $$\text{haversineDistance}(lat_{\text{user}}, lon_{\text{user}}, lat_{\text{target}}, lon_{\text{target}}) \le 50\text{ meters}$$

@@ -134,6 +134,16 @@ class MushroomViewModel(
         private set
     var todaySuitabilityScore by mutableStateOf(0.0)
         private set
+    var targetAnalysisDate by mutableStateOf<String?>(null)
+        private set
+    var dataAcquisitionTimestamp by mutableStateOf<Long?>(null)
+        private set
+    var analysisAsOfTimestamp by mutableStateOf<Long?>(null)
+        private set
+    var waterDiagnosisText by mutableStateOf<String?>(null)
+        private set
+    var dataQualityStatus by mutableStateOf<String?>(null)
+        private set
     var lastWeatherTimezone: String? = null
         private set
     var growthPhase by mutableStateOf("")
@@ -378,6 +388,22 @@ class MushroomViewModel(
         val todayIndex = MushroomAlgorithms.deriveTodayIndex(days, lastWeatherTimezone)
         if (days.size <= todayIndex || todayIndex < 0) return
 
+        val targetDay = days.getOrNull(todayIndex)
+        targetAnalysisDate = targetDay?.date
+        analysisAsOfTimestamp = System.currentTimeMillis()
+
+        val windowStart = max(0, todayIndex - 2)
+        val retrospectiveWindow = days.subList(windowStart, todayIndex + 1)
+        val soilValues = retrospectiveWindow.mapNotNull { it.avgSoilMoisture0To7cm?.toDouble() }
+        if (soilValues.size < 2) {
+            waterDiagnosisText = "Diagnosi idrica non determinabile per assenza di dati pedologici"
+            dataQualityStatus = "DEGRADED_MISSING_SOIL"
+        } else {
+            val avgSoil = soilValues.average()
+            dataQualityStatus = if (soilValues.size == 2) "DEGRADED_PARTIAL_SOIL" else "OPTIMAL"
+            waterDiagnosisText = String.format(Locale.ITALIAN, "Umidità orizzonte 0–7 cm: %.2f m³/m³ (media retrospettiva 3 gg)", avgSoil)
+        }
+
         val altScore = MushroomAlgorithms.calculateSpeciesAltitudeScore(lastElevation, species)
         val seasonScore = MushroomAlgorithms.calculateSpeciesSeasonalityScore(lastCurrentMonth, species)
 
@@ -532,8 +558,8 @@ class MushroomViewModel(
                 centerLat = lastLat,
                 centerLon = lastLon,
                 spunDataManager = spunDataManager,
-                baseWeatherScore = rawWeatherScore.toDouble(),
-                seasonalityScore = seasonMult,
+                baseWeatherScore = 100.0,
+                seasonalityScore = 1.0,
                 altitudeScore = altMult,
                 species = species
             )
@@ -963,16 +989,14 @@ class MushroomViewModel(
             // Generazione istantanea della nuvola locale in background (<10ms)
             // Sfrutta i dati SPUN residenti in memoria senza attendere 3-5 secondi di chiamate di rete
             launch(Dispatchers.Default) {
-                val calendar = Calendar.getInstance()
-                val month = calendar.get(Calendar.MONTH)
-                val season = MushroomAlgorithms.calculateSeasonalityScore(month).score
                 val instant = HeatmapGenerator.generateHeatmap(
                     centerLat = lat,
                     centerLon = lon,
                     spunDataManager = spunDataManager,
-                    baseWeatherScore = 40.0,
-                    seasonalityScore = season,
-                    altitudeScore = 0.8
+                    baseWeatherScore = 100.0,
+                    seasonalityScore = 1.0,
+                    altitudeScore = 0.8,
+                    species = selectedSpecies
                 )
                 if (instant != null) {
                     heatmapData = instant
@@ -1015,6 +1039,8 @@ class MushroomViewModel(
                 val resolvedGeo = geocodeDeferred?.await() ?: cachedGeo
 
                 val finalAgeMs = cacheManager.getWeatherCacheAge(lat, lon)
+                val now = System.currentTimeMillis()
+                dataAcquisitionTimestamp = if (finalAgeMs != null) now - finalAgeMs else now
                 if (finalAgeMs != null && finalAgeMs > 60_000L) {
                     isFromCache = true
                     isOfflineFieldMode = finalAgeMs > 60 * 60 * 1000L
@@ -1216,18 +1242,20 @@ class MushroomViewModel(
                                 $spunPromptInfo
                                 - Altitudine: ${altitudeScore.text} (Punteggio: ${altitudeScore.score}/1.0)
                                 - Stagione: ${seasonalityScore.text} (Punteggio: ${seasonalityScore.score}/1.0)
-                                - Pioggia ultimi 10 giorni: $rainTextVal
-                                - Temperatura media ultimi 5 giorni: $tempTextVal
-                                - Luna: ${moonPhase.text} (${if (moonPhase.favorable) "Favorevole" else "Ininfluente"})
+                                - Apporto pluviometrico ponderato per latenza: $rainTextVal
+                                - Temperatura media: $tempTextVal
+                                - Diagnosi idrica suolo: ${waterDiagnosisText ?: "Dati orizzonte superficiale non disponibili"}
+                                - Fase lunare (solo nota folkloristica/culturale, priva di effetto causale biologico): ${moonPhase.text}
                                 $terrainPromptInfo
                                 - Tendenza futura: $futureTrend
 
-                                ISTRUZIONI CRITICHE DI FORMATTAZIONE:
-                                1. Valuta in modo specifico e mirato le probabilità di comparsa di ${selectedSpecies.vernacularName}.
-                                2. NON usare NESSUNA formattazione markdown. NON usare asterischi (* o **), trattini (-), hashtag (#), o elenchi puntati. Genera solo testo normale continuo.
-                                3. NON includere NESSUN preambolo, saluto o commento meta-testuale (come "Ecco l'analisi...", "Di seguito l'analisi completa", ecc.).
-                                4. Inizia DIRETTAMENTE con la prima frase dell'analisi micologica (es. "La località presenta condizioni...").
-                                5. Genera al massimo 4 frasi chiare, professionali e precise.
+                                ISTRUZIONI CRITICHE DI FORMATTAZIONE E RIGORE SCIENTIFICO:
+                                1. Valuta in modo specifico e mirato le condizioni ambientali per ${selectedSpecies.vernacularName}.
+                                2. Basa la valutazione idrica sulla diagnosi idrica del suolo e sull'apporto pluviometrico ponderato; non considerare la fase lunare come fattore determinante o causale.
+                                3. NON usare NESSUNA formattazione markdown. NON usare asterischi (* o **), trattini (-), hashtag (#), o elenchi puntati. Genera solo testo normale continuo.
+                                4. NON includere NESSUN preambolo, saluto o commento meta-testuale (come "Ecco l'analisi...", "Di seguito l'analisi completa", ecc.).
+                                5. Inizia DIRETTAMENTE con la prima frase dell'analisi micologica (es. "La località presenta condizioni...").
+                                6. Genera al massimo 4 frasi chiare, professionali e precise.
                             """.trimIndent()
 
                             val localAiSummary = localAiService.generateAdvancedSummary(prompt)
@@ -1355,6 +1383,51 @@ class MushroomViewModel(
             minutes < 1 -> "< 1 min fa"
             minutes < 60 -> "$minutes min fa"
             else -> "${minutes / 60}h fa"
+        }
+    }
+
+    fun checkDayChangeAndRefresh() {
+        val lat = lastLat
+        val lon = lastLon
+        if (lat == 0.0 && lon == 0.0) return
+
+        val zoneId = try {
+            lastWeatherTimezone?.let { java.time.ZoneId.of(it) } ?: java.time.ZoneId.systemDefault()
+        } catch (_: Exception) {
+            java.time.ZoneId.systemDefault()
+        }
+
+        val todayDate = java.time.LocalDate.now(zoneId).toString()
+        val isDayChanged = targetAnalysisDate != null && targetAnalysisDate != todayDate
+        val cacheAgeMs = cacheManager.getWeatherCacheAge(lat, lon)
+        val isCacheExpired = cacheAgeMs != null && cacheAgeMs > 60 * 60 * 1000L // 1 hour TTL
+
+        if (isDayChanged || isCacheExpired) {
+            selectLocation(lat, lon, locationName, isGps = currentLocationIsGps)
+        }
+    }
+
+    fun formatTimestampInLocationTz(timestampMs: Long?): String {
+        if (timestampMs == null) return "Non disponibile"
+        val zoneId = try {
+            lastWeatherTimezone?.let { java.time.ZoneId.of(it) } ?: java.time.ZoneId.systemDefault()
+        } catch (_: Exception) {
+            java.time.ZoneId.systemDefault()
+        }
+        val instant = java.time.Instant.ofEpochMilli(timestampMs)
+        val zonedDateTime = instant.atZone(zoneId)
+        val formatter = java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm z", Locale.ITALIAN)
+        return zonedDateTime.format(formatter)
+    }
+
+    fun formatTargetAnalysisDate(): String {
+        val target = targetAnalysisDate ?: return "Data odierna"
+        return try {
+            val date = java.time.LocalDate.parse(target)
+            val formatter = java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.ITALIAN)
+            date.format(formatter)
+        } catch (_: Exception) {
+            target
         }
     }
 

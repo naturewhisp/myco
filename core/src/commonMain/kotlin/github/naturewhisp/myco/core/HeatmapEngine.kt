@@ -28,6 +28,35 @@ class HeatmapEngine {
         val south = centerLatitude - deltaLatitude
         val west = centerLongitude - deltaLongitude
         val east = centerLongitude + deltaLongitude
+
+        if (species.category == EcologicalCategory.PARASITIC) {
+            return HeatmapRaster(
+                argbPixels = IntArray(gridSize * gridSize),
+                width = gridSize,
+                height = gridSize,
+                north = north,
+                south = south,
+                west = west,
+                east = east,
+                layerStatus = HeatmapLayerStatus.UNAVAILABLE_GUILD_NOT_SUPPORTED,
+                statusDescription = "Layer non disponibile: macromiceti lignicoli/parassiti non tracciati da SPUN EcM"
+            )
+        }
+
+        if (species.category == EcologicalCategory.SAPROTROPHIC) {
+            return HeatmapRaster(
+                argbPixels = IntArray(gridSize * gridSize),
+                width = gridSize,
+                height = gridSize,
+                north = north,
+                south = south,
+                west = west,
+                east = east,
+                layerStatus = HeatmapLayerStatus.UNAVAILABLE_GUILD_NOT_SUPPORTED,
+                statusDescription = "Layer non disponibile: macromiceti saprotrofi praticoli non mappati da SPUN EcM forestale"
+            )
+        }
+
         val header = grid.header
         val stepLongitude = (header.maxLon - header.minLon) / header.width
         val stepLatitude = (header.maxLat - header.minLat) / header.height
@@ -49,18 +78,14 @@ class HeatmapEngine {
                 val sourceIndex = row * header.width + column
                 val ecm = grid.ecmData[sourceIndex].toInt() and 0xFF
                 val hyphal = (grid.hyphalData[sourceIndex].toInt() and 0xFF) / 20.0
-                if (ecm == 0 && hyphal == 0.0) continue
+                if (ecm == 0) continue
                 hasData = true
                 val ecmRatio = (ecm / 65.0).coerceIn(0.0, 1.0)
                 val hyphalRatio = (hyphal / 7.0).coerceIn(0.0, 1.0)
-                val biologicalPotential = when (species.category) {
-                    EcologicalCategory.SAPROTROPHIC -> 50.0
-                    EcologicalCategory.PARASITIC -> ecmRatio * 100.0
-                    EcologicalCategory.ECTOMYCORRHIZAL -> if (applySpunHyphalBonus) {
-                        ecmRatio * 55.0 + hyphalRatio * 45.0
-                    } else {
-                        ecmRatio * 100.0
-                    }
+                val biologicalPotential = if (applySpunHyphalBonus) {
+                    ecmRatio * 55.0 + hyphalRatio * 45.0
+                } else {
+                    ecmRatio * 100.0
                 }
                 val cellHabitatScore = (biologicalPotential / 100.0).coerceIn(0.0, 1.0)
                 val cellSuitability = MycoAlgorithms.calculateSuitabilityScore(
@@ -82,7 +107,7 @@ class HeatmapEngine {
                 pixels[index] = color
             }
         }
-        return if (hasData) HeatmapRaster(pixels, gridSize, gridSize, north, south, west, east) else null
+        return if (hasData) HeatmapRaster(pixels, gridSize, gridSize, north, south, west, east, layerStatus = HeatmapLayerStatus.AVAILABLE) else null
     }
 
     fun color(probability: Int, isDark: Boolean): Int {

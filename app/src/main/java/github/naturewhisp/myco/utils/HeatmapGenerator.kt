@@ -75,6 +75,34 @@ object HeatmapGenerator {
         val gridSize = config.gridSize
         val pixels = IntArray(gridSize * gridSize)
 
+        if (species.category == EcologicalCategory.PARASITIC) {
+            return@withContext HeatmapRaster(
+                argbPixels = pixels,
+                width = gridSize,
+                height = gridSize,
+                north = north,
+                south = south,
+                west = west,
+                east = east,
+                layerStatus = github.naturewhisp.myco.core.HeatmapLayerStatus.UNAVAILABLE_GUILD_NOT_SUPPORTED,
+                statusDescription = "Layer non disponibile: macromiceti lignicoli/parassiti non tracciati da SPUN EcM"
+            )
+        }
+
+        if (species.category == EcologicalCategory.SAPROTROPHIC) {
+            return@withContext HeatmapRaster(
+                argbPixels = pixels,
+                width = gridSize,
+                height = gridSize,
+                north = north,
+                south = south,
+                west = west,
+                east = east,
+                layerStatus = github.naturewhisp.myco.core.HeatmapLayerStatus.UNAVAILABLE_GUILD_NOT_SUPPORTED,
+                statusDescription = "Layer non disponibile: macromiceti saprotrofi praticoli non mappati da SPUN EcM forestale"
+            )
+        }
+
         var hasValidData = false
 
         for (py in 0 until gridSize) {
@@ -105,30 +133,16 @@ object HeatmapGenerator {
                     val ecm = region.ecmData[idx].toInt() and 0xFF
                     val hypRaw = region.hyphalData[idx].toInt() and 0xFF
 
-                    if (ecm > 0 || hypRaw > 0) {
+                    if (ecm > 0) {
                         hasValidData = true
                         val hyp = hypRaw.toFloat() / 20.0f
 
-                        // Calcolo scientifico dell'indice di potenziale micologico (0..100)
-                        // Modulato in base alla nicchia trofica ed ecologica della specie bersaglio
                         val ecmRatio = (ecm / 65.0f).coerceIn(0f, 1f)
                         val hypRatio = (hyp / 7.0f).coerceIn(0f, 1f)
-                        val bioPotential = when (species.category) {
-                            EcologicalCategory.SAPROTROPHIC -> {
-                                // I funghi saprotrofi praticoli/lettiera non dipendono dalle ife AM (Glomeromycota)
-                                50.0f // Potenziale basale uniforme
-                            }
-                            EcologicalCategory.PARASITIC -> {
-                                // I funghi parassiti del legno dipendono dalla matrice arborea ospite (ecmRatio)
-                                (ecmRatio * 100.0f)
-                            }
-                            EcologicalCategory.ECTOMYCORRHIZAL -> {
-                                if (applySpunHyphalBonus) {
-                                    (ecmRatio * 55.0f + hypRatio * 45.0f)
-                                } else {
-                                    (ecmRatio * 100.0f)
-                                }
-                            }
+                        val bioPotential = if (applySpunHyphalBonus) {
+                            (ecmRatio * 55.0f + hypRatio * 45.0f)
+                        } else {
+                            (ecmRatio * 100.0f)
                         }
 
                         // Calcolo coerente dell'indice raster secondo la formula unificata (F11 / MYCO-SCI-08)

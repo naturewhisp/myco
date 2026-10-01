@@ -124,7 +124,7 @@ fun ForecastScreen(
                         )
 
                         Text(
-                            text = "${currentDay.tierLabel.uppercase(Locale.getDefault())} (${currentDay.probability}%)",
+                            text = "${currentDay.tierLabel.uppercase(Locale.getDefault())} (${currentDay.probability}/100)",
                             color = if (currentDay.tier == 0) MaterialTheme.colorScheme.onSurfaceVariant else mycoColors.scaleForTier(currentDay.tier),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold

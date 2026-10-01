@@ -157,7 +157,7 @@ class EndToEndOperationalParityTest {
         assertEquals(GrowthStage.ACTIVE_FRUITING, phase.stage)
         assertEquals(1.0, phase.multiplier, 0.05)
         assertTrue(result.probability >= 60, "Optimal fruiting peak must produce high suitability >= 60, got ${result.probability}")
-        assertEquals(ProbabilityTier.HIGH, result.tier)
+        assertEquals(ProbabilityTier.VERY_HIGH, result.tier)
     }
 
     @Test

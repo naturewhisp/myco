@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Thunderstorm
@@ -23,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import github.naturewhisp.myco.model.DailyOutlook
@@ -118,14 +120,17 @@ fun DayRow(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // Percentuale con font Newsreader
+            // Punteggio su 100 con font Newsreader
             Text(
-                text = "${outlook.probability}%",
+                text = "${outlook.probability}/100",
                 color = scoreColor,
                 fontFamily = NewsreaderFontFamily,
-                fontSize = 15.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
-                modifier = Modifier.width(36.dp)
+                textAlign = TextAlign.End,
+                maxLines = 1,
+                softWrap = false,
+                modifier = Modifier.widthIn(min = 58.dp)
             )
         }
 

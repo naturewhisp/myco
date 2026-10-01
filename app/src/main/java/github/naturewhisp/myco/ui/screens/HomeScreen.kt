@@ -400,11 +400,11 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Nota di campo / Sintesi AI on-device
+        // Nota di campo / Sintesi delle condizioni stimate da modelli remoti (RES-09)
         if (viewModel.summaryText.isNotEmpty()) {
             FieldNote(
                 text = viewModel.summaryText,
-                title = "OSSERVAZIONI DI CAMPO & MODELLO BIOLOGICO"
+                title = "SINTESI DELLE CONDIZIONI STIMATE DA MODELLI REMOTI"
             )
             Spacer(modifier = Modifier.height(16.dp))
         } else if (viewModel.isAiLoading) {
@@ -415,6 +415,51 @@ fun HomeScreen(
                 fontStyle = FontStyle.Italic,
                 modifier = Modifier.padding(vertical = 8.dp)
             )
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        // Metadati Temporali & Diagnosi Idrica Pedologica (RES-06, RES-09)
+        if (viewModel.analysisAsOfTimestamp != null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    text = "CRONOLOGIA ANALISI & PROVENIENZA DATI",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "• Analisi per: ${viewModel.formatTargetAnalysisDate()}",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 12.sp
+                )
+                Text(
+                    text = "• Dati meteo acquisiti: ${viewModel.formatTimestampInLocationTz(viewModel.dataAcquisitionTimestamp)}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp
+                )
+                Text(
+                    text = "• Calcolo elaborato alle: ${viewModel.formatTimestampInLocationTz(viewModel.analysisAsOfTimestamp)}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp
+                )
+                if (viewModel.waterDiagnosisText != null) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "• ${viewModel.waterDiagnosisText}",
+                        color = if (viewModel.dataQualityStatus == "DEGRADED_MISSING_SOIL") mycoColors.adverse else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp,
+                        fontWeight = if (viewModel.dataQualityStatus == "DEGRADED_MISSING_SOIL") FontWeight.SemiBold else FontWeight.Normal
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(16.dp))
         }
 

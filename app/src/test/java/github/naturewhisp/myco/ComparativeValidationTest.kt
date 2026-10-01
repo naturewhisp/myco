@@ -23,10 +23,10 @@ class ComparativeValidationTest {
 
     @Test
     fun benchmarkClimatologicalBaselineComparison() {
-        // Due stazioni a parità di data (Settembre): una bagnata e pronta alla buttata, una in siccità prolungata
+        val baseDate = java.time.LocalDate.of(2026, 8, 25)
         val wetDays = List(35) { index ->
             ProcessedDay(
-                dateIso = "2026-09-${(index + 1).toString().padStart(2, '0')}",
+                dateIso = baseDate.plusDays(index.toLong()).toString(),
                 avgTemp = 16.0,
                 totalPrecipMm = if (index == 23) 35.0 else 0.0,
                 avgHumidityPercent = 82.0,
@@ -274,7 +274,7 @@ class ComparativeValidationTest {
     @Test
     fun parameterRegistryCompleteness() {
         assertTrue(ParameterRegistry.ALL.isNotEmpty())
-        assertEquals(12, ParameterRegistry.ALL.size)
+        assertEquals(15, ParameterRegistry.ALL.size)
 
         // Verifica che ogni parametro abbia metadati completi e non vuoti
         ParameterRegistry.ALL.forEach { param ->

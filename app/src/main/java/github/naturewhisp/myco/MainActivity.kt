@@ -133,4 +133,11 @@ class MainActivity : ComponentActivity() {
             viewModel.selectLocation(41.8902, 12.4922, "Roma (GPS fallito)")
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        if (::viewModel.isInitialized) {
+            viewModel.checkDayChangeAndRefresh()
+        }
+    }
 }

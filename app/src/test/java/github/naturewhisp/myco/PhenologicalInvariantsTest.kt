@@ -409,7 +409,7 @@ class PhenologicalInvariantsTest {
             )
             assertEquals(
                 "Il testo di fase deve indicare stress idrico e disseccamento",
-                "Fase: Stress idrico e disseccamento superficiale (primordi compromessi dalla siccità).",
+                "Fase: Stress idrico e disseccamento superficiale (rischio per i primordi).",
                 eval.phaseText
             )
             assertTrue(

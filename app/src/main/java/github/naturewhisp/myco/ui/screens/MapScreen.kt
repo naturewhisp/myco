@@ -544,10 +544,10 @@ fun MapScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        LegendPip(color = mycoColors.scale1, label = "Innesco")
-                        LegendPip(color = mycoColors.scale2, label = "Moderato")
-                        LegendPip(color = mycoColors.scale3, label = "Propizio")
-                        LegendPip(color = mycoColors.scale4, label = "Culmine")
+                        LegendPip(color = mycoColors.scale1, label = "Bassa")
+                        LegendPip(color = mycoColors.scale2, label = "Media")
+                        LegendPip(color = mycoColors.scale3, label = "Alta")
+                        LegendPip(color = mycoColors.scale4, label = "Molto alta")
                     }
 
                     Spacer(modifier = Modifier.height(6.dp))

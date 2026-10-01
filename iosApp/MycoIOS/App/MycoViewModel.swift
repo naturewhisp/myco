@@ -153,8 +153,8 @@ final class MycoViewModel: ObservableObject {
             let raster = try? await spun.heatmap(
                 latitude: coordinate.latitude,
                 longitude: coordinate.longitude,
-                weatherScore: Double(analysis.weatherScore),
-                seasonalityScore: analysis.seasonalityScore,
+                weatherScore: 100.0,
+                seasonalityScore: 1.0,
                 altitudeScore: analysis.altitudeScore,
                 speciesID: speciesID,
                 isDark: isDark
@@ -308,7 +308,7 @@ final class MycoViewModel: ObservableObject {
             errorMessage = "La risposta meteo non contiene una serie oraria utilizzabile."
             return
         }
-        let todayIndex = min(14, days.count - 1)
+        let todayIndex = min(28, days.count - 1)
         let month = Calendar.current.component(.month, from: .now) - 1
         let elevationSamples = (elevations.isEmpty ? [forecast.elevation ?? 0] : elevations).map { KotlinDouble(double: $0) }
         let input = AnalysisInputs(
@@ -323,7 +323,7 @@ final class MycoViewModel: ObservableObject {
             spunEcmRichness: spunSample.map { KotlinDouble(double: $0.ecmRichness) },
             spunHyphalDensity: spunSample.map { KotlinDouble(double: $0.hyphalDensity) },
             missingSources: spunSample == nil ? missingSources + ["SPUN"] : missingSources,
-            canopyCover: habitat.score >= 0.6 ? habitat.score : 0.0
+            canopyCover: habitat.canopyCover
         )
         guard isCurrentEnvironment(generation) else { return }
         self.forecast = forecast
@@ -339,8 +339,8 @@ final class MycoViewModel: ObservableObject {
         let raster = try? await spun.heatmap(
             latitude: coordinate.latitude,
             longitude: coordinate.longitude,
-            weatherScore: Double(result.weatherScore),
-            seasonalityScore: result.seasonalityScore,
+            weatherScore: 100.0,
+            seasonalityScore: 1.0,
             altitudeScore: result.altitudeScore,
             speciesID: species.id,
             isDark: false

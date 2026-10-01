@@ -22,7 +22,9 @@ data class HeatmapRaster(
     val north: Double,
     val south: Double,
     val west: Double,
-    val east: Double
+    val east: Double,
+    val layerStatus: github.naturewhisp.myco.core.HeatmapLayerStatus = github.naturewhisp.myco.core.HeatmapLayerStatus.AVAILABLE,
+    val statusDescription: String? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

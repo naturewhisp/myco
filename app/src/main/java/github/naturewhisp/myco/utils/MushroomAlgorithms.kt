@@ -868,38 +868,36 @@ object MushroomAlgorithms {
             activeTriggerForDrought = if (weightEarlier >= 0.5) earlierCandidate else recentTrigger
         }
 
-        // Gate di Disseccamento Idrologico Superficiale (REV2-03 / Mindino Gate)
-        val postTriggerStart = activeTriggerForDrought.triggerIndex + 1
-        if (postTriggerStart <= effectiveToday) {
-            var nDry = 0
-            for (idx in effectiveToday downTo postTriggerStart) {
-                if (processedData[idx].liquidPrecip < 1.0f) {
-                    nDry++
-                } else {
-                    break
-                }
-            }
+        // 5. Fattore Continuo di Disponibilità Idrica Pedologica Superficiale (RES-03 / C1 EXPERT_PRIOR)
+        // Sostituisce integralmente il vecchio gate siccità a gradino. Nessun reset da pioggia / pioviggine.
+        // Finestra retrospettiva rigorosa a 3 giorni [t-2, t-1, t] per prevenire look-ahead bias.
+        val windowStart = max(0, effectiveToday - 2)
+        val retrospectiveWindow = processedData.subList(windowStart, effectiveToday + 1)
+        val soilValues = retrospectiveWindow.mapNotNull { it.avgSoilMoisture0To7cm?.toDouble() }
 
-            val postTriggerDays = processedData.subList(postTriggerStart, effectiveToday + 1)
-            val soilValues = postTriggerDays.mapNotNull { it.avgSoilMoisture0To7cm?.toDouble() }
-            if (nDry >= 5 && soilValues.isNotEmpty()) {
-                val avgSoil0To7 = soilValues.average()
-                val recentSoil = postTriggerDays.takeLast(min(5, postTriggerDays.size)).mapNotNull { it.avgSoilMoisture0To7cm?.toDouble() }
-                val currentSoil = postTriggerDays.lastOrNull()?.avgSoilMoisture0To7cm?.toDouble()
-                val effectiveSoil = listOfNotNull(avgSoil0To7, if (recentSoil.isNotEmpty()) recentSoil.average() else null, currentSoil).minOrNull() ?: avgSoil0To7
-                if (effectiveSoil <= 0.22) {
-                    val phiDrought = smoothstep(0.14, 0.22, effectiveSoil).coerceIn(0.20, 1.0)
-                    val decayedMultiplier = baseEval.multiplier * phiDrought
-                    return if (phiDrought <= 0.50) {
-                        baseEval.copy(
-                            phaseText = "Fase: Stress idrico e disseccamento superficiale (primordi compromessi dalla siccità).",
-                            multiplier = decayedMultiplier,
-                            stage = GrowthStage.WANING
-                        )
-                    } else {
-                        baseEval.copy(multiplier = decayedMultiplier)
-                    }
-                }
+        if (soilValues.size >= 2) {
+            val avgSoil0To7 = soilValues.average()
+            val thetaMin = 0.14
+            val thetaMax = 0.22
+            val yMin = 0.20
+            val u = ((avgSoil0To7 - thetaMin) / (thetaMax - thetaMin)).coerceIn(0.0, 1.0)
+            val sU = 3.0 * u * u - 2.0 * u * u * u
+            val phiSoil = yMin + (1.0 - yMin) * sU
+            val finalMultiplier = baseEval.multiplier * phiSoil
+
+            return if (phiSoil <= 0.50) {
+                baseEval.copy(
+                    phaseText = "Fase: Stress idrico e disseccamento superficiale (rischio per i primordi).",
+                    multiplier = finalMultiplier,
+                    stage = GrowthStage.WANING
+                )
+            } else if (phiSoil < 0.85) {
+                baseEval.copy(
+                    phaseText = "${baseEval.phaseText} • Rallentamento per deficit idrico superficiale.",
+                    multiplier = finalMultiplier
+                )
+            } else {
+                baseEval.copy(multiplier = finalMultiplier)
             }
         }
 
@@ -2248,6 +2246,9 @@ object MushroomAlgorithms {
             else -> FactorLevel.ADVERSE
         }
         val rainDetail = buildString {
+            if (effectiveRainMm != null) {
+                append("Indicatore fenologico temporale; non misura la riserva idrica residua nel suolo. ")
+            }
             if (lastSignificantRainText != null) {
                 append("Finestra fenologica 26\u00A0gg • $lastSignificantRainText")
             } else if (effectiveRainMm != null) {
@@ -2262,8 +2263,12 @@ object MushroomAlgorithms {
         factors.add(
             Factor(
                 id = FactorId.PRECIPITATION,
-                label = if (effectiveRainMm != null) "Precipitazioni efficaci" else "Precipitazioni cumulate",
-                formattedValue = String.format(Locale.ITALIAN, "%.0f mm", displayRain),
+                label = if (effectiveRainMm != null) "Apporto ponderato per latenza" else "Precipitazioni cumulate",
+                formattedValue = if (effectiveRainMm != null) {
+                    String.format(Locale.ITALIAN, "%.0f mm ponderati", displayRain)
+                } else {
+                    String.format(Locale.ITALIAN, "%.0f mm", displayRain)
+                },
                 level = rainLevel,
                 detail = rainDetail
             )
@@ -2336,13 +2341,14 @@ object MushroomAlgorithms {
             else -> FactorLevel.ADVERSE
         }
         val cleanHabText = habitatText.replace("Habitat: ", "").trim()
+        val baseHabDetail = if (isSaprotrophic && habitatScore < 0.4) "Habitat praticolo e lettiera organica" else cleanHabText
         factors.add(
             Factor(
                 id = FactorId.HABITAT,
                 label = if (isSaprotrophic) "Idoneità suolo/margine" else "Copertura forestale",
                 formattedValue = String.format(Locale.ITALIAN, "%.0f%%", effectiveHabScore * 100),
                 level = habLevel,
-                detail = if (isSaprotrophic && habitatScore < 0.4) "Habitat praticolo e lettiera organica" else cleanHabText
+                detail = "$baseHabDetail • Indice di prossimità forestale (settori a 8 spicchi)"
             )
         )
 

@@ -1012,8 +1012,8 @@ class MushroomAlgorithmsTest {
             effectiveRainMm = 32.0 // Convoluzione fenologica = 32 mm
         )
         val rainFactor = factors.first { it.id == FactorId.PRECIPITATION }
-        assertEquals("Precipitazioni efficaci", rainFactor.label)
-        assertEquals("32 mm", rainFactor.formattedValue)
+        assertEquals("Apporto ponderato per latenza", rainFactor.label)
+        assertEquals("32 mm ponderati", rainFactor.formattedValue)
         assertEquals(FactorLevel.FAVORABLE, rainFactor.level)
         assertTrue(rainFactor.detail.contains("fenologica"))
     }
@@ -1093,9 +1093,9 @@ class MushroomAlgorithmsTest {
             lastSignificantRainText = "Ultima: 17\u00A0set (25\u00A0mm, 11\u00A0gg\u00A0fa)"
         )
         val rainFactor = factors.first { it.id == FactorId.PRECIPITATION }
-        assertEquals("Precipitazioni efficaci", rainFactor.label)
-        assertEquals("35 mm", rainFactor.formattedValue)
+        assertEquals("Apporto ponderato per latenza", rainFactor.label)
+        assertEquals("35 mm ponderati", rainFactor.formattedValue)
         assertEquals(FactorLevel.FAVORABLE, rainFactor.level)
-        assertEquals("Finestra fenologica 26\u00A0gg • Ultima: 17\u00A0set (25\u00A0mm, 11\u00A0gg\u00A0fa)", rainFactor.detail)
+        assertEquals("Indicatore fenologico temporale; non misura la riserva idrica residua nel suolo. Finestra fenologica 26\u00A0gg • Ultima: 17\u00A0set (25\u00A0mm, 11\u00A0gg\u00A0fa)", rainFactor.detail)
     }
 }

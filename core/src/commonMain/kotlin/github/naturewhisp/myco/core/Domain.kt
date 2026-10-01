@@ -7,11 +7,11 @@ enum class ProbabilityTier(
     val shortLabel: String,
     val descriptiveLabel: String,
 ) {
-    VERY_LOW(0, 0, 19, "Inattivo", "INATTIVO • CONDIZIONI SFAVOREVOLI"),
-    LOW(1, 20, 39, "Innesco", "EMERGENTE • INNESCO MICELIARE"),
-    MODERATE(2, 40, 59, "Discreto", "MODERATO • POTENZIALE DISCRETO"),
-    HIGH(3, 60, 74, "Propizio", "PROPIZIO • BUTTATA IN CORSO"),
-    VERY_HIGH(4, 75, 100, "Culmine", "CULMINE • MASSIMA FAVOREVOLEZZA");
+    VERY_LOW(0, 0, 19, "Molto bassa", "FAVOREVOLEZZA MOLTO BASSA • CONDIZIONI SFAVOREVOLI"),
+    LOW(1, 20, 39, "Bassa", "FAVOREVOLEZZA BASSA • CONDIZIONI LIMITANTI"),
+    MODERATE(2, 40, 59, "Media", "FAVOREVOLEZZA MEDIA • CONDIZIONI INTERMEDIE"),
+    HIGH(3, 60, 74, "Alta", "FAVOREVOLEZZA ALTA • CONDIZIONI PROPIZIE"),
+    VERY_HIGH(4, 75, 100, "Molto alta", "FAVOREVOLEZZA MOLTO ALTA • CONDIZIONI OTTIMALI");
 
     companion object {
         fun fromProbability(probability: Int): ProbabilityTier = when {
@@ -110,9 +110,9 @@ data class ProcessedDay(
     val totalPrecipMm: Double,
     val avgHumidityPercent: Double,
     val weatherCode: Int?,
-    val soilMoisture0To7: Double?,
-    val soilMoisture7To28: Double?,
-    val evapotranspiration: Double?,
+    val soilMoisture0To7: Double? = null,
+    val soilMoisture7To28: Double? = null,
+    val evapotranspiration: Double? = null,
     val minTemp: Double = avgTemp,
     val maxTemp: Double = avgTemp,
 ) {
@@ -212,6 +212,19 @@ data class AnalysisInputs(
     )
 }
 
+enum class DataQualityStatus {
+    OPTIMAL,
+    DEGRADED_PARTIAL_SOIL,
+    DEGRADED_MISSING_SOIL,
+    DEGRADED_OUT_OF_BOUNDS,
+}
+
+enum class HeatmapLayerStatus {
+    AVAILABLE,
+    UNAVAILABLE_GUILD_NOT_SUPPORTED,
+    UNAVAILABLE_OUT_OF_COVERAGE,
+}
+
 data class AnalysisResult(
     val probability: Int,
     val tier: ProbabilityTier,
@@ -225,6 +238,8 @@ data class AnalysisResult(
     val deterministicFieldNote: String,
     val missingSources: List<String>,
     val growthPhase: GrowthPhaseEvaluation? = null,
+    val dataQuality: DataQualityStatus = DataQualityStatus.OPTIMAL,
+    val waterDiagnosis: String? = null,
 ) {
     val suitabilityScore: Int get() = probability
 }
@@ -263,4 +278,6 @@ data class HeatmapRaster(
     val south: Double,
     val west: Double,
     val east: Double,
+    val layerStatus: HeatmapLayerStatus = HeatmapLayerStatus.AVAILABLE,
+    val statusDescription: String? = null,
 )

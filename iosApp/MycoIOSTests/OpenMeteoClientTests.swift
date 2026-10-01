@@ -28,7 +28,7 @@ final class OpenMeteoClientTests: XCTestCase {
         XCTAssertTrue(query.contains("soil_moisture_0_to_7cm"))
         XCTAssertTrue(query.contains("soil_moisture_7_to_28cm"))
         XCTAssertTrue(query.contains("et0_fao_evapotranspiration"))
-        XCTAssertTrue(query.contains("past_days=14"))
+        XCTAssertTrue(query.contains("past_days=28"))
     }
 
     func testElevationExposesFirstParallelArrayValue() async throws {

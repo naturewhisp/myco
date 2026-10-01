@@ -21,21 +21,25 @@ object MycoAlgorithms {
         val rawMin = day.minTemp
         val rawAvg = day.avgTemp
 
-        // 1. Cooling diurno sulle massime
-        val excessMax = max(0.0, rawMax - 18.0)
-        val deltaMax = c * min(4.0, 1.0 + 0.15 * excessMax)
-        val subMaxTemp = rawMax - deltaMax
+        // 1. Attenuazione diurna massime (De Frenne offset estivo continuo C1 senza scalini a 18°C)
+        val baseCooling = 0.5 * max(0.0, (rawMax - 5.0) / 13.0)
+        val hotDayExtra = smoothstep(12.0, 24.0, rawMax) * min(3.5, 0.18 * max(0.0, rawMax - 12.0))
+        val maxOffset = c * min(4.0, baseCooling + hotDayExtra)
 
-        // 2. Warming notturno sulle minime
+        // 2. Isolamento radiativo notturno
         val coldDeficit = smoothstep(0.0, 10.0, 10.0 - rawMin)
-        val deltaMin = c * (1.2 + 0.5 * coldDeficit)
-        val subMinTemp = rawMin + deltaMin
+        val rawMinOffset = c * (1.2 + 0.5 * coldDeficit)
 
-        // 3. Attenuazione DTR
-        val subDtr = max(0.5, subMaxTemp - subMinTemp)
-        val rawDtr = max(0.5, rawMax - rawMin)
-        val dtrRatio = (subDtr / rawDtr).coerceIn(0.4, 1.0)
-        val subAvgTemp = rawMin + deltaMin + (rawAvg - rawMin) * dtrRatio
+        // 3. Rispetto naturale del gradiente termico diurno DTR senza inversione fisica
+        val rawDtr = max(0.0, rawMax - rawMin)
+        val maxAllowedOffset = rawDtr * 0.45
+        val effectiveMaxOffset = min(maxOffset, maxAllowedOffset)
+        val effectiveMinOffset = min(rawMinOffset, maxAllowedOffset)
+
+        val subMaxTemp = rawMax - effectiveMaxOffset
+        val subMinTemp = rawMin + effectiveMinOffset
+        val deltaAvg = (effectiveMinOffset - effectiveMaxOffset) / 2.0
+        val subAvgTemp = (rawAvg + deltaAvg).coerceIn(subMinTemp, subMaxTemp)
 
         // 4. Intercettazione chioma e Throughfall
         val precip = day.liquidPrecipMm
@@ -199,38 +203,36 @@ object MycoAlgorithms {
             activeTriggerForDrought = if (weightEarlier >= 0.5) earlierCandidate else recentTrigger
         }
 
-        // Gate di Disseccamento Idrologico Superficiale (REV2-03 / Mindino Gate)
-        val postTriggerStart = activeTriggerForDrought.triggerIndex + 1
-        if (postTriggerStart <= effectiveToday) {
-            var nDry = 0
-            for (idx in effectiveToday downTo postTriggerStart) {
-                if (processedData[idx].liquidPrecipMm < 1.0) {
-                    nDry++
-                } else {
-                    break
-                }
-            }
+        // 5. Fattore Continuo di Disponibilità Idrica Pedologica Superficiale (RES-03 / C1 EXPERT_PRIOR)
+        // Sostituisce integralmente il vecchio gate siccità a gradino. Nessun reset da pioggia / pioviggine.
+        // Finestra retrospettiva rigorosa a 3 giorni [t-2, t-1, t] per prevenire look-ahead bias.
+        val windowStart = max(0, effectiveToday - 2)
+        val retrospectiveWindow = processedData.subList(windowStart, effectiveToday + 1)
+        val soilValues = retrospectiveWindow.mapNotNull { it.soilMoisture0To7 }
 
-            val postTriggerDays = processedData.subList(postTriggerStart, effectiveToday + 1)
-            val soilValues = postTriggerDays.mapNotNull { it.soilMoisture0To7 }
-            if (nDry >= 5 && soilValues.isNotEmpty()) {
-                val avgSoil0To7 = soilValues.average()
-                val recentSoil = postTriggerDays.takeLast(min(5, postTriggerDays.size)).mapNotNull { it.soilMoisture0To7 }
-                val currentSoil = postTriggerDays.lastOrNull()?.soilMoisture0To7
-                val effectiveSoil = listOfNotNull(avgSoil0To7, if (recentSoil.isNotEmpty()) recentSoil.average() else null, currentSoil).minOrNull() ?: avgSoil0To7
-                if (effectiveSoil <= 0.22) {
-                    val phiDrought = smoothstep(0.14, 0.22, effectiveSoil).coerceIn(0.20, 1.0)
-                    val decayedMultiplier = baseEval.multiplier * phiDrought
-                    return if (phiDrought <= 0.50) {
-                        baseEval.copy(
-                            phaseText = "Fase: Stress idrico e disseccamento superficiale (primordi compromessi dalla siccità).",
-                            multiplier = decayedMultiplier,
-                            stage = GrowthStage.WANING,
-                        )
-                    } else {
-                        baseEval.copy(multiplier = decayedMultiplier)
-                    }
-                }
+        if (soilValues.size >= 2) {
+            val avgSoil0To7 = soilValues.average()
+            val thetaMin = ParameterRegistry.SOIL_DROUGHT_MIN_THRESHOLD.value
+            val thetaMax = ParameterRegistry.SOIL_DROUGHT_STRESS_THRESHOLD.value
+            val yMin = ParameterRegistry.SOIL_FLOOR_FACTOR.value
+            val u = ((avgSoil0To7 - thetaMin) / (thetaMax - thetaMin)).coerceIn(0.0, 1.0)
+            val sU = 3.0 * u * u - 2.0 * u * u * u
+            val phiSoil = yMin + (1.0 - yMin) * sU
+            val finalMultiplier = baseEval.multiplier * phiSoil
+
+            return if (phiSoil <= 0.50) {
+                baseEval.copy(
+                    phaseText = "Fase: Stress idrico e disseccamento superficiale (rischio per i primordi).",
+                    multiplier = finalMultiplier,
+                    stage = GrowthStage.WANING,
+                )
+            } else if (phiSoil < 0.85) {
+                baseEval.copy(
+                    phaseText = "${baseEval.phaseText} • Rallentamento per deficit idrico superficiale.",
+                    multiplier = finalMultiplier,
+                )
+            } else {
+                baseEval.copy(multiplier = finalMultiplier)
             }
         }
 

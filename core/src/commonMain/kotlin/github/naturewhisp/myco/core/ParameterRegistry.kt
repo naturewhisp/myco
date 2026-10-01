@@ -133,24 +133,57 @@ object ParameterRegistry {
 
     val SOIL_DROUGHT_STRESS_THRESHOLD = EcologicalParameter(
         key = "soil.drought_stress_threshold",
-        name = "Soglia stress idrico suolo 0-7 cm",
+        name = "Soglia stress idrico suolo 0-7 cm (theta_max)",
         value = 0.22,
         unit = "m³/m³",
         provenance = ParameterProvenance.EXPERT_PRIOR,
-        reference = "Mindino Gate / Revisione v1.3 (§4.7)",
-        domain = "Idrologia pedologica",
-        description = "Contenuto idrico volumetrico superficiale sotto il quale si attiva il decadimento per siccità post-innesco."
+        reference = "Mindino Gate / Revisione v1.3 (§4.7 / RES-03)",
+        domain = "Idrologia pedologica C1",
+        description = "Contenuto volumetrico superficiale oltre il quale la riserva idrica è pienamente sufficiente (phi_soil = 1.0)."
     )
 
-    val SOIL_DROUGHT_LETHAL_THRESHOLD = EcologicalParameter(
-        key = "soil.drought_lethal_threshold",
-        name = "Soglia disseccamento letale suolo 0-7 cm",
+    val SOIL_DROUGHT_MIN_THRESHOLD = EcologicalParameter(
+        key = "soil.drought_min_threshold",
+        name = "Soglia minima idoneità suolo 0-7 cm (theta_min)",
         value = 0.14,
         unit = "m³/m³",
         provenance = ParameterProvenance.EXPERT_PRIOR,
-        reference = "Mindino Gate / Revisione v1.3 (§4.7)",
-        domain = "Idrologia pedologica",
-        description = "Contenuto idrico superficiale al quale i primordi subiscono disseccamento irreversibile (phi_drought = 0.20)."
+        reference = "Mindino Gate / Revisione v1.3 (§4.7 / RES-03)",
+        domain = "Idrologia pedologica C1",
+        description = "Contenuto idrico superficiale sotto il quale la progressione biologica subisce la massima penalizzazione continua (phi_soil = y_min)."
+    )
+
+    val SOIL_FLOOR_FACTOR = EcologicalParameter(
+        key = "soil.floor_factor",
+        name = "Fattore pavimento idrico (y_min)",
+        value = 0.20,
+        unit = "moltiplicatore (0–1)",
+        provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Mindino Gate / RES-03",
+        domain = "Idrologia pedologica C1",
+        description = "Valore minimo asintotico di phi_soil raggiunto per suoli fortemente disidratati."
+    )
+
+    val CHILLING_DURATION_DAYS = EcologicalParameter(
+        key = "chilling.duration_days",
+        name = "Finestra temporale chilling",
+        value = 5,
+        unit = "giorni",
+        provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Revisione v1.3 / RES-04",
+        domain = "Inibizione termica notturna",
+        description = "Numero di giorni recenti considerati per il calcolo dell'inversione o chilling notturno."
+    )
+
+    val CHILLING_LATENCY_EXPANSION_DAYS = EcologicalParameter(
+        key = "chilling.latency_expansion_days",
+        name = "Espansione latenza chilling",
+        value = 1.5,
+        unit = "giorni",
+        provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Revisione v1.3 / RES-04",
+        domain = "Inerzia fenologica differita",
+        description = "Allungamento euristico del tempo di latenza primordiale in risposta a shock termico da freddo."
     )
 
     val SOIL_SATURATION_ANOXIA_THRESHOLD = EcologicalParameter(
@@ -185,7 +218,10 @@ object ParameterRegistry {
         CANOPY_WARMING_BASE,
         THROUGHFALL_INTERCEPTION_BASE,
         SOIL_DROUGHT_STRESS_THRESHOLD,
-        SOIL_DROUGHT_LETHAL_THRESHOLD,
+        SOIL_DROUGHT_MIN_THRESHOLD,
+        SOIL_FLOOR_FACTOR,
+        CHILLING_DURATION_DAYS,
+        CHILLING_LATENCY_EXPANSION_DAYS,
         SOIL_SATURATION_ANOXIA_THRESHOLD,
         PHENOLOGY_MEMORY_DAYS,
     )

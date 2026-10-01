@@ -28,8 +28,7 @@ enum OpenMeteoDomainMapper {
 
         let weatherCodes = Dictionary(uniqueKeysWithValues: zip(forecast.daily?.time ?? [], forecast.daily?.weatherCode ?? []))
         return accumulators.keys.sorted().compactMap { date in
-            guard let value = accumulators[date] else { return nil }
-            let avgTemp = value.temperatures.average ?? 0
+            guard let avgTemp = value.temperatures.average else { return nil }
             let minTemp = value.temperatures.min() ?? avgTemp
             let maxTemp = value.temperatures.max() ?? avgTemp
             return ProcessedDay(

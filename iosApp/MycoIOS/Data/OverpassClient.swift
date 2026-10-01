@@ -47,6 +47,14 @@ struct HabitatSnapshot: Codable, Sendable {
     let score: Double
     let description: String
     let canopyTypes: [String]
+    let canopyCover: Double
+
+    init(score: Double, description: String, canopyTypes: [String], canopyCover: Double = 0.0) {
+        self.score = score
+        self.description = description
+        self.canopyTypes = canopyTypes
+        self.canopyCover = canopyCover
+    }
 }
 
 /// The two habitat acquisition strategies used by the shared ecological model.
@@ -141,7 +149,8 @@ struct OverpassClient: Sendable {
         } else {
             detected = specificHabitat.elements.isEmpty ? [] : ["saprotrophic_habitat"]
         }
-        return HabitatSnapshot(score: score, description: description, canopyTypes: detected.sorted())
+        let canopyCover = min(1.0, max(0.0, score))
+        return HabitatSnapshot(score: score, description: description, canopyTypes: detected.sorted(), canopyCover: canopyCover)
     }
 
     static func forestQuery(around coordinate: CLLocationCoordinate2D, radiusMeters: Int) -> String {

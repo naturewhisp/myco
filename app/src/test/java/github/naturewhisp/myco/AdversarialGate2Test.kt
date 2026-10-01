@@ -30,7 +30,7 @@ class AdversarialGate2Test {
         // -5 -> VERY_LOW
         val tMinus5 = ProbabilityTier.fromProbability(-5)
         assertEquals(ProbabilityTier.VERY_LOW, tMinus5)
-        assertEquals("Inattivo", tMinus5.shortLabel)
+        assertEquals("Molto bassa", tMinus5.shortLabel)
 
         // 0 -> VERY_LOW
         val t0 = ProbabilityTier.fromProbability(0)
@@ -47,7 +47,7 @@ class AdversarialGate2Test {
         assertEquals(ProbabilityTier.LOW, t20)
         assertEquals(20, t20.minProbability)
         assertEquals(39, t20.maxProbability)
-        assertEquals("Innesco", t20.shortLabel)
+        assertEquals("Bassa", t20.shortLabel)
 
         // 39 -> LOW
         val t39 = ProbabilityTier.fromProbability(39)
@@ -58,7 +58,7 @@ class AdversarialGate2Test {
         assertEquals(ProbabilityTier.MODERATE, t40)
         assertEquals(40, t40.minProbability)
         assertEquals(59, t40.maxProbability)
-        assertEquals("Discreto", t40.shortLabel)
+        assertEquals("Media", t40.shortLabel)
 
         // 59 -> MODERATE
         val t59 = ProbabilityTier.fromProbability(59)
@@ -69,7 +69,7 @@ class AdversarialGate2Test {
         assertEquals(ProbabilityTier.HIGH, t60)
         assertEquals(60, t60.minProbability)
         assertEquals(74, t60.maxProbability)
-        assertEquals("Propizio", t60.shortLabel)
+        assertEquals("Alta", t60.shortLabel)
 
         // 74 -> HIGH
         val t74 = ProbabilityTier.fromProbability(74)
@@ -80,7 +80,7 @@ class AdversarialGate2Test {
         assertEquals(ProbabilityTier.VERY_HIGH, t75)
         assertEquals(75, t75.minProbability)
         assertEquals(100, t75.maxProbability)
-        assertEquals("Culmine", t75.shortLabel)
+        assertEquals("Molto alta", t75.shortLabel)
 
         // 100 -> VERY_HIGH
         val t100 = ProbabilityTier.fromProbability(100)

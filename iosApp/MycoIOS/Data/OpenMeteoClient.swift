@@ -91,7 +91,7 @@ struct OpenMeteoClient: Sendable {
             URLQueryItem(name: "current", value: "temperature_2m,relative_humidity_2m,precipitation"),
             URLQueryItem(name: "hourly", value: "temperature_2m,relative_humidity_2m,precipitation,soil_moisture_0_to_7cm,soil_moisture_7_to_28cm,et0_fao_evapotranspiration"),
             URLQueryItem(name: "daily", value: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum"),
-            URLQueryItem(name: "past_days", value: "14"),
+            URLQueryItem(name: "past_days", value: "28"),
             URLQueryItem(name: "forecast_days", value: "11"),
             URLQueryItem(name: "timezone", value: timezone),
         ]

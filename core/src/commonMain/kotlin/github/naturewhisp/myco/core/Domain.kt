@@ -97,6 +97,16 @@ data class GrowthPhaseEvaluation(
     val multiplier: Double,
     val daysSinceTrigger: Int? = null,
     val stage: GrowthStage = GrowthStage.WAITING_FOR_RAIN,
+    val phiBase: Double = multiplier,
+    val phiSoil: Double = 1.0,
+)
+
+data class SoilHydrologyEvaluation(
+    val phiSoil: Double,
+    val averageSoil0To7: Double?,
+    val availableDaysCount: Int,
+    val isTargetDayPresent: Boolean,
+    val diagnosisText: String,
 )
 
 data class RainTrigger(
@@ -183,6 +193,8 @@ data class AnalysisInputs(
     val spunHyphalDensity: Double?,
     val missingSources: List<String>,
     val canopyCover: Double = 0.0,
+    val forestProximityIndex: Double = canopyCover,
+    val calculationMode: String = "ALL",
 ) {
     constructor(
         days: List<ProcessedDay>,
@@ -209,6 +221,8 @@ data class AnalysisInputs(
         spunHyphalDensity = spunHyphalDensity,
         missingSources = missingSources,
         canopyCover = 0.0,
+        forestProximityIndex = 0.0,
+        calculationMode = "ALL",
     )
 }
 
@@ -240,6 +254,7 @@ data class AnalysisResult(
     val growthPhase: GrowthPhaseEvaluation? = null,
     val dataQuality: DataQualityStatus = DataQualityStatus.OPTIMAL,
     val waterDiagnosis: String? = null,
+    val effectiveRainMm: Double = 0.0,
 ) {
     val suitabilityScore: Int get() = probability
 }

@@ -48,12 +48,14 @@ struct HabitatSnapshot: Codable, Sendable {
     let description: String
     let canopyTypes: [String]
     let canopyCover: Double
+    let forestProximityIndex: Double
 
-    init(score: Double, description: String, canopyTypes: [String], canopyCover: Double = 0.0) {
+    init(score: Double, description: String, canopyTypes: [String], canopyCover: Double = 0.0, forestProximityIndex: Double = 0.0) {
         self.score = score
         self.description = description
         self.canopyTypes = canopyTypes
         self.canopyCover = canopyCover
+        self.forestProximityIndex = forestProximityIndex
     }
 }
 
@@ -120,18 +122,28 @@ struct OverpassClient: Sendable {
         let forestCount = forest.elements.count
         let score: Double
         let description: String
+        let canopyCover: Double
+        let proximityIndex: Double
         switch forestCount {
         case 16...:
-            score = 1
+            score = 1.0
+            proximityIndex = 1.0
+            canopyCover = 0.85
             description = "Habitat ideale: punto immerso in area boschiva."
         case 5...:
             score = 0.95
+            proximityIndex = 0.70
+            canopyCover = 0.70
             description = "Habitat promettente: vicinanza a boschi e foreste."
         case 1...:
-            score = 0.6
+            score = 0.60
+            proximityIndex = 0.45
+            canopyCover = 0.45
             description = "Habitat misto: presenza di aree verdi sparse."
         default:
-            score = 0.1
+            score = 0.10
+            proximityIndex = 0.0
+            canopyCover = 0.0
             description = "Habitat non ideale: nessun bosco rilevato nelle vicinanze."
         }
 
@@ -149,8 +161,13 @@ struct OverpassClient: Sendable {
         } else {
             detected = specificHabitat.elements.isEmpty ? [] : ["saprotrophic_habitat"]
         }
-        let canopyCover = min(1.0, max(0.0, score))
-        return HabitatSnapshot(score: score, description: description, canopyTypes: detected.sorted(), canopyCover: canopyCover)
+        return HabitatSnapshot(
+            score: score,
+            description: description,
+            canopyTypes: detected.sorted(),
+            canopyCover: canopyCover,
+            forestProximityIndex: proximityIndex
+        )
     }
 
     static func forestQuery(around coordinate: CLLocationCoordinate2D, radiusMeters: Int) -> String {

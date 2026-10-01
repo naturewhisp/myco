@@ -28,14 +28,17 @@ enum OpenMeteoDomainMapper {
 
         let weatherCodes = Dictionary(uniqueKeysWithValues: zip(forecast.daily?.time ?? [], forecast.daily?.weatherCode ?? []))
         return accumulators.keys.sorted().compactMap { date in
-            guard let avgTemp = value.temperatures.average else { return nil }
+            guard let value = accumulators[date],
+                  let avgTemp = value.temperatures.average,
+                  let avgHumidity = value.humidity.average,
+                  !value.precipitation.isEmpty else { return nil }
             let minTemp = value.temperatures.min() ?? avgTemp
             let maxTemp = value.temperatures.max() ?? avgTemp
             return ProcessedDay(
                 dateIso: date,
                 avgTemp: avgTemp,
                 totalPrecipMm: value.precipitation.reduce(0, +),
-                avgHumidityPercent: value.humidity.average ?? 0,
+                avgHumidityPercent: avgHumidity,
                 weatherCode: weatherCodes[date].flatMap { $0 }.map { KotlinInt(int: Int32($0)) },
                 soilMoisture0To7: value.shallowSoil.average.map { KotlinDouble(double: $0) },
                 soilMoisture7To28: value.deepSoil.average.map { KotlinDouble(double: $0) },

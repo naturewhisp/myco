@@ -26,6 +26,27 @@ struct SpunHeatmapRaster: Sendable, Equatable {
     let south: Double
     let west: Double
     let east: Double
+    let status: HeatmapLayerStatus
+
+    init(
+        argbPixels: [Int32],
+        width: Int,
+        height: Int,
+        north: Double,
+        south: Double,
+        west: Double,
+        east: Double,
+        status: HeatmapLayerStatus = .available
+    ) {
+        self.argbPixels = argbPixels
+        self.width = width
+        self.height = height
+        self.north = north
+        self.south = south
+        self.west = west
+        self.east = east
+        self.status = status
+    }
 }
 
 /// Serializes SPUN parsing and keeps the non-Sendable KMP grid on a background actor.
@@ -89,7 +110,8 @@ actor SpunBundleService {
             north: raster.north,
             south: raster.south,
             west: raster.west,
-            east: raster.east
+            east: raster.east,
+            status: raster.status
         )
     }
 

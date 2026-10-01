@@ -23,7 +23,8 @@ data class HeatmapData(
     val south: Double,
     val west: Double,
     val east: Double,
-    val raster: HeatmapRaster? = null
+    val raster: HeatmapRaster? = null,
+    val layerStatus: github.naturewhisp.myco.core.HeatmapLayerStatus = raster?.layerStatus ?: github.naturewhisp.myco.core.HeatmapLayerStatus.AVAILABLE
 )
 
 /**

@@ -46,7 +46,7 @@ class ScientificGoldenMasterTest {
     fun p1Scenario02_piedmontHillyHabitatContract() {
         val factors = factorsFor(habitatScore = 0.9, elevation = 350f)
         val habitat = factors.first { it.id == FactorId.HABITAT }
-        assertEquals("90%", habitat.formattedValue)
+        assertEquals("90/100", habitat.formattedValue)
         assertEquals(FactorLevel.FAVORABLE, habitat.level)
     }
 
@@ -65,7 +65,7 @@ class ScientificGoldenMasterTest {
     fun p1Scenario05_saprotrophicHabitatUsesGrasslandFloor() {
         val factors = factorsFor(species = species("macrolepiota_procera"), habitatScore = 0.1)
         val habitat = factors.first { it.id == FactorId.HABITAT }
-        assertEquals("85%", habitat.formattedValue)
+        assertEquals("85/100", habitat.formattedValue)
         assertEquals(FactorLevel.FAVORABLE, habitat.level)
         assertTrue(habitat.detail.contains("praticolo"))
     }

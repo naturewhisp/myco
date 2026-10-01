@@ -138,6 +138,14 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         if (::viewModel.isInitialized) {
             viewModel.checkDayChangeAndRefresh()
+            viewModel.startMidnightWatcher()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (::viewModel.isInitialized) {
+            viewModel.stopMidnightWatcher()
         }
     }
 }

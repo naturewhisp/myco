@@ -93,6 +93,11 @@ docs/
   - The rainfall memory factor must be labeled `"Apporto ponderato per latenza"`.
   - The right-aligned value slot must strictly receive compact atomic tokens (e.g. `"28 mm ponderati"`, `"35 mm ponderati"`), never allowing text to wrap or starve horizontal space.
   - The left-aligned detail slot must contain the explanatory disclaimer: `"Indicatore fenologico temporale; non misura la riserva idrica residua nel suolo"` along with the date/latency details.
+  - In all factor breakdowns, the PRECIPITATION factor must reflect the 26-day phenological convolution (`effectiveRainMm`), not a rectangular recent sum.
+- **Forest Proximity Index vs Canopy Cover Layout Contract**:
+  - Remote forest evidence from OpenStreetMap must be labeled `"Indice di prossimità forestale"` on a normalized `X/100` scale rather than a percentage of direct physical canopy closure.
+  - The right-aligned value slot must receive compact atomic tokens (e.g. `"100/100"`, `"60/100"`, `"0/100"`).
+  - Extended details must clarify that the score reflects OSM spatial proximity and tree genus presence, not a direct on-site physical measurement of canopy closure.
 
 ### 4.5 Design Tokens, Iconography & Resource Cleanliness
 - **Zero Hardcoded Colors**: `Color(0x...)` definitions must reside exclusively in `ui/theme/Color.kt`. Composable functions must access colors via `MaterialTheme.colorScheme` or custom theme attributes (`HerbariumTheme`).
@@ -108,8 +113,8 @@ docs/
   - **Chromatic Anchor Separation**: Multi-tier palettes must span distinct, readable spectral anchors (botanical green $\to$ golden amber $\to$ cinnabar terracotta $\to$ crimson garnet) rather than clustering in narrow monochromatic brown/pastel hues that camouflage against mountain terrain.
   - **Smoothstep Zonal Delineation**: To make probability zones identifiable without pixelation or stair-stepping, each tier must maintain a distinct core color plateau with smooth $C^1$ smoothstep transitions around boundary thresholds.
 - **Heatmap Stationary Potential Decoupling**:
-  - The cartographic raster must reflect stationary geographical/ecological potential ($W = 100, S = 1.0$), completely decoupled from hourly point weather oscillations.
-  - Ecological guilds not supported by the SPUN EcM atlas (wood-decay `PARASITIC` and meadow `SAPROTROPHIC`) must be marked `HeatmapLayerStatus.UNAVAILABLE_GUILD_NOT_SUPPORTED` without arbitrary flat scores (e.g. no flat 50.0).
+  - The cartographic raster must reflect stationary geographical/ecological potential ($W = 100, S = 1.0$), completely decoupled from hourly point weather oscillations and point altitude cursors ($altitudeScore = 1.0$).
+  - Ecological guilds not supported by the SPUN EcM atlas (wood-decay `PARASITIC` and meadow `SAPROTROPHIC`) must be marked `HeatmapLayerStatus.UNAVAILABLE_GUILD_NOT_SUPPORTED` without arbitrary flat scores (e.g. no flat 50.0). When unsupported or unavailable, the UI must display an explicit informative banner explaining why the raster is transparent.
   - Cell validity is strictly determined by $\text{ecm} > 0$ (AM hyphal density alone does not validate an EcM raster cell).
 
 ### 4.7 Scientific & Ecological Modeling Standards (Revisione v1.3 & Percorso A/B)
@@ -175,6 +180,7 @@ docs/
   or if inspecting the user's current GPS position. When inspecting remote map coordinates ($\Delta d > 50\text{ m}$), heading-up rotation and device compass cones must be strictly disabled/neutralized.
 - **Unambiguous Environmental Telemetry Labels**: Never label remote agrometeorological or satellite reanalysis data (Open-Meteo, ERA5-Land, DEM) as "Sensori" or "Sensori del dispositivo". The UI and documentation must strictly and unambiguously distinguish on-board hardware sensors from remote meteorological models.
 - **OsmDroid Lifecycle Hygiene**: All `MapView` instances hosted in `AndroidView` must explicitly receive `onResume()` on `ON_RESUME`, `onPause()` on `ON_PAUSE`, and `onRelease = { it.onDetach() }` to terminate background tile download workers and prevent Activity context leaks.
+- **Lifecycle-Bound Periodic & Midnight Watchers**: Never start infinite polling loops (e.g. `while(true) delay(...)`) directly in ViewModel `init` or unbound coroutine scopes, as they block virtual test dispatchers advancing time and leak across test runs. Recurring watchers (such as midnight date-rollover checkers) must expose explicit start/stop hooks (`startMidnightWatcher()`, `stopMidnightWatcher()`) bound to Activity or Composable lifecycle (`ON_RESUME`/`ON_PAUSE`).
 - **Interactive ViewModel Concurrency (Anti-Stale Overrides)**: When user actions (e.g. map tapping, location search) trigger asynchronous data fetches, the ViewModel must maintain an explicit `Job?` reference (e.g. `dataFetchJob`). Any in-flight job must be deterministically cancelled (`dataFetchJob?.cancel()`) prior to launching a new request. All active coroutine jobs must be explicitly cancelled in `onCleared()`.
 
 ### 4.9 Mycological Safety & Toxic Look-Alikes Standards

@@ -45,6 +45,12 @@ android {
         htmlReport = true
         lintConfig = file("lint.xml")
     }
+
+    testOptions {
+        unitTests.all {
+            jvmArgs '-Xmx2048m'
+        }
+    }
 }
 
 dependencies {

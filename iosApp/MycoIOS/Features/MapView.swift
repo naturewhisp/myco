@@ -93,8 +93,11 @@ struct MapView: View {
                 }
                 if let analysis = viewModel.analysis {
                     Text("\(analysis.probability)/100 · \(analysis.tier.shortLabel)").font(.title3.bold())
-                    if viewModel.heatmap == nil {
-                        Label("Layer ecologico non disponibile per quest'area", systemImage: "square.slash")
+                    if viewModel.heatmap == nil || viewModel.heatmap?.status != .available {
+                        let msg = viewModel.heatmap?.status == .unavailableGuildNotSupported
+                            ? "Mappa non disponibile: l'atlante SPUN supporta taxa ectomicorrizici (EcM)"
+                            : "Layer ecologico non disponibile per quest'area"
+                        Label(msg, systemImage: "square.slash")
                             .font(.caption).foregroundStyle(colors.inkSoft)
                     }
                     Button("Apri indicazioni", systemImage: "arrow.triangle.turn.up.right.diamond") {

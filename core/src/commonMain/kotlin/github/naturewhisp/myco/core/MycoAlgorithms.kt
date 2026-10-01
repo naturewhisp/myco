@@ -88,12 +88,14 @@ object MycoAlgorithms {
         species: MushroomSpecies,
     ): Double {
         if (dayIndex !in days.indices) return 0.0
-        val maxMemoryDays = 26
-        val chillingStart = max(0, dayIndex - 14)
+        val maxMemoryDays = ParameterRegistry.PHENOLOGY_MEMORY_DAYS.value
+        val chillingDuration = ParameterRegistry.CHILLING_DURATION_DAYS.value
+        val chillingExpansion = ParameterRegistry.CHILLING_LATENCY_EXPANSION_DAYS.value
+        val chillingStart = max(0, dayIndex - chillingDuration)
         val chillingWindow = days.slice(chillingStart until dayIndex)
         val hasChilling = chillingWindow.any { it.minTemp < species.toleratedTempMin }
         val effectiveTauPeak = if (hasChilling) {
-            species.phenologyLatencyPeakDays + 2.0
+            species.phenologyLatencyPeakDays + chillingExpansion
         } else {
             species.phenologyLatencyPeakDays
         }
@@ -126,6 +128,60 @@ object MycoAlgorithms {
         }
     }
 
+    fun calculateSoilMoistureFactor(
+        processedData: List<ProcessedDay>,
+        effectiveToday: Int,
+    ): SoilHydrologyEvaluation {
+        if (effectiveToday < 0 || processedData.isEmpty()) {
+            return SoilHydrologyEvaluation(
+                phiSoil = 1.0,
+                averageSoil0To7 = null,
+                availableDaysCount = 0,
+                isTargetDayPresent = false,
+                diagnosisText = "Dati pedologici non disponibili.",
+            )
+        }
+        val windowStart = max(0, effectiveToday - 2)
+        val retrospectiveWindow = processedData.subList(windowStart, effectiveToday + 1)
+        val isTargetPresent = processedData.getOrNull(effectiveToday)?.soilMoisture0To7 != null
+        val soilValues = retrospectiveWindow.mapNotNull { it.soilMoisture0To7 }
+
+        if (soilValues.size < 2) {
+            val text = if (soilValues.isEmpty()) {
+                "Diagnosi idrica non determinabile per assenza di dati pedologici"
+            } else {
+                "Dati pedologici insufficienti (${soilValues.size}/3 giorni nell'orizzonte superficiale)"
+            }
+            return SoilHydrologyEvaluation(
+                phiSoil = 1.0,
+                averageSoil0To7 = soilValues.firstOrNull(),
+                availableDaysCount = soilValues.size,
+                isTargetDayPresent = isTargetPresent,
+                diagnosisText = text,
+            )
+        }
+
+        val avgSoil0To7 = soilValues.average()
+        val thetaMin = ParameterRegistry.SOIL_DROUGHT_MIN_THRESHOLD.value
+        val thetaMax = ParameterRegistry.SOIL_DROUGHT_STRESS_THRESHOLD.value
+        val yMin = ParameterRegistry.SOIL_FLOOR_FACTOR.value
+        val u = ((avgSoil0To7 - thetaMin) / (thetaMax - thetaMin)).coerceIn(0.0, 1.0)
+        val sU = 3.0 * u * u - 2.0 * u * u * u
+        val phiSoil = yMin + (1.0 - yMin) * sU
+
+        val roundedAvg = (avgSoil0To7 * 100.0).roundToInt() / 100.0
+        val targetNote = if (!isTargetPresent) " (giorno target mancante)" else ""
+        val diagnosisText = "Umidità orizzonte 0–7 cm: ${roundedAvg} m³/m³ (media retrospettiva ${soilValues.size} gg$targetNote)"
+
+        return SoilHydrologyEvaluation(
+            phiSoil = phiSoil,
+            averageSoil0To7 = avgSoil0To7,
+            availableDaysCount = soilValues.size,
+            isTargetDayPresent = isTargetPresent,
+            diagnosisText = diagnosisText,
+        )
+    }
+
     fun evaluateGrowthPhase(
         processedData: List<ProcessedDay>,
         species: MushroomSpecies,
@@ -137,9 +193,12 @@ object MycoAlgorithms {
                 phaseText = "Fase: Dati insufficienti per il calcolo fenologico.",
                 multiplier = 0.25,
                 stage = GrowthStage.WAITING_FOR_RAIN,
+                phiBase = 0.25,
+                phiSoil = 1.0,
             )
         }
 
+        val soilEval = calculateSoilMoistureFactor(processedData, effectiveToday)
         val tauPeak = species.phenologyLatencyPeakDays
         val hydrationThreshold = max(2, (0.35 * tauPeak).roundToInt())
         val incubationThreshold = max(hydrationThreshold + 1, (0.75 * tauPeak).roundToInt())
@@ -147,40 +206,25 @@ object MycoAlgorithms {
         val maxLookback = max(0, effectiveToday - (2.5 * tauPeak).roundToInt())
 
         val candidateEvents = extractCandidateRainEvents(processedData, effectiveToday, maxLookback)
+        val baseEval: GrowthPhaseEvaluation
         if (candidateEvents.isEmpty()) {
-            return GrowthPhaseEvaluation(
-                phaseText = "Fase: Crescita assente (in attesa di precipitazioni).",
+            baseEval = GrowthPhaseEvaluation(
+                phaseText = "Fase temporale potenziale: Crescita assente (in attesa di precipitazioni).",
                 multiplier = 0.25,
                 stage = GrowthStage.WAITING_FOR_RAIN,
+                phiBase = 0.25,
+                phiSoil = soilEval.phiSoil,
             )
-        }
-
-        val distinctEvents = clusterRainEvents(candidateEvents)
-        val recentTrigger = distinctEvents.first()
-        val earlierCandidate = distinctEvents.drop(1).firstOrNull { earlier ->
-            val daysSinceEarlier = effectiveToday - earlier.triggerIndex
-            daysSinceEarlier in (hydrationThreshold + 1)..fruitingThreshold && earlier.rainAmount > 15.0
-        }
-
-        val evalRecent = evaluateStageFromTrigger(
-            activeTrigger = recentTrigger,
-            effectiveToday = effectiveToday,
-            species = species,
-            hydrationThreshold = hydrationThreshold,
-            incubationThreshold = incubationThreshold,
-            fruitingThreshold = fruitingThreshold,
-            tauPeak = tauPeak,
-        )
-
-        val baseEval: GrowthPhaseEvaluation
-        val activeTriggerForDrought: RainTrigger
-
-        if (earlierCandidate == null) {
-            baseEval = evalRecent
-            activeTriggerForDrought = recentTrigger
         } else {
-            val evalEarlier = evaluateStageFromTrigger(
-                activeTrigger = earlierCandidate,
+            val distinctEvents = clusterRainEvents(candidateEvents)
+            val recentTrigger = distinctEvents.first()
+            val earlierCandidate = distinctEvents.drop(1).firstOrNull { earlier ->
+                val daysSinceEarlier = effectiveToday - earlier.triggerIndex
+                daysSinceEarlier in (hydrationThreshold + 1)..fruitingThreshold && earlier.rainAmount > 15.0
+            }
+
+            val evalRecent = evaluateStageFromTrigger(
+                activeTrigger = recentTrigger,
                 effectiveToday = effectiveToday,
                 species = species,
                 hydrationThreshold = hydrationThreshold,
@@ -189,54 +233,56 @@ object MycoAlgorithms {
                 tauPeak = tauPeak,
             )
 
-            val saturationFactor = smoothstep(15.0, 25.0, earlierCandidate.rainAmount)
-            val ratio = recentTrigger.rainAmount / earlierCandidate.rainAmount.coerceAtLeast(1.0)
-            val transition = smoothstep(0.50, 0.90, ratio)
-            val weightEarlier = (1.0 - transition) * saturationFactor
-            val blendedMultiplier = weightEarlier * evalEarlier.multiplier + (1.0 - weightEarlier) * evalRecent.multiplier
-
-            baseEval = if (weightEarlier >= 0.5) {
-                evalEarlier.copy(multiplier = blendedMultiplier)
+            if (earlierCandidate == null) {
+                baseEval = evalRecent
             } else {
-                evalRecent.copy(multiplier = blendedMultiplier)
-            }
-            activeTriggerForDrought = if (weightEarlier >= 0.5) earlierCandidate else recentTrigger
-        }
-
-        // 5. Fattore Continuo di Disponibilità Idrica Pedologica Superficiale (RES-03 / C1 EXPERT_PRIOR)
-        // Sostituisce integralmente il vecchio gate siccità a gradino. Nessun reset da pioggia / pioviggine.
-        // Finestra retrospettiva rigorosa a 3 giorni [t-2, t-1, t] per prevenire look-ahead bias.
-        val windowStart = max(0, effectiveToday - 2)
-        val retrospectiveWindow = processedData.subList(windowStart, effectiveToday + 1)
-        val soilValues = retrospectiveWindow.mapNotNull { it.soilMoisture0To7 }
-
-        if (soilValues.size >= 2) {
-            val avgSoil0To7 = soilValues.average()
-            val thetaMin = ParameterRegistry.SOIL_DROUGHT_MIN_THRESHOLD.value
-            val thetaMax = ParameterRegistry.SOIL_DROUGHT_STRESS_THRESHOLD.value
-            val yMin = ParameterRegistry.SOIL_FLOOR_FACTOR.value
-            val u = ((avgSoil0To7 - thetaMin) / (thetaMax - thetaMin)).coerceIn(0.0, 1.0)
-            val sU = 3.0 * u * u - 2.0 * u * u * u
-            val phiSoil = yMin + (1.0 - yMin) * sU
-            val finalMultiplier = baseEval.multiplier * phiSoil
-
-            return if (phiSoil <= 0.50) {
-                baseEval.copy(
-                    phaseText = "Fase: Stress idrico e disseccamento superficiale (rischio per i primordi).",
-                    multiplier = finalMultiplier,
-                    stage = GrowthStage.WANING,
+                val evalEarlier = evaluateStageFromTrigger(
+                    activeTrigger = earlierCandidate,
+                    effectiveToday = effectiveToday,
+                    species = species,
+                    hydrationThreshold = hydrationThreshold,
+                    incubationThreshold = incubationThreshold,
+                    fruitingThreshold = fruitingThreshold,
+                    tauPeak = tauPeak,
                 )
-            } else if (phiSoil < 0.85) {
-                baseEval.copy(
-                    phaseText = "${baseEval.phaseText} • Rallentamento per deficit idrico superficiale.",
-                    multiplier = finalMultiplier,
-                )
-            } else {
-                baseEval.copy(multiplier = finalMultiplier)
+
+                val saturationFactor = smoothstep(15.0, 25.0, earlierCandidate.rainAmount)
+                val ratio = recentTrigger.rainAmount / earlierCandidate.rainAmount.coerceAtLeast(1.0)
+                val transition = smoothstep(0.50, 0.90, ratio)
+                val weightEarlier = (1.0 - transition) * saturationFactor
+                val blendedMultiplier = weightEarlier * evalEarlier.multiplier + (1.0 - weightEarlier) * evalRecent.multiplier
+
+                baseEval = if (weightEarlier >= 0.5) {
+                    evalEarlier.copy(multiplier = blendedMultiplier)
+                } else {
+                    evalRecent.copy(multiplier = blendedMultiplier)
+                }
             }
         }
 
-        return baseEval
+        val finalMultiplier = (baseEval.multiplier * soilEval.phiSoil).coerceIn(0.05, 1.0)
+        return if (soilEval.phiSoil <= 0.50) {
+            baseEval.copy(
+                phaseText = "Fase temporale potenziale: Stress idrico e disseccamento superficiale (rischio per i primordi).",
+                multiplier = finalMultiplier,
+                stage = GrowthStage.WANING,
+                phiBase = baseEval.multiplier,
+                phiSoil = soilEval.phiSoil,
+            )
+        } else if (soilEval.phiSoil < 0.85) {
+            baseEval.copy(
+                phaseText = "${baseEval.phaseText} • Rallentamento per deficit idrico superficiale.",
+                multiplier = finalMultiplier,
+                phiBase = baseEval.multiplier,
+                phiSoil = soilEval.phiSoil,
+            )
+        } else {
+            baseEval.copy(
+                multiplier = finalMultiplier,
+                phiBase = baseEval.multiplier,
+                phiSoil = soilEval.phiSoil,
+            )
+        }
     }
 
     internal fun extractCandidateRainEvents(
@@ -317,13 +363,13 @@ object MycoAlgorithms {
             daysSince <= hydrationThreshold -> {
                 stage = GrowthStage.MYCELIAL_HYDRATION
                 multiplier = 0.35 + 0.15 * (daysSince.toDouble() / hydrationThreshold.coerceAtLeast(1))
-                phaseText = "Fase: Idratazione miceliare (${daysSince} gg dall'innesco)."
+                phaseText = "Fase temporale potenziale: Idratazione miceliare (${daysSince} gg dall'innesco)."
             }
             daysSince <= incubationThreshold -> {
                 stage = GrowthStage.PRIMORDIA_INCUBATION
                 val span = (incubationThreshold - hydrationThreshold).coerceAtLeast(1)
                 multiplier = 0.50 + 0.35 * ((daysSince - hydrationThreshold).toDouble() / span)
-                phaseText = "Fase: Incubazione primordi (${daysSince} gg dall'innesco)."
+                phaseText = "Fase temporale potenziale: Incubazione primordi (${daysSince} gg dall'innesco)."
             }
             daysSince <= fruitingThreshold -> {
                 stage = GrowthStage.ACTIVE_FRUITING
@@ -334,21 +380,24 @@ object MycoAlgorithms {
                     val span = (fruitingThreshold - tauPeak).coerceAtLeast(1.0)
                     1.00 - 0.15 * ((daysSince - tauPeak) / span)
                 }
-                phaseText = "Fase: Buttata attiva e culmine epigeo (${daysSince} gg dall'innesco)."
+                phaseText = "Fase temporale potenziale: Culmine teorico della finestra (${daysSince} gg dall'innesco)."
             }
             else -> {
                 stage = GrowthStage.WANING
                 val extraDays = (daysSince - fruitingThreshold).toDouble()
                 multiplier = (0.70 - 0.05 * extraDays).coerceIn(0.30, 0.70)
-                phaseText = "Fase: Flusso in esaurimento (${daysSince} gg dall'innesco)."
+                phaseText = "Fase temporale potenziale: Flusso in esaurimento (${daysSince} gg dall'innesco)."
             }
         }
 
+        val clampedMultiplier = multiplier.coerceIn(0.20, 1.0)
         return GrowthPhaseEvaluation(
             phaseText = phaseText,
-            multiplier = multiplier.coerceIn(0.20, 1.0),
+            multiplier = clampedMultiplier,
             daysSinceTrigger = daysSince,
             stage = stage,
+            phiBase = clampedMultiplier,
+            phiSoil = 1.0,
         )
     }
 

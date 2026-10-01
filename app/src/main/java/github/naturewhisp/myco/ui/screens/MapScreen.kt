@@ -507,7 +507,7 @@ fun MapScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "CONTESTO ECOLOGICO E BIOMASSA (0–100)",
+                            text = "CONTESTO ECOLOGICO E MICORRIZICO SPUN (0–100)",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
@@ -539,6 +539,16 @@ fun MapScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
+                    if (viewModel.heatmapData?.layerStatus == github.naturewhisp.myco.core.HeatmapLayerStatus.UNAVAILABLE_GUILD_NOT_SUPPORTED) {
+                        Text(
+                            text = "Layer non disponibile per ${viewModel.selectedSpecies.vernacularName}: l'atlante SPUN supporta gilde ectomicorriziche (EcM).",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+
                     // Scala cromatica Herbarium
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -553,7 +563,7 @@ fun MapScreen(
                     Spacer(modifier = Modifier.height(6.dp))
 
                     Text(
-                        text = "Layer territoriale basato su macromiceti, biomassa simbiotica e boschi. Per microclima e fenologia puntuale consulta la Scheda.",
+                        text = "Layer stazionario basato sull'atlante SPUN e formazioni boschive. Per microclima e fenologia puntuale consulta la Scheda.",
                         fontSize = 9.sp,
                         lineHeight = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)

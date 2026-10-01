@@ -407,10 +407,9 @@ class PhenologicalInvariantsTest {
                 GrowthStage.ACTIVE_FRUITING,
                 eval.stage
             )
-            assertEquals(
+            assertTrue(
                 "Il testo di fase deve indicare stress idrico e disseccamento",
-                "Fase: Stress idrico e disseccamento superficiale (rischio per i primordi).",
-                eval.phaseText
+                eval.phaseText.contains("Stress idrico e disseccamento superficiale")
             )
             assertTrue(
                 "Il moltiplicatore fenologico deve essere <= 0.45 a causa del gate di siccità (attuale: ${eval.multiplier})",

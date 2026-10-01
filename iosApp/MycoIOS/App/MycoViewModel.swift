@@ -155,7 +155,7 @@ final class MycoViewModel: ObservableObject {
                 longitude: coordinate.longitude,
                 weatherScore: 100.0,
                 seasonalityScore: 1.0,
-                altitudeScore: analysis.altitudeScore,
+                altitudeScore: 1.0,
                 speciesID: speciesID,
                 isDark: isDark
             )
@@ -308,7 +308,8 @@ final class MycoViewModel: ObservableObject {
             errorMessage = "La risposta meteo non contiene una serie oraria utilizzabile."
             return
         }
-        let todayIndex = min(28, days.count - 1)
+        let todayDateIso = Self.isoDateFormatter(timezone: forecast.timezone).string(from: Date())
+        let todayIndex = days.firstIndex(where: { $0.dateIso == todayDateIso }) ?? min(28, days.count - 1)
         let month = Calendar.current.component(.month, from: .now) - 1
         let elevationSamples = (elevations.isEmpty ? [forecast.elevation ?? 0] : elevations).map { KotlinDouble(double: $0) }
         let input = AnalysisInputs(
@@ -341,7 +342,7 @@ final class MycoViewModel: ObservableObject {
             longitude: coordinate.longitude,
             weatherScore: 100.0,
             seasonalityScore: 1.0,
-            altitudeScore: result.altitudeScore,
+            altitudeScore: 1.0,
             speciesID: species.id,
             isDark: false
         )
@@ -379,6 +380,15 @@ final class MycoViewModel: ObservableObject {
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }()
+
+    private static func isoDateFormatter(timezone: String?) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .iso8601)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timezone.flatMap { TimeZone(identifier: $0) } ?? TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }
 }
 
 private struct CacheKeys {

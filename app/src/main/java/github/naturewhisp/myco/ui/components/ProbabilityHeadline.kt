@@ -38,13 +38,14 @@ import github.naturewhisp.myco.ui.theme.NewsreaderFontFamily
 fun ProbabilityHeadline(
     probability: Int,
     modifier: Modifier = Modifier,
-    speciesVernacular: String? = null
+    speciesVernacular: String? = null,
+    isCalculable: Boolean = true
 ) {
     val mycoColors = MycoTheme.colors
     val tier = ProbabilityTier.fromProbability(probability)
 
-    val tierLabel = tier.descriptiveLabel
-    val tierColor = if (tier == ProbabilityTier.VERY_LOW) {
+    val tierLabel = if (isCalculable) tier.descriptiveLabel else "INDICE NON CALCOLABILE"
+    val tierColor = if (!isCalculable || tier == ProbabilityTier.VERY_LOW) {
         MaterialTheme.colorScheme.onSurfaceVariant
     } else {
         mycoColors.scaleForTier(tier.tierIndex)
@@ -69,14 +70,26 @@ fun ProbabilityHeadline(
         ) {
             Text(
                 text = buildAnnotatedString {
-                    append("$probability")
-                    withStyle(
-                        SpanStyle(
-                            fontSize = 20.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    ) {
-                        append("/100")
+                    if (isCalculable) {
+                        append("$probability")
+                        withStyle(
+                            SpanStyle(
+                                fontSize = 20.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        ) {
+                            append("/100")
+                        }
+                    } else {
+                        append("--")
+                        withStyle(
+                            SpanStyle(
+                                fontSize = 20.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        ) {
+                            append("/100")
+                        }
                     }
                 },
                 color = MaterialTheme.colorScheme.onSurface,
@@ -114,6 +127,6 @@ fun ProbabilityHeadline(
         }
 
         Spacer(modifier = Modifier.height(10.dp))
-        ProbabilityBar(probability = probability)
+        ProbabilityBar(probability = if (isCalculable) probability else 0)
     }
 }

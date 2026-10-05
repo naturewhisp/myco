@@ -375,7 +375,8 @@ fun HomeScreen(
         // Testata di probabilità con barra a 5 segmenti
         ProbabilityHeadline(
             probability = viewModel.todayProbability,
-            speciesVernacular = viewModel.selectedSpecies.vernacularName
+            speciesVernacular = viewModel.selectedSpecies.vernacularName,
+            isCalculable = viewModel.isCalculable
         )
 
         Spacer(modifier = Modifier.height(20.dp))

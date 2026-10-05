@@ -257,6 +257,7 @@ data class AnalysisResult(
     val effectiveRainMm: Double = 0.0,
 ) {
     val suitabilityScore: Int get() = probability
+    val isCalculable: Boolean get() = dataQuality != DataQualityStatus.DEGRADED_OUT_OF_BOUNDS
 }
 
 data class SpunRegionHeader(

@@ -263,7 +263,7 @@ object MycoAlgorithms {
         val finalMultiplier = (baseEval.multiplier * soilEval.phiSoil).coerceIn(0.05, 1.0)
         return if (soilEval.phiSoil <= 0.50) {
             baseEval.copy(
-                phaseText = "Fase temporale potenziale: Stress idrico e disseccamento superficiale (rischio per i primordi).",
+                phaseText = "Fase temporale potenziale: Stress idrico e disseccamento superficiale (sviluppo potenzialmente limitato).",
                 multiplier = finalMultiplier,
                 stage = GrowthStage.WANING,
                 phiBase = baseEval.multiplier,

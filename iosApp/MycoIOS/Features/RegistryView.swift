@@ -221,13 +221,18 @@ struct RegistryView: View {
         } else if let analysis = viewModel.analysis {
             Section("Idoneità ambientale (Percorso A)") {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("\(analysis.probability)/100").font(.system(.largeTitle, design: .rounded, weight: .bold))
-                    Text(analysis.tier.descriptiveLabel).font(.headline)
-                    ProgressView(value: Double(analysis.probability), total: 100).tint(tierColor(index: Int(analysis.tier.tierIndex)))
+                    if analysis.isCalculable {
+                        Text("\(analysis.probability)/100").font(.system(.largeTitle, design: .rounded, weight: .bold))
+                        Text(analysis.tier.descriptiveLabel).font(.headline)
+                        ProgressView(value: Double(analysis.probability), total: 100).tint(tierColor(index: Int(analysis.tier.tierIndex)))
+                    } else {
+                        Text("Non calcolabile").font(.system(.largeTitle, design: .rounded, weight: .bold))
+                        Text("Dati ambientali non disponibili o non validi").font(.headline)
+                    }
                 }
                 .padding(.vertical, 8)
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel("Indice di idoneità \(analysis.probability) su 100, livello \(analysis.tier.shortLabel)")
+                .accessibilityLabel(analysis.isCalculable ? "Indice di idoneità \(analysis.probability) su 100, livello \(analysis.tier.shortLabel)" : "Indice non calcolabile")
             }
             Section("Fattori ecologici") {
                 ForEach(Array(analysis.factors.enumerated()), id: \.offset) { _, factor in

@@ -5,17 +5,25 @@ import kotlin.math.roundToInt
 
 class MycoAnalysisEngine {
     fun analyze(input: AnalysisInputs): AnalysisResult {
-        val species = SpeciesCatalog.byId(input.speciesId)
-        val todayIndex = input.todayIndex.coerceIn(0, max(0, input.days.lastIndex))
-
-        if (input.days.isEmpty()) {
+        if (input.days.isEmpty() || input.todayIndex !in input.days.indices) {
+            return emptyResult(DataQualityStatus.DEGRADED_OUT_OF_BOUNDS)
+        }
+        if (!input.habitatScore.isFinite() || input.habitatScore !in 0.0..1.0 ||
+            !input.canopyCover.isFinite() || input.canopyCover !in 0.0..1.0 ||
+            input.elevationSamples.any { !it.isFinite() || it !in -500.0..9000.0 } ||
+            (input.spunEcmRichness != null && (!input.spunEcmRichness.isFinite() || input.spunEcmRichness < 0.0)) ||
+            (input.spunHyphalDensity != null && (!input.spunHyphalDensity.isFinite() || input.spunHyphalDensity < 0.0))) {
             return emptyResult(DataQualityStatus.DEGRADED_OUT_OF_BOUNDS)
         }
 
-        // 1. Controllo preventivo di plausibilità e completezza dati (C05)
+        val species = SpeciesCatalog.byId(input.speciesId)
+        val todayIndex = input.todayIndex
+
+        // 1. Controllo preventivo di plausibilità e completezza dati (C05, D04, D05)
         var dataQuality = DataQualityStatus.OPTIMAL
         for (day in input.days) {
-            if (!day.avgTemp.isFinite() || day.avgTemp !in -40.0..50.0 ||
+            if (!isValidIsoDate(day.dateIso) ||
+                !day.avgTemp.isFinite() || day.avgTemp !in -40.0..50.0 ||
                 !day.minTemp.isFinite() || day.minTemp !in -40.0..50.0 ||
                 !day.maxTemp.isFinite() || day.maxTemp !in -40.0..50.0 ||
                 day.minTemp > day.maxTemp ||
@@ -78,21 +86,28 @@ class MycoAnalysisEngine {
             val hasMatchingHost = species.preferredCanopyTypes.any { pref ->
                 input.canopyTypes.any { it.equals(pref, ignoreCase = true) }
             }
-            if (hasMatchingHost && probabilityHabitatScore < 0.90) {
-                probabilityHabitatScore = minOf(1.0, probabilityHabitatScore * 1.15)
+            var bonusMult = 1.0
+            if (hasMatchingHost) {
+                bonusMult = maxOf(bonusMult, 1.15)
             }
-            input.spunEcmRichness?.let { richness ->
-                probabilityHabitatScore = when {
-                    richness >= 50.0 && probabilityHabitatScore < 0.90 -> minOf(1.0, probabilityHabitatScore * 1.15)
-                    richness < 15.0 && probabilityHabitatScore > 0.1 -> max(0.2, probabilityHabitatScore * 0.8)
-                    else -> probabilityHabitatScore
+            // D03: EcM richness applies exclusively to ECTOMYCORRHIZAL taxa, avoiding multi-compounding
+            if (species.category == EcologicalCategory.ECTOMYCORRHIZAL) {
+                input.spunEcmRichness?.let { richness ->
+                    when {
+                        richness >= 50.0 -> bonusMult = maxOf(bonusMult, 1.15)
+                        richness < 15.0 && bonusMult <= 1.0 -> bonusMult = 0.8
+                        else -> {}
+                    }
                 }
+            }
+            if (bonusMult > 1.0 && probabilityHabitatScore < 0.90) {
+                probabilityHabitatScore = minOf(1.0, probabilityHabitatScore * bonusMult)
+            } else if (bonusMult < 1.0 && probabilityHabitatScore > 0.1) {
+                probabilityHabitatScore = maxOf(0.2, probabilityHabitatScore * bonusMult)
             }
         }
         val displayHabitatFactorScore = if (isWeatherOnly) {
             1.0
-        } else if (species.category == EcologicalCategory.SAPROTROPHIC) {
-            max(probabilityHabitatScore, 0.85)
         } else {
             probabilityHabitatScore
         }
@@ -345,7 +360,7 @@ class MycoAnalysisEngine {
             // C04: Etichetta "Indice di prossimità forestale" e formato /100 invece di "% copertura"
             val habLabel = if (species.category == EcologicalCategory.SAPROTROPHIC) "Idoneità suolo/margine" else "Indice di prossimità forestale"
             val habValue = (habitat * 100).roundToIntText() + "/100"
-            add(factor(FactorId.HABITAT, habLabel, habValue, habitat, input.habitatDescription + " • Indice di prossimità forestale (settori a 8 spicchi)", favorable = 0.85, neutral = 0.5))
+            add(factor(FactorId.HABITAT, habLabel, habValue, habitat, input.habitatDescription, favorable = 0.85, neutral = 0.5))
             add(factor(FactorId.ALTITUDE, "Fascia altimetrica", terrain.elevation.roundToIntText() + " m", altitude, species.fruitingPeriodDescription, favorable = 0.85, neutral = 0.6))
             add(factor(FactorId.SEASONALITY, "Finestra fenologica", (seasonality * 100).roundToIntText() + "%", seasonality, species.fruitingPeriodDescription, favorable = 0.85, neutral = 0.5))
             add(
@@ -356,13 +371,14 @@ class MycoAnalysisEngine {
                         GrowthStage.ACTIVE_FRUITING -> "Finestra teorica di maturazione"
                         GrowthStage.PRIMORDIA_INCUBATION -> "Incubazione"
                         GrowthStage.MYCELIAL_HYDRATION -> "Idratazione"
-                        GrowthStage.WANING -> "Disseccamento"
+                        GrowthStage.WANING -> if (growthPhase.phiSoil <= 0.50) "Disseccamento" else "Finestra in esaurimento"
                         GrowthStage.WAITING_FOR_RAIN -> "In attesa"
                     },
                     when (growthPhase.stage) {
                         GrowthStage.ACTIVE_FRUITING -> FactorLevel.FAVORABLE
                         GrowthStage.PRIMORDIA_INCUBATION, GrowthStage.MYCELIAL_HYDRATION -> FactorLevel.NEUTRAL
-                        GrowthStage.WAITING_FOR_RAIN, GrowthStage.WANING -> FactorLevel.ADVERSE
+                        GrowthStage.WAITING_FOR_RAIN -> FactorLevel.ADVERSE
+                        GrowthStage.WANING -> if (growthPhase.phiSoil <= 0.50) FactorLevel.ADVERSE else FactorLevel.NEUTRAL
                     },
                     growthPhase.phaseText,
                 ),
@@ -470,8 +486,10 @@ class MycoAnalysisEngine {
         val strongest = components.maxBy { it.second }.first
         val weakest = components.minBy { it.second }.first
 
-        val stressWarning = if (growthPhase?.stage == GrowthStage.WANING || (growthPhase?.phiSoil ?: 1.0) <= 0.50) {
-            "Attenzione: severo deficit idrico superficiale (sviluppo primordi compromesso). "
+        val stressWarning = if ((growthPhase?.phiSoil ?: 1.0) <= 0.50) {
+            "Attenzione: deficit idrico superficiale modellato (sviluppo potenzialmente limitato). "
+        } else if (growthPhase?.stage == GrowthStage.WANING) {
+            "Finestra temporale fenologica in esaurimento. "
         } else ""
 
         val qualityWarning = when (dataQuality) {
@@ -481,7 +499,15 @@ class MycoAnalysisEngine {
             DataQualityStatus.OPTIMAL -> ""
         }
 
-        val coverage = if (missing.isEmpty()) "Tutte le fonti ambientali sono disponibili." else "Fonti non disponibili: ${missing.joinToString()}. Il risultato è parziale."
+        val allMissing = missing.toMutableList()
+        if (dataQuality == DataQualityStatus.DEGRADED_MISSING_SOIL && !allMissing.contains("suolo")) {
+            allMissing.add("suolo")
+        }
+        val coverage = if (allMissing.isEmpty()) {
+            "Tutte le fonti ambientali sono disponibili."
+        } else {
+            "Fonti non disponibili: ${allMissing.joinToString()}. Il risultato è parziale."
+        }
         return "${stressWarning}${qualityWarning}Indice di idoneità stimato $probability/100. Fattore più favorevole: $strongest; principale limite: $weakest. $coverage"
     }
 
@@ -498,13 +524,27 @@ class MycoAnalysisEngine {
             terrain = TerrainAspect(0.0, 0.0, 0.0, "Non disponibile", 1.0),
             factors = emptyList(),
             dailyOutlooks = emptyList(),
-            deterministicFieldNote = "Analisi non calcolabile: serie meteorologica assente o non valida.",
+            deterministicFieldNote = "Analisi non calcolabile: dati ambientali non disponibili o non validi.",
             missingSources = listOf("dati meteo"),
             growthPhase = null,
             dataQuality = dataQuality,
-            waterDiagnosis = "Serie assente",
+            waterDiagnosis = "Serie assente o non valida",
             effectiveRainMm = 0.0,
         )
+    }
+
+    private fun isValidIsoDate(date: String): Boolean {
+        if (date.length != 10 || date[4] != '-' || date[7] != '-') return false
+        val year = date.substring(0, 4).toIntOrNull() ?: return false
+        val month = date.substring(5, 7).toIntOrNull() ?: return false
+        val day = date.substring(8, 10).toIntOrNull() ?: return false
+        if (year !in 1900..2100 || month !in 1..12 || day !in 1..31) return false
+        val maxDays = when (month) {
+            2 -> if ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)) 29 else 28
+            4, 6, 9, 11 -> 30
+            else -> 31
+        }
+        return day <= maxDays
     }
 
     private fun oneDecimal(value: Double): String = ((value * 10.0).roundToInt() / 10.0).toString()

@@ -21,8 +21,8 @@ class EndToEndOperationalParityTest {
     fun mindinoGate_droughtDecayAbortsFruitingInCoreAndEngine() {
         val days = List(36) { index ->
             val rain = when (index) {
-                16 -> 22.3
-                23 -> 25.3
+                16 -> 22.3 // 10 September
+                23 -> 25.3 // 17 September
                 else -> 0.0
             }
             val soilShallow = when {
@@ -30,8 +30,14 @@ class EndToEndOperationalParityTest {
                 index in 16..24 -> 0.28
                 else -> 0.16 // Post-trigger prolonged drought
             }
+            // 36 real Gregorian dates: Aug 25 (idx 0) to Aug 31 (idx 6), Sep 01 (idx 7) to Sep 29 (idx 35)
+            val dateStr = if (index < 7) {
+                "2026-08-${(25 + index).toString().padStart(2, '0')}"
+            } else {
+                "2026-09-${(index - 6).toString().padStart(2, '0')}"
+            }
             ProcessedDay(
-                dateIso = "2026-09-${(index + 1).toString().padStart(2, '0')}",
+                dateIso = dateStr,
                 avgTemp = 14.5,
                 totalPrecipMm = rain,
                 avgHumidityPercent = 65.0,
@@ -44,7 +50,7 @@ class EndToEndOperationalParityTest {
             )
         }
 
-        // Target: Day 35 (12 dry days post-trigger)
+        // Target: Day 35 = 2026-09-29 (12 dry days post-trigger)
         val inputs = AnalysisInputs(
             days = days,
             todayIndex = 35,
@@ -120,8 +126,13 @@ class EndToEndOperationalParityTest {
     fun optimalFruitingPeak_day11WithHurdleClearedProducesHighSuitability() {
         val days = List(35) { index ->
             val rain = if (index == 23) 35.0 else 0.0
+            val dateStr = if (index < 6) {
+                "2026-08-${(26 + index).toString().padStart(2, '0')}"
+            } else {
+                "2026-09-${(index - 5).toString().padStart(2, '0')}"
+            }
             ProcessedDay(
-                dateIso = "2026-09-${(index + 1).toString().padStart(2, '0')}",
+                dateIso = dateStr,
                 avgTemp = 16.0,
                 totalPrecipMm = rain,
                 avgHumidityPercent = 82.0,
@@ -261,5 +272,76 @@ class EndToEndOperationalParityTest {
         outlooks.forEach {
             assertTrue(it.probability in 0..100)
         }
+    }
+
+    @Test
+    fun uncalculableState_returnsNotCalculableWithoutScore() {
+        val days = listOf(
+            ProcessedDay("2026-09-15", 15.0, 0.0, 70.0, 1)
+        )
+        // todayIndex -1 (missing target date)
+        val missingTargetInput = AnalysisInputs(
+            days = days,
+            todayIndex = -1,
+            speciesId = "boletus_edulis",
+            habitatScore = 0.8,
+            habitatDescription = "Bosco",
+            canopyTypes = emptyList(),
+            elevationSamples = listOf(500.0, 500.0, 500.0, 500.0),
+            monthIndex = 8,
+            spunEcmRichness = null,
+            spunHyphalDensity = null,
+            missingSources = emptyList(),
+            canopyCover = 0.5,
+        )
+        val res1 = MycoAnalysisEngine().analyze(missingTargetInput)
+        assertEquals(false, res1.isCalculable)
+        assertEquals(DataQualityStatus.DEGRADED_OUT_OF_BOUNDS, res1.dataQuality)
+        assertTrue(res1.deterministicFieldNote.contains("Analisi non calcolabile"))
+
+        // empty days
+        val emptyDaysInput = missingTargetInput.copy(days = emptyList(), todayIndex = 0)
+        val res2 = MycoAnalysisEngine().analyze(emptyDaysInput)
+        assertEquals(false, res2.isCalculable)
+        assertEquals(DataQualityStatus.DEGRADED_OUT_OF_BOUNDS, res2.dataQuality)
+    }
+
+    @Test
+    fun saprotrophicEcMRichnessInvariance_ecmRichnessDoesNotAffectSaprotrophScore() {
+        val days = (0 until 20).map { i ->
+            ProcessedDay(
+                dateIso = "2026-09-${(i + 1).toString().padStart(2, '0')}",
+                avgTemp = 18.0,
+                totalPrecipMm = if (i == 10) 30.0 else 0.0,
+                avgHumidityPercent = 75.0,
+                weatherCode = 1,
+                soilMoisture0To7 = 0.26,
+                soilMoisture7To28 = 0.22,
+                evapotranspiration = 2.0,
+                minTemp = 12.0,
+                maxTemp = 22.0,
+            )
+        }
+        val baseInput = AnalysisInputs(
+            days = days,
+            todayIndex = 16,
+            speciesId = "macrolepiota_procera",
+            habitatScore = 0.85,
+            habitatDescription = "Prato collinare",
+            canopyTypes = listOf("prati"),
+            elevationSamples = listOf(600.0, 600.0, 600.0, 600.0),
+            monthIndex = 8,
+            spunEcmRichness = null,
+            spunHyphalDensity = null,
+            missingSources = emptyList(),
+            canopyCover = 0.0,
+        )
+        val resNoSpun = MycoAnalysisEngine().analyze(baseInput)
+        val resHighEcm = MycoAnalysisEngine().analyze(baseInput.copy(spunEcmRichness = 90.0))
+        val resLowEcm = MycoAnalysisEngine().analyze(baseInput.copy(spunEcmRichness = 5.0))
+
+        assertEquals(resNoSpun.probability, resHighEcm.probability, "EcM richness must not alter saprotroph probability")
+        assertEquals(resNoSpun.probability, resLowEcm.probability, "Low EcM richness must not penalize saprotroph probability")
+        assertEquals(resNoSpun.habitatScore, resHighEcm.habitatScore)
     }
 }

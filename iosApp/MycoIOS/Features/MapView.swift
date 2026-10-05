@@ -92,7 +92,11 @@ struct MapView: View {
                     if viewModel.isLoadingEnvironment { ProgressView() }
                 }
                 if let analysis = viewModel.analysis {
-                    Text("\(analysis.probability)/100 · \(analysis.tier.shortLabel)").font(.title3.bold())
+                    if analysis.isCalculable {
+                        Text("\(analysis.probability)/100 · \(analysis.tier.shortLabel)").font(.title3.bold())
+                    } else {
+                        Text("Non calcolabile").font(.title3.bold())
+                    }
                     if viewModel.heatmap == nil || viewModel.heatmap?.status != .available {
                         let msg = viewModel.heatmap?.status == .unavailableGuildNotSupported
                             ? "Mappa non disponibile: l'atlante SPUN supporta taxa ectomicorrizici (EcM)"

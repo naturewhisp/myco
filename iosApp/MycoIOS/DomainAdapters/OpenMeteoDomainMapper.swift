@@ -26,7 +26,7 @@ enum OpenMeteoDomainMapper {
             accumulators[date] = value
         }
 
-        let weatherCodes = Dictionary(uniqueKeysWithValues: zip(forecast.daily?.time ?? [], forecast.daily?.weatherCode ?? []))
+        let weatherCodes = Dictionary(zip(forecast.daily?.time ?? [], forecast.daily?.weatherCode ?? []), uniquingKeysWith: { first, _ in first })
         return accumulators.keys.sorted().compactMap { date in
             guard let value = accumulators[date],
                   let avgTemp = value.temperatures.average,

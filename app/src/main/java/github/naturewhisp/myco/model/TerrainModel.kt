@@ -29,7 +29,8 @@ data class TerrainAspectData(
     val aspectDegrees: Float,
     val cardinalDirection: String,
     val cardinalAbbreviation: String,
-    val isFlat: Boolean
+    val isFlat: Boolean,
+    val rawElevations: List<Float>? = null
 )
 
 /**

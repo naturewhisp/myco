@@ -102,8 +102,13 @@ class ComparativeValidationTest {
     @Test
     fun rankingConcordanceAcrossStations() {
         val baseDays = List(35) { index ->
+            val dateStr = if (index < 6) {
+                "2026-08-${(26 + index).toString().padStart(2, '0')}"
+            } else {
+                "2026-09-${(index - 5).toString().padStart(2, '0')}"
+            }
             ProcessedDay(
-                dateIso = "2026-09-${(index + 1).toString().padStart(2, '0')}",
+                dateIso = dateStr,
                 avgTemp = 16.0,
                 totalPrecipMm = if (index == 23) 35.0 else 0.0,
                 avgHumidityPercent = 80.0,

@@ -171,6 +171,9 @@ class MushroomViewModel(
         private set
     var summaryText by mutableStateOf("")
         private set
+    var isCalculable by mutableStateOf(true)
+        private set
+    private var analysisGeneration = 0L
     var spunEcmText by mutableStateOf("")
         private set
     var spunHyphalText by mutableStateOf("")
@@ -388,8 +391,15 @@ class MushroomViewModel(
     fun recalculateForSpecies() {
         val days = lastProcessedDays ?: return
         val species = selectedSpecies
-        val todayIndex = MushroomAlgorithms.deriveTodayIndex(days, lastWeatherTimezone)
-        if (days.size <= todayIndex || todayIndex < 0) return
+        val todayIndex = MushroomAlgorithms.deriveTodayIndex(days, lastWeatherTimezone, targetAnalysisDate)
+        if (days.size <= todayIndex || todayIndex < 0) {
+            isCalculable = false
+            todaySuitabilityScore = 0.0
+            todayProbability = 0
+            dataQualityStatus = github.naturewhisp.myco.core.DataQualityStatus.DEGRADED_OUT_OF_BOUNDS.name
+            summaryText = "Analisi non calcolabile: data richiesta non presente nella serie temporale disponibile."
+            return
+        }
 
         val targetDay = days.getOrNull(todayIndex)
         targetAnalysisDate = targetDay?.date
@@ -413,14 +423,35 @@ class MushroomViewModel(
         )
         val siteCanopyCover = if (evidence.status == HabitatStatus.UNKNOWN) 0.0 else evidence.forestCoverFraction
 
-        val rawHabitatScore = when (evidence.status) {
-            HabitatStatus.KNOWN_UNSUITABLE -> 0.10
-            HabitatStatus.UNKNOWN -> 0.50
-            HabitatStatus.KNOWN_SUITABLE -> when {
-                evidence.forestCoverFraction >= 0.65 -> 1.0
-                evidence.forestCoverFraction >= 0.35 -> 0.90
-                evidence.forestCoverFraction > 0.05 -> 0.65
-                else -> 0.15
+        val rawHabitatScore = when (species.category) {
+            EcologicalCategory.SAPROTROPHIC -> when (evidence.status) {
+                HabitatStatus.KNOWN_UNSUITABLE -> 0.15
+                HabitatStatus.UNKNOWN -> 0.50
+                HabitatStatus.KNOWN_SUITABLE -> when {
+                    evidence.meadowFraction >= 0.25 -> 0.95
+                    evidence.forestCoverFraction in 0.10..0.50 -> 0.90
+                    evidence.forestCoverFraction > 0.50 -> 0.75
+                    else -> 0.85
+                }
+            }
+            EcologicalCategory.PARASITIC -> when (evidence.status) {
+                HabitatStatus.KNOWN_UNSUITABLE -> 0.10
+                HabitatStatus.UNKNOWN -> 0.45
+                HabitatStatus.KNOWN_SUITABLE -> when {
+                    evidence.forestCoverFraction >= 0.60 -> 1.0
+                    evidence.forestCoverFraction >= 0.20 -> 0.85
+                    else -> 0.30
+                }
+            }
+            EcologicalCategory.ECTOMYCORRHIZAL -> when (evidence.status) {
+                HabitatStatus.KNOWN_UNSUITABLE -> 0.10
+                HabitatStatus.UNKNOWN -> 0.50
+                HabitatStatus.KNOWN_SUITABLE -> when {
+                    evidence.forestCoverFraction >= 0.65 -> 1.0
+                    evidence.forestCoverFraction >= 0.35 -> 0.90
+                    evidence.forestCoverFraction > 0.05 -> 0.65
+                    else -> 0.15
+                }
             }
         }
         val standScore = if (evidence.status == HabitatStatus.UNKNOWN) 1.0 else MushroomAlgorithms.standDensityResponseUnimodal(siteCanopyCover, species)
@@ -448,7 +479,7 @@ class MushroomViewModel(
             habitatScore = baseHabitatScore,
             habitatDescription = evidence.status.name,
             canopyTypes = evidence.confirmedHostGenera.toList(),
-            elevationSamples = listOf(lastElevation.toDouble()),
+            elevationSamples = lastTerrainData?.rawElevations?.map { it.toDouble() } ?: listOf(lastElevation.toDouble()),
             monthIndex = lastCurrentMonth,
             spunEcmRichness = lastSpunData?.ecmRichness?.toDouble(),
             spunHyphalDensity = lastSpunData?.hyphalDensity?.toDouble(),
@@ -463,6 +494,7 @@ class MushroomViewModel(
         val engine = github.naturewhisp.myco.core.MycoAnalysisEngine()
         val result = engine.analyze(inputs)
 
+        isCalculable = result.isCalculable
         todaySuitabilityScore = result.probability.toDouble()
         todayProbability = result.probability
         growthPhase = result.growthPhase?.phaseText ?: ""
@@ -1215,62 +1247,32 @@ class MushroomViewModel(
                 // Dismiss main full-screen loader immediately
                 isLoading = false
 
-                // Process AI summary in background coroutine if available
+                // Process AI style enrichment in background coroutine if available (D07)
                 if (useLocalAi && localAiService.isAvailable()) {
+                    val currentGeneration = ++analysisGeneration
                     isAiLoading = true
                     aiJob = viewModelScope.launch {
                         try {
-                            val spunPromptInfo = if (spunData != null) {
-                                "- Rete micorrizica sotterranea (dati scientifici SPUN): Densità ifale ${String.format(Locale.ITALIAN, "%.1f", spunData.hyphalDensity)} m/cm³ (${spunData.hyphalText.substringAfter("(").substringBefore(")")}), Ricchezza specie ectomicorriziche ${spunData.ecmRichness.toInt()} specie (${spunData.ecmText.substringAfter("(").substringBefore(")")})"
-                            } else {
-                                "- Rete micorrizica: Nessun dato regionale SPUN registrato per questa coordinata"
-                            }
-
-                            val terrainPromptInfo = if (lastTerrainData != null) {
-                                val t = lastTerrainData!!
-                                if (t.isFlat) {
-                                    "- Orografia e versante: Terreno pianeggiante o altopiano (pendenza ${String.format(Locale.ITALIAN, "%.0f°", t.slopeDegrees)})"
-                                } else {
-                                    "- Orografia e versante reale: Pendenza ${t.slopeDegrees.roundToInt()}°, Esposizione versante a ${t.cardinalDirection} (${lastTerrainEvaluation?.detail ?: ""})"
-                                }
-                            } else {
-                                "- Esposizione versante consigliata: $slopeTextVal"
-                            }
-
-                            val speciesPromptInfo = if (!selectedSpecies.isGeneralBaseline) {
-                                "- Specie cercata: ${selectedSpecies.vernacularName} (${selectedSpecies.binomialName}) [${selectedSpecies.category.label}]\n" +
-                                "- Esigenze ecologiche specie: Quota ideale ${selectedSpecies.idealElevationMin}-${selectedSpecies.idealElevationMax} m, Temperatura ottimale ${selectedSpecies.idealTempMin.toInt()}-${selectedSpecies.idealTempMax.toInt()}°C, Precipitazione min ${selectedSpecies.minRainAccumulation.toInt()} mm, Essenze arboree: ${selectedSpecies.preferredCanopyTypes.joinToString(", ")}"
-                            } else {
-                                "- Specie cercata: Modello polifito generale (Boletus edulis e funghi simbionti forestali)"
-                            }
-
+                            val deterministicNote = summaryText
                             val prompt = """
-                                Sei un esperto micologo. Genera un'analisi in parole semplici in lingua italiana basandoti su questi dati:
-                                - Località: $displayName
-                                $speciesPromptInfo
-                                - Habitat: $habitatBaseText (Punteggio: $finalHabitatScore/1.0)
-                                $spunPromptInfo
-                                - Altitudine: ${altitudeScore.text} (Punteggio: ${altitudeScore.score}/1.0)
-                                - Stagione: ${seasonalityScore.text} (Punteggio: ${seasonalityScore.score}/1.0)
-                                - Apporto pluviometrico ponderato per latenza: $rainTextVal
-                                - Temperatura media: $tempTextVal
-                                - Diagnosi idrica suolo: ${waterDiagnosisText ?: "Dati orizzonte superficiale non disponibili"}
-                                - Fase lunare (solo nota folkloristica/culturale, priva di effetto causale biologico): ${moonPhase.text}
-                                $terrainPromptInfo
-                                - Tendenza futura: $futureTrend
-
-                                ISTRUZIONI CRITICHE DI FORMATTAZIONE E RIGORE SCIENTIFICO:
-                                1. Valuta in modo specifico e mirato le condizioni ambientali per ${selectedSpecies.vernacularName}.
-                                2. Basa la valutazione idrica sulla diagnosi idrica del suolo e sull'apporto pluviometrico ponderato; non considerare la fase lunare come fattore determinante o causale.
-                                3. NON usare NESSUNA formattazione markdown. NON usare asterischi (* o **), trattini (-), hashtag (#), o elenchi puntati. Genera solo testo normale continuo.
-                                4. NON includere NESSUN preambolo, saluto o commento meta-testuale (come "Ecco l'analisi...", "Di seguito l'analisi completa", ecc.).
-                                5. Inizia DIRETTAMENTE con la prima frase dell'analisi micologica (es. "La località presenta condizioni...").
-                                6. Genera al massimo 4 frasi chiare, professionali e precise.
+                                Seleziona esclusivamente uno stile per una nota ambientale. Rispondi con una sola parola tra: essenziale, taccuino, osservazione. Non riscrivere la nota e non aggiungere altri contenuti.
+                                Scegli lo stile per questa nota: $deterministicNote
                             """.trimIndent()
 
-                            val localAiSummary = localAiService.generateAdvancedSummary(prompt)
-                            if (localAiSummary != null) {
-                                summaryText = cleanAiResponse(localAiSummary)
+                            val localAiResponse = localAiService.generateAdvancedSummary(prompt)
+                            if (localAiResponse != null && currentGeneration == analysisGeneration) {
+                                val token = cleanAiResponse(localAiResponse).trim().lowercase(Locale.ITALIAN)
+                                val prefix = when (token) {
+                                    "taccuino" -> "Nota dal taccuino: "
+                                    "osservazione" -> "Osservazione ambientale: "
+                                    else -> ""
+                                }
+                                val safetyNotice = "Myco non identifica funghi e non conferma la commestibilità."
+                                summaryText = if (prefix.isNotEmpty()) {
+                                    "$prefix$deterministicNote $safetyNotice"
+                                } else {
+                                    deterministicNote
+                                }
                             }
                         } catch (e: Exception) {
                             e.printStackTrace()

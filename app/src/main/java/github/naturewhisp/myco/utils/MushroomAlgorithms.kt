@@ -961,7 +961,7 @@ object MushroomAlgorithms {
         val finalMultiplier = (baseEval.multiplier * soilEval.phiSoil).coerceIn(0.05, 1.0)
         return if (soilEval.phiSoil <= 0.50) {
             baseEval.copy(
-                phaseText = "Fase temporale potenziale: Stress idrico e disseccamento superficiale (rischio per i primordi).",
+                phaseText = "Fase temporale potenziale: Stress idrico e disseccamento superficiale (sviluppo potenzialmente limitato).",
                 multiplier = finalMultiplier,
                 stage = GrowthStage.WANING,
                 phiBase = baseEval.multiplier,
@@ -1183,7 +1183,8 @@ object MushroomAlgorithms {
                 aspectDegrees = 0f,
                 cardinalDirection = "Pianeggiante",
                 cardinalAbbreviation = "Pian",
-                isFlat = true
+                isFlat = true,
+                rawElevations = elevations
             )
         }
         val zCenter = elevations[0]
@@ -1231,7 +1232,8 @@ object MushroomAlgorithms {
             aspectDegrees = aspectDeg,
             cardinalDirection = dir,
             cardinalAbbreviation = abbr,
-            isFlat = isFlat
+            isFlat = isFlat,
+            rawElevations = elevations
         )
     }
 
@@ -1407,20 +1409,24 @@ object MushroomAlgorithms {
      */
     fun deriveTodayIndex(
         processedData: List<ProcessedDay>,
-        timezone: String? = null
+        timezone: String? = null,
+        targetDateIso: String? = null
     ): Int {
-        if (processedData.isEmpty()) return 0
-        val tz = if (!timezone.isNullOrBlank()) {
-            try { java.util.TimeZone.getTimeZone(timezone) } catch (_: Exception) { java.util.TimeZone.getDefault() }
+        if (processedData.isEmpty()) return -1
+        val targetIso = if (!targetDateIso.isNullOrBlank()) {
+            targetDateIso
         } else {
-            java.util.TimeZone.getDefault()
+            val tz = if (!timezone.isNullOrBlank()) {
+                try { java.util.TimeZone.getTimeZone(timezone) } catch (_: Exception) { java.util.TimeZone.getDefault() }
+            } else {
+                java.util.TimeZone.getDefault()
+            }
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).apply {
+                timeZone = tz
+            }
+            sdf.format(java.util.Date())
         }
-        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).apply {
-            timeZone = tz
-        }
-        val todayIso = sdf.format(java.util.Date())
-        val idx = processedData.indexOfFirst { it.date == todayIso }
-        return if (idx >= 0) idx else min(processedData.size - 1, 14.coerceAtLeast(min(28, processedData.size - 1)))
+        return processedData.indexOfFirst { it.date == targetIso }
     }
 
     /**
@@ -2471,7 +2477,7 @@ object MushroomAlgorithms {
         val isDroughtStress = cleanPhase.contains("Stress idrico") || cleanPhase.contains("disseccamento")
         val phaseName = if (isDroughtStress) "Stress idrico" else cleanPhase.substringBefore(" (")
         val phaseDetail = if (isDroughtStress) {
-            "Disseccamento superficiale: primordi compromessi dalla siccità"
+            "Disseccamento superficiale: sviluppo potenzialmente limitato dallo stress idrico"
         } else {
             cleanPhase.substringAfter("(", "").replace(")", "").ifEmpty { "Cronologia e latenza piogge" }
         }

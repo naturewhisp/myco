@@ -27,6 +27,7 @@ struct SpunHeatmapRaster: Sendable, Equatable {
     let west: Double
     let east: Double
     let status: HeatmapLayerStatus
+    let statusDescription: String?
 
     init(
         argbPixels: [Int32],
@@ -36,7 +37,8 @@ struct SpunHeatmapRaster: Sendable, Equatable {
         south: Double,
         west: Double,
         east: Double,
-        status: HeatmapLayerStatus = .available
+        status: HeatmapLayerStatus = .available,
+        statusDescription: String? = nil
     ) {
         self.argbPixels = argbPixels
         self.width = width
@@ -46,6 +48,7 @@ struct SpunHeatmapRaster: Sendable, Equatable {
         self.west = west
         self.east = east
         self.status = status
+        self.statusDescription = statusDescription
     }
 }
 
@@ -111,7 +114,8 @@ actor SpunBundleService {
             south: raster.south,
             west: raster.west,
             east: raster.east,
-            status: raster.status
+            status: raster.layerStatus,
+            statusDescription: raster.statusDescription
         )
     }
 

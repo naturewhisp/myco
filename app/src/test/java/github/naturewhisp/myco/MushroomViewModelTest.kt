@@ -68,8 +68,15 @@ class MushroomViewModelTest {
         val dailyTimes = mutableListOf<String>()
         val codes = mutableListOf<Int?>()
 
-        for (d in 1..21) {
-            val dayStr = String.format(Locale.US, "2026-09-%02d", d)
+        val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Rome"))
+        cal.add(java.util.Calendar.DAY_OF_YEAR, -14)
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("Europe/Rome")
+        }
+
+        for (d in 0 until 21) {
+            val dayStr = sdf.format(cal.time)
+            cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
             dailyTimes.add(dayStr)
             codes.add(1)
             for (h in 0..23) {

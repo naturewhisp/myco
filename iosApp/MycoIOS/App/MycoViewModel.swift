@@ -309,7 +309,7 @@ final class MycoViewModel: ObservableObject {
             return
         }
         let todayDateIso = Self.isoDateFormatter(timezone: forecast.timezone).string(from: Date())
-        let todayIndex = days.firstIndex(where: { $0.dateIso == todayDateIso }) ?? min(28, days.count - 1)
+        let todayIndex = days.firstIndex(where: { $0.dateIso == todayDateIso }) ?? -1
         let month = Calendar.current.component(.month, from: .now) - 1
         let elevationSamples = (elevations.isEmpty ? [forecast.elevation ?? 0] : elevations).map { KotlinDouble(double: $0) }
         let input = AnalysisInputs(

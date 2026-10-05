@@ -479,7 +479,7 @@ class MushroomViewModel(
             habitatScore = baseHabitatScore,
             habitatDescription = evidence.status.name,
             canopyTypes = evidence.confirmedHostGenera.toList(),
-            elevationSamples = lastTerrainData?.rawElevations?.map { it.toDouble() } ?: listOf(lastElevation.toDouble()),
+            elevationSamples = lastTerrainData?.getOrSynthesizeRawElevations() ?: listOf(lastElevation.toDouble()),
             monthIndex = lastCurrentMonth,
             spunEcmRichness = lastSpunData?.ecmRichness?.toDouble(),
             spunHyphalDensity = lastSpunData?.hyphalDensity?.toDouble(),
@@ -517,7 +517,9 @@ class MushroomViewModel(
 
         altitudeText = altScore.text
         seasonText = seasonScore.text
-        slopeText = if (result.terrain.slopeDegrees >= 3.0) {
+        slopeText = if (result.terrain.cardinalDirection == "Non disponibile") {
+            "Esposizione non disponibile"
+        } else if (result.terrain.slopeDegrees >= 3.0) {
             "${result.terrain.cardinalDirection} (${result.terrain.slopeDegrees.roundToInt()}°)"
         } else {
             "Pianeggiante (${result.terrain.slopeDegrees.roundToInt()}°)"

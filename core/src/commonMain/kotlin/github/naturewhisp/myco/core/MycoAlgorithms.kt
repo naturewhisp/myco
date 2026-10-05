@@ -772,7 +772,7 @@ object MycoAlgorithms {
 
     fun terrain(elevations: List<Double>, deltaMeters: Double = 75.0): TerrainAspect {
         val center = elevations.firstOrNull() ?: 0.0
-        if (elevations.size < 5) return TerrainAspect(center, 0.0, 0.0, "Pianeggiante", 1.0)
+        if (elevations.size < 5) return TerrainAspect(center, 0.0, 0.0, "Non disponibile", 1.0)
         val dzdx = (elevations[3] - elevations[4]) / (2.0 * deltaMeters)
         val dzdy = (elevations[1] - elevations[2]) / (2.0 * deltaMeters)
         val slope = radiansToDegrees(atan(sqrt(dzdx * dzdx + dzdy * dzdy)))
@@ -798,7 +798,7 @@ object MycoAlgorithms {
         avgTemp: Double,
         species: MushroomSpecies,
     ): Double {
-        if (terrain.slopeDegrees < 3.0) return 1.0
+        if (terrain.slopeDegrees < 3.0 || terrain.cardinalDirection == "Non disponibile") return 1.0
         val isNorth = terrain.aspectDegrees >= 315.0 || terrain.aspectDegrees <= 45.0
         val isSouth = terrain.aspectDegrees in 135.0..225.0
         val isEast = terrain.aspectDegrees in 45.0..135.0

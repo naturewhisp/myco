@@ -115,6 +115,39 @@ class MushroomRepositoryTest {
         assertEquals(12.5f, result?.slopePercent ?: 0f, 0.01f)
         assertEquals(180f, result?.aspectDegrees ?: 0f, 0.01f)
         assertEquals(850f, result?.centerElevation ?: 0f, 0.01f)
+        assertNotNull("rawElevations must be healed on cache hit", result?.rawElevations)
+        assertEquals(5, result?.rawElevations?.size)
+    }
+
+    @Test
+    fun testFetchTerrainAspect_LegacyCacheWithoutRawElevations_SynthesizesElevations() = runBlocking {
+        val mindinoLegacy = TerrainAspectData(
+            centerElevation = 902.0f,
+            slopeDegrees = 15.060032f,
+            slopePercent = 26.907248f,
+            aspectDegrees = 221.98721f,
+            cardinalDirection = "Sud-Ovest",
+            cardinalAbbreviation = "SO",
+            isFlat = false,
+            rawElevations = null
+        )
+        val cacheKey = "terrain_44.2149_7.9755"
+        cacheManager.saveCachedData(cacheKey, mindinoLegacy)
+
+        val result = repository.fetchTerrainAspect(44.2149, 7.9755)
+        assertNotNull(result)
+        assertEquals("Sud-Ovest", result?.cardinalDirection)
+        assertEquals(15.06f, result?.slopeDegrees ?: 0f, 0.05f)
+        assertNotNull(result?.rawElevations)
+        assertEquals(5, result?.rawElevations?.size)
+
+        // Passing synthesized elevations to core MycoAlgorithms.terrain must reproduce exact slope and aspect
+        val coreTerrain = github.naturewhisp.myco.core.MycoAlgorithms.terrain(
+            result!!.getOrSynthesizeRawElevations()
+        )
+        assertEquals("Sud-Ovest", coreTerrain.cardinalDirection)
+        assertEquals(15.06, coreTerrain.slopeDegrees, 0.1)
+        assertEquals(221.99, coreTerrain.aspectDegrees, 0.5)
     }
 
     @Test

@@ -31,7 +31,33 @@ data class TerrainAspectData(
     val cardinalAbbreviation: String,
     val isFlat: Boolean,
     val rawElevations: List<Float>? = null
-)
+) {
+    /**
+     * Restituisce i 5 campioni DEM [Centro, Nord, Sud, Est, Ovest] se disponibili, oppure li
+     * ricostruisce matematicamente in modo esatto dal gradiente orografico (quota, pendenza, esposizione).
+     */
+    fun getOrSynthesizeRawElevations(deltaMeters: Double = 75.0): List<Double> {
+        val raw = rawElevations
+        if (!raw.isNullOrEmpty() && raw.size >= 5) {
+            return raw.map { it.toDouble() }
+        }
+        if (isFlat || slopeDegrees < 0.1f) {
+            val c = centerElevation.toDouble()
+            return listOf(c, c, c, c, c)
+        }
+        val slopeRad = Math.toRadians(slopeDegrees.toDouble())
+        val aspectRad = Math.toRadians(aspectDegrees.toDouble())
+        val g = kotlin.math.tan(slopeRad)
+        val dzdx = -g * kotlin.math.sin(aspectRad)
+        val dzdy = -g * kotlin.math.cos(aspectRad)
+        val zC = centerElevation.toDouble()
+        val zN = zC + dzdy * deltaMeters
+        val zS = zC - dzdy * deltaMeters
+        val zE = zC + dzdx * deltaMeters
+        val zW = zC - dzdx * deltaMeters
+        return listOf(zC, zN, zS, zE, zW)
+    }
+}
 
 /**
  * Valutazione ecologica dell'esposizione e pendenza rispetto alle esigenze biologiche della specie e alla stagione.

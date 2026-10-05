@@ -389,12 +389,13 @@ class MycoAnalysisEngine {
                     "Esposizione versante",
                     terrain.cardinalDirection,
                     when {
+                        terrain.cardinalDirection == "Non disponibile" -> FactorLevel.NEUTRAL
                         terrain.slopeDegrees < 3.0 -> FactorLevel.NEUTRAL
                         terrain.modifier > 1.0 -> FactorLevel.FAVORABLE
                         terrain.modifier < 1.0 -> FactorLevel.ADVERSE
                         else -> FactorLevel.NEUTRAL
                     },
-                    oneDecimal(terrain.slopeDegrees) + "°",
+                    if (terrain.cardinalDirection == "Non disponibile") "Dati DEM non disponibili" else oneDecimal(terrain.slopeDegrees) + "°",
                 ),
             )
             // C08: Luna puramente astronomica e informativa

@@ -362,7 +362,14 @@ class MushroomRepository(
 
         val cached = cacheManager.getCachedData(cacheKey, TerrainAspectData::class.java, 30L * 24 * 60 * 60 * 1000L) // 30 giorni
         if (cached != null) {
-            return cached
+            return if (cached.rawElevations.isNullOrEmpty() || cached.rawElevations.size < 5) {
+                val synthesized = cached.getOrSynthesizeRawElevations().map { it.toFloat() }
+                val upgraded = cached.copy(rawElevations = synthesized)
+                cacheManager.saveCachedData(cacheKey, upgraded)
+                upgraded
+            } else {
+                cached
+            }
         }
 
         return try {
@@ -388,10 +395,26 @@ class MushroomRepository(
                 cacheManager.saveCachedData(cacheKey, terrainData)
                 terrainData
             } else {
-                cacheManager.getCachedDataIgnoreExpiry(cacheKey, TerrainAspectData::class.java)?.first
+                val fallback = cacheManager.getCachedDataIgnoreExpiry(cacheKey, TerrainAspectData::class.java)?.first
+                if (fallback != null && (fallback.rawElevations.isNullOrEmpty() || fallback.rawElevations.size < 5)) {
+                    val synthesized = fallback.getOrSynthesizeRawElevations().map { it.toFloat() }
+                    val upgraded = fallback.copy(rawElevations = synthesized)
+                    cacheManager.saveCachedData(cacheKey, upgraded)
+                    upgraded
+                } else {
+                    fallback
+                }
             }
         } catch (_: Exception) {
-            cacheManager.getCachedDataIgnoreExpiry(cacheKey, TerrainAspectData::class.java)?.first
+            val fallback = cacheManager.getCachedDataIgnoreExpiry(cacheKey, TerrainAspectData::class.java)?.first
+            if (fallback != null && (fallback.rawElevations.isNullOrEmpty() || fallback.rawElevations.size < 5)) {
+                val synthesized = fallback.getOrSynthesizeRawElevations().map { it.toFloat() }
+                val upgraded = fallback.copy(rawElevations = synthesized)
+                cacheManager.saveCachedData(cacheKey, upgraded)
+                upgraded
+            } else {
+                fallback
+            }
         }
     }
 

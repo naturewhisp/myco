@@ -116,6 +116,13 @@ docs/
   - The cartographic raster must reflect stationary geographical/ecological potential ($W = 100, S = 1.0$), completely decoupled from hourly point weather oscillations and point altitude cursors ($altitudeScore = 1.0$).
   - Ecological guilds not supported by the SPUN EcM atlas (wood-decay `PARASITIC` and meadow `SAPROTROPHIC`) must be marked `HeatmapLayerStatus.UNAVAILABLE_GUILD_NOT_SUPPORTED` without arbitrary flat scores (e.g. no flat 50.0). When unsupported or unavailable, the UI must display an explicit informative banner explaining why the raster is transparent.
   - Cell validity is strictly determined by $\text{ecm} > 0$ (AM hyphal density alone does not validate an EcM raster cell).
+- **Orographic DEM Sampling & Backward-Compatible Cache Evolution**:
+  - **Schema Evolution Invariant**: Quando un modello orografico persistito (es. `TerrainAspectData`) viene esteso con nuovi campi (es. `rawElevations: List<Float>?`), il codice chiamante non deve **mai** assumere che le voci presenti nella cache locale a lungo termine (TTL 30 giorni) abbiano il nuovo schema valorizzato.
+  - **Divieto di Degenerazione a Singola Quota**: Non degradare mai una misurazione orografica valida (`slopeDegrees`, `aspectDegrees`, `cardinalDirection`) a una lista di 1 solo elemento `listOf(singleElevation)`. Se i campioni grezzi sono nulli in cache, i repository e i ViewModel devono applicare la sintesi analitica esatta dei 5 punti DEM:
+    $$\Delta z_{\text{dx}} = -\tan(\theta) \cdot \sin(\psi), \quad \Delta z_{\text{dy}} = -\tan(\theta) \cdot \cos(\psi)$$
+    $$z_C = \text{quota}, \quad z_N = z_C + \Delta z_{\text{dy}} \cdot \Delta d, \quad z_S = z_C - \Delta z_{\text{dy}} \cdot \Delta d, \quad z_E = z_C + \Delta z_{\text{dx}} \cdot \Delta d, \quad z_W = z_C - \Delta z_{\text{dx}} \cdot \Delta d$$
+    aggiornare la riga SQLite (`saveCachedData`) e preservare le derivate parziali centrate del versante.
+  - **Distinzione Epistemologica D02 (Nessun Falso Pianoro)**: Se i campioni DEM sono realmente assenti o $< 5$, gli algoritmi devono restituire `cardinalDirection = "Non disponibile"`, pendenza $0.0^\circ$, modificatore $1.0$ e testo UI `"Dati DEM non disponibili"` (livello `NEUTRAL`). È severamente vietato restituire `"Pianeggiante"` o spacciare la mancanza di dati per un rilievo orografico piatto.
 
 ### 4.7 Scientific & Ecological Modeling Standards (Revisione v1.3 & Percorso A/B)
 - **Continuous Biological Curves**: Model environmental variables (temperature, soil moisture, precipitation, elevation) with continuous normalized response functions ($0.0 \dots 1.0$) rather than discrete step functions. Small continuous parameter perturbations must never create abrupt step jumps.
@@ -196,6 +203,9 @@ docs/
 
 ### 4.11 iOS & Swift Concurrency Testing Invariants
 - **XCTest Asynchronous Polling Timeout**: In XCTest suites testing asynchronous state transitions or actor-hopping workflows (`@MainActor`, `Task.detached`), polling helper functions (`waitUntil`) must configure a minimum timeout of **5.0 seconds** (`Duration.seconds(5)`). This guarantees resilience against thread-scheduling and CPU latency spikes on virtualized macOS CI runners, while preserving sub-millisecond execution when conditions are met immediately.
+- **Time-Sensitive Unit Test Mock Invariance**:
+  - Tutte le fixture di test e i payload mock di rete che alimentano motori con allineamento temporale su calendario (`deriveTodayIndex`, `days.firstIndex(where: { $0.dateIso == todayDateIso })`, `targetAnalysisDate`) non devono **mai** contenere date di calendario fisse nel passato o nel futuro (es. `"2026-09-13"`), a meno che il test non inietti un `nowProvider` deterministico.
+  - I mock devono generare le date ISO dinamicamente ancorate a `Date()` nel fuso orario target della richiesta (`"Europe/Rome"`), prevenendo fallimenti asincroni della CI causati dal naturale scorrimento dei mesi del calendario reale (`todayIndex == -1` e `DEGRADED_OUT_OF_BOUNDS`).
 
 ### 4.12 CI / GitHub Actions SDK Configuration Standard
 - **Android SDK Setup Action (`setup-android@v3`)**: Whenever `android-actions/setup-android@v3` is referenced in `.github/workflows/*.yml`, agents must explicitly set `with: packages: ''` to prevent fatal failures caused by Google's permanent removal of the deprecated legacy `tools` package from `dl.google.com`. Required SDK components (`platforms`, `build-tools`, `cmdline-tools`) must be installed explicitly via subsequent `sdkmanager` steps.

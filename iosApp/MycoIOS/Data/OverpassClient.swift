@@ -120,33 +120,6 @@ struct OverpassClient: Sendable {
         let radius = min(max(radiusMeters, 1), 50_000)
         let forest = try await query(Self.forestQuery(around: coordinate, radiusMeters: radius))
         let forestCount = forest.elements.count
-        let score: Double
-        let description: String
-        let canopyCover: Double
-        let proximityIndex: Double
-        switch forestCount {
-        case 16...:
-            score = 1.0
-            proximityIndex = 1.0
-            canopyCover = 0.85
-            description = "Habitat ideale: punto immerso in area boschiva."
-        case 5...:
-            score = 0.95
-            proximityIndex = 0.70
-            canopyCover = 0.70
-            description = "Habitat promettente: vicinanza a boschi e foreste."
-        case 1...:
-            score = 0.60
-            proximityIndex = 0.45
-            canopyCover = 0.45
-            description = "Habitat misto: presenza di aree verdi sparse."
-        default:
-            score = 0.10
-            proximityIndex = 0.0
-            canopyCover = 0.0
-            description = "Habitat non ideale: nessun bosco rilevato nelle vicinanze."
-        }
-
         let specificHabitat = try await query(
             Self.specificHabitatQuery(
                 around: coordinate,
@@ -155,12 +128,70 @@ struct OverpassClient: Sendable {
                 ecologicalCategory: ecologicalCategory
             )
         )
+
+        let score: Double
+        let description: String
+        let canopyCover: Double
+        let proximityIndex: Double
         let detected: Set<String>
-        if ecologicalCategory == .treeAssociated {
-            detected = Set(specificHabitat.elements.compactMap { $0.tags?["genus"]?.lowercased() })
-        } else {
+
+        if ecologicalCategory == .saprotrophic {
             detected = specificHabitat.elements.isEmpty ? [] : ["saprotrophic_habitat"]
+            switch forestCount {
+            case 16...:
+                score = 1.0
+                proximityIndex = 1.0
+                canopyCover = 0.85
+                description = "Habitat ideale: punto immerso in area boschiva."
+            case 5...:
+                score = 0.95
+                proximityIndex = 0.70
+                canopyCover = 0.70
+                description = "Habitat promettente: vicinanza a boschi e foreste."
+            case 1...:
+                score = 0.60
+                proximityIndex = 0.45
+                canopyCover = 0.45
+                description = "Habitat misto: presenza di aree verdi sparse."
+            default:
+                if !specificHabitat.elements.isEmpty {
+                    score = 0.95
+                    proximityIndex = 0.0
+                    canopyCover = 0.0
+                    description = "Habitat praticolo e pascoli aperti: ideale per specie umicola."
+                } else {
+                    score = 0.10
+                    proximityIndex = 0.0
+                    canopyCover = 0.0
+                    description = "Habitat non ideale: nessun bosco o radura rilevata nelle vicinanze."
+                }
+            }
+        } else {
+            detected = Set(specificHabitat.elements.compactMap { $0.tags?["genus"]?.lowercased() })
+            switch forestCount {
+            case 16...:
+                score = 1.0
+                proximityIndex = 1.0
+                canopyCover = 0.85
+                description = "Habitat ideale: punto immerso in area boschiva."
+            case 5...:
+                score = 0.95
+                proximityIndex = 0.70
+                canopyCover = 0.70
+                description = "Habitat promettente: vicinanza a boschi e foreste."
+            case 1...:
+                score = 0.60
+                proximityIndex = 0.45
+                canopyCover = 0.45
+                description = "Habitat misto: presenza di aree verdi sparse."
+            default:
+                score = 0.10
+                proximityIndex = 0.0
+                canopyCover = 0.0
+                description = "Habitat non ideale: nessun bosco rilevato nelle vicinanze."
+            }
         }
+
         return HabitatSnapshot(
             score: score,
             description: description,

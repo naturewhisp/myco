@@ -17,6 +17,7 @@ import github.naturewhisp.myco.model.HabitatEvidence
 import github.naturewhisp.myco.model.HabitatStatus
 import github.naturewhisp.myco.platform.android.HeatmapData
 import github.naturewhisp.myco.model.MushroomSpecies
+import github.naturewhisp.myco.model.toCore
 import github.naturewhisp.myco.model.PlaceName
 import github.naturewhisp.myco.model.ProcessedDay
 import github.naturewhisp.myco.model.SPECIES_CATALOG
@@ -410,52 +411,25 @@ class MushroomViewModel(
 
         // Copertura arborea stazionale: proprietà fisica ambientale del sito, indipendente dalla specie target (F18)
         val evidence = lastHabitatEvidence ?: HabitatEvidence(
-            status = if (lastForestCount > 0) HabitatStatus.KNOWN_SUITABLE else HabitatStatus.UNKNOWN,
+            status = if (lastForestCount > 0 || lastSpecificForestCount > 0) HabitatStatus.KNOWN_SUITABLE else HabitatStatus.UNKNOWN,
             forestCoverFraction = when {
                 lastForestCount > 15 -> 0.85
                 lastForestCount > 4 -> 0.70
                 lastForestCount > 0 -> 0.45
                 else -> 0.0
             },
-            meadowFraction = if (lastForestCount == 0) 0.0 else 0.10,
+            meadowFraction = if (lastForestCount == 0 && lastSpecificForestCount > 0) 0.80 else if (lastForestCount == 0) 0.0 else 0.10,
             distanceToNearestForestMeters = if (lastForestCount > 0) 0.0 else 500.0,
-            confirmedHostGenera = emptySet()
+            confirmedHostGenera = if (lastSpecificForestCount > 0) species.preferredCanopyTypes.toSet() else emptySet()
         )
         val siteCanopyCover = if (evidence.status == HabitatStatus.UNKNOWN) 0.0 else evidence.forestCoverFraction
 
-        val rawHabitatScore = when (species.category) {
-            EcologicalCategory.SAPROTROPHIC -> when (evidence.status) {
-                HabitatStatus.KNOWN_UNSUITABLE -> 0.15
-                HabitatStatus.UNKNOWN -> 0.50
-                HabitatStatus.KNOWN_SUITABLE -> when {
-                    evidence.meadowFraction >= 0.25 -> 0.95
-                    evidence.forestCoverFraction in 0.10..0.50 -> 0.90
-                    evidence.forestCoverFraction > 0.50 -> 0.75
-                    else -> 0.85
-                }
-            }
-            EcologicalCategory.PARASITIC -> when (evidence.status) {
-                HabitatStatus.KNOWN_UNSUITABLE -> 0.10
-                HabitatStatus.UNKNOWN -> 0.45
-                HabitatStatus.KNOWN_SUITABLE -> when {
-                    evidence.forestCoverFraction >= 0.60 -> 1.0
-                    evidence.forestCoverFraction >= 0.20 -> 0.85
-                    else -> 0.30
-                }
-            }
-            EcologicalCategory.ECTOMYCORRHIZAL -> when (evidence.status) {
-                HabitatStatus.KNOWN_UNSUITABLE -> 0.10
-                HabitatStatus.UNKNOWN -> 0.50
-                HabitatStatus.KNOWN_SUITABLE -> when {
-                    evidence.forestCoverFraction >= 0.65 -> 1.0
-                    evidence.forestCoverFraction >= 0.35 -> 0.90
-                    evidence.forestCoverFraction > 0.05 -> 0.65
-                    else -> 0.15
-                }
-            }
-        }
-        val standScore = if (evidence.status == HabitatStatus.UNKNOWN) 1.0 else MushroomAlgorithms.standDensityResponseUnimodal(siteCanopyCover, species)
-        val baseHabitatScore = (rawHabitatScore * standScore).coerceIn(0.10, 1.0)
+        val habEval = github.naturewhisp.myco.core.MycoAlgorithms.evaluateHabitat(
+            evidence = evidence,
+            species = species.toCore(),
+            spunEcmRichness = lastSpunData?.ecmRichness?.toDouble()
+        )
+        val baseHabitatScore = habEval.baseScore
 
         val coreDays = days.map { d ->
             github.naturewhisp.myco.core.ProcessedDay(

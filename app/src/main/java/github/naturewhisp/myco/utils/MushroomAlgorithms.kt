@@ -11,6 +11,7 @@ import github.naturewhisp.myco.model.HabitatStatus
 import github.naturewhisp.myco.model.MushroomSpecies
 import github.naturewhisp.myco.model.ProcessedDay
 import github.naturewhisp.myco.model.SPECIES_CATALOG
+import github.naturewhisp.myco.model.toCore
 import github.naturewhisp.myco.model.SpunData
 import github.naturewhisp.myco.model.TerrainAspectConfig
 import github.naturewhisp.myco.model.TerrainAspectData
@@ -74,13 +75,7 @@ internal data class RainTrigger(val triggerIndex: Int, val rainAmount: Float)
  * @property basalAreaM2Ha Area basimetrica equivalente stimata in m²/ha.
  * @property standDensityScore Modificatore biometrico unimodale della densità del popolamento (CTFC).
  */
-data class SpeciesHabitatEvaluation(
-    val score: Double,
-    val baseText: String,
-    val bonusText: String,
-    val basalAreaM2Ha: Float,
-    val standDensityScore: Double
-)
+typealias SpeciesHabitatEvaluation = github.naturewhisp.myco.core.SpeciesHabitatEvaluation
 
 typealias GrowthStage = github.naturewhisp.myco.core.GrowthStage
 typealias GrowthPhaseEvaluation = github.naturewhisp.myco.core.GrowthPhaseEvaluation
@@ -1888,145 +1883,10 @@ object MushroomAlgorithms {
         spunData: SpunData? = null,
         species: MushroomSpecies = SPECIES_CATALOG[0]
     ): SpeciesHabitatEvaluation {
-        val effectiveCanopy = evidence.forestCoverFraction.coerceIn(0.0, 1.0)
-        val basalArea = canopyCoverToBasalArea(effectiveCanopy).toFloat()
-        val standScore = if (evidence.status == HabitatStatus.UNKNOWN) 1.0 else standDensityResponseUnimodal(effectiveCanopy, species)
-
-        val rawScore: Double
-        val baseText: String
-        var bonusText = "Nessuna essenza specifica o dato vegetativo rilevato."
-        var bonusMult = 1.0
-
-        when (species.category) {
-            EcologicalCategory.SAPROTROPHIC -> {
-                when (evidence.status) {
-                    HabitatStatus.KNOWN_UNSUITABLE -> {
-                        rawScore = 0.15
-                        baseText = "Habitat: Inadatto (area urbana o artificiale priva di lettiera o prato)."
-                    }
-                    HabitatStatus.UNKNOWN -> {
-                        rawScore = 0.50
-                        baseText = "Habitat: Dati geografici non disponibili (stima neutrale per specie umicola)."
-                    }
-                    HabitatStatus.KNOWN_SUITABLE -> {
-                        when {
-                            evidence.meadowFraction >= 0.25 -> {
-                                rawScore = 0.95
-                                baseText = "Habitat: Praticolo e pascoli aperti (favorevole per specie umicola)."
-                            }
-                            evidence.forestCoverFraction in 0.10..0.50 -> {
-                                rawScore = 0.90
-                                baseText = "Habitat: Margini boschivi e radure (ottimale per specie umicola)."
-                            }
-                            evidence.forestCoverFraction > 0.50 -> {
-                                rawScore = 0.75
-                                baseText = "Habitat: Bosco fitto (meno favorevole per specie eliofile da radura)."
-                            }
-                            else -> {
-                                rawScore = 0.85
-                                baseText = "Habitat: Ambiente aperto idoneo per specie da prato."
-                            }
-                        }
-                        if (evidence.meadowFraction > 0.20 || evidence.confirmedHostGenera.isNotEmpty()) {
-                            bonusText = "Bonus: Rilevate radure e microhabitat idonei per ${species.vernacularName}!"
-                        }
-                    }
-                }
-            }
-            EcologicalCategory.PARASITIC -> {
-                when (evidence.status) {
-                    HabitatStatus.KNOWN_UNSUITABLE -> {
-                        rawScore = 0.10
-                        baseText = "Habitat: Inadatto (assenza di formazioni arboree o ceppaie per specie lignicola)."
-                    }
-                    HabitatStatus.UNKNOWN -> {
-                        rawScore = 0.45
-                        baseText = "Habitat: Dati geografici non disponibili (stima neutrale per specie lignicola)."
-                    }
-                    HabitatStatus.KNOWN_SUITABLE -> {
-                        when {
-                            evidence.forestCoverFraction >= 0.60 -> {
-                                rawScore = 1.0
-                                baseText = "Habitat: Bosco con abbondante necromassa e substrato lignicolo."
-                            }
-                            evidence.forestCoverFraction >= 0.20 -> {
-                                rawScore = 0.85
-                                baseText = "Habitat: Presenza di formazioni arboree e ceppaie adatte."
-                            }
-                            else -> {
-                                rawScore = 0.30
-                                baseText = "Habitat: Formazioni arboree scarse o rade per specie lignicola."
-                            }
-                        }
-                        if (evidence.confirmedHostGenera.isNotEmpty()) {
-                            bonusText = "Bonus: Rilevate essenze ospiti e ceppaie idonee!"
-                        }
-                    }
-                }
-            }
-            EcologicalCategory.ECTOMYCORRHIZAL -> {
-                when (evidence.status) {
-                    HabitatStatus.KNOWN_UNSUITABLE -> {
-                        rawScore = 0.10
-                        baseText = "Habitat: Inadatto (area urbana o artificiale priva di copertura boschiva)."
-                    }
-                    HabitatStatus.UNKNOWN -> {
-                        rawScore = 0.50
-                        baseText = "Habitat: Dati geografici non disponibili (stima neutrale di copertura)."
-                    }
-                    HabitatStatus.KNOWN_SUITABLE -> {
-                        when {
-                            evidence.forestCoverFraction >= 0.65 -> {
-                                rawScore = 1.0
-                                baseText = "Habitat: Ideale (punto immerso in area boschiva)."
-                            }
-                            evidence.forestCoverFraction >= 0.35 -> {
-                                rawScore = 0.90
-                                baseText = "Habitat: Promettente (vicinanza a boschi e foreste)."
-                            }
-                            evidence.forestCoverFraction > 0.05 -> {
-                                rawScore = 0.65
-                                baseText = "Habitat: Misto (presenza di formazioni arboree sparse)."
-                            }
-                            else -> {
-                                rawScore = 0.15
-                                baseText = "Habitat: Non ideale (assenza di boschi o alberi ospiti)."
-                            }
-                        }
-
-                        // Bonus ospiti: concesso SOLO se c'è un genere confermato tra le preferenze della specie (F09, REG-10)
-                        val matchingHostGenus = species.preferredCanopyTypes.firstOrNull { pref ->
-                            evidence.confirmedHostGenera.any { it.equals(pref, ignoreCase = true) }
-                        }
-                        if (matchingHostGenus != null) {
-                            bonusMult = 1.15
-                            bonusText = "Bonus: Rilevati alberi ospiti ($matchingHostGenus) confermati!"
-                        }
-
-                        if (spunData != null) {
-                            if (spunData.ecmRichness >= 50.0f) {
-                                bonusMult = max(bonusMult, 1.15)
-                                bonusText = if (matchingHostGenus != null) {
-                                    "Bonus: Alberi ($matchingHostGenus) e simbiosi EcM SPUN ottimali (${spunData.ecmRichness.toInt()} specie)!"
-                                } else {
-                                    "Bonus SPUN: Rete ectomicorrizica eccellente (${spunData.ecmRichness.toInt()} specie)!"
-                                }
-                            } else if (spunData.ecmRichness < 15.0f && evidence.forestCoverFraction > 0.10) {
-                                bonusMult *= 0.80
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        val finalScore = (rawScore * bonusMult * standScore).coerceIn(0.10, 1.0)
-        return SpeciesHabitatEvaluation(
-            score = finalScore,
-            baseText = baseText,
-            bonusText = bonusText,
-            basalAreaM2Ha = basalArea,
-            standDensityScore = standScore
+        return github.naturewhisp.myco.core.MycoAlgorithms.evaluateHabitat(
+            evidence = evidence,
+            species = species.toCore(),
+            spunEcmRichness = spunData?.ecmRichness?.toDouble()
         )
     }
 
@@ -2050,20 +1910,13 @@ object MushroomAlgorithms {
         species: MushroomSpecies = SPECIES_CATALOG[0],
         canopyCover: Double? = null
     ): SpeciesHabitatEvaluation {
-        val effectiveCanopy = canopyCover ?: when {
-            forestCount >= 15 -> 0.85
-            forestCount >= 5 -> 0.70
-            forestCount >= 1 -> 0.45
-            else -> 0.0
-        }
-        val evidence = HabitatEvidence(
-            status = HabitatStatus.KNOWN_SUITABLE,
-            forestCoverFraction = effectiveCanopy,
-            meadowFraction = if (forestCount == 0) 0.80 else 0.10,
-            distanceToNearestForestMeters = if (forestCount > 0) 0.0 else 500.0,
-            confirmedHostGenera = if (specificElementsCount > 0) species.preferredCanopyTypes.toSet() else emptySet()
+        return github.naturewhisp.myco.core.MycoAlgorithms.evaluateHabitat(
+            forestCount = forestCount,
+            specificElementsCount = specificElementsCount,
+            species = species.toCore(),
+            spunEcmRichness = spunData?.ecmRichness?.toDouble(),
+            canopyCover = canopyCover
         )
-        return evaluateSpeciesHabitat(evidence, spunData, species)
     }
 
     /**

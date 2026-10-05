@@ -82,6 +82,64 @@ object MycoAlgorithms {
         return ratio.pow(alpha) * kotlin.math.exp(-alpha * (ratio - 1.0))
     }
 
+    /**
+     * Calcola i giorni trascorsi dall'epoca gregoriana/Unix (1970-01-01) per una data ISO "YYYY-MM-DD"
+     * in puro Kotlin matematico senza dipendenze JVM (Howard Hinnant civil calendar algorithm).
+     * Restituisce null se la stringa non è nel formato valido "YYYY-MM-DD".
+     */
+    fun isoDateToEpochDay(dateIso: String): Long? {
+        val datePart = if (dateIso.length > 10 && (dateIso[10] == 'T' || dateIso[10] == ' ')) {
+            dateIso.substring(0, 10)
+        } else {
+            dateIso
+        }
+        if (datePart.length != 10 || datePart[4] != '-' || datePart[7] != '-') return null
+        val year = datePart.substring(0, 4).toLongOrNull() ?: return null
+        val month = datePart.substring(5, 7).toIntOrNull() ?: return null
+        val day = datePart.substring(8, 10).toLongOrNull() ?: return null
+        if (month !in 1..12 || day !in 1..31) return null
+        val maxDays = when (month) {
+            2 -> if ((year % 4 == 0L && year % 100L != 0L) || (year % 400 == 0L)) 29L else 28L
+            4, 6, 9, 11 -> 30L
+            else -> 31L
+        }
+        if (day > maxDays) return null
+
+        val y = if (month <= 2) year - 1L else year
+        val m = if (month <= 2) month + 9 else month - 3
+        val era = (if (y >= 0L) y else y - 399L) / 400L
+        val yoe = y - era * 400L
+        val doy = (153 * m + 2) / 5 + day - 1L
+        val doe = yoe * 365L + yoe / 4L - yoe / 100L + doy
+        return era * 146097L + doe - 719468L
+    }
+
+    /**
+     * Calcola la differenza in giorni di calendario gregoriano (toIso - fromIso).
+     * Se una delle due date non è valida, restituisce null.
+     */
+    fun daysBetween(fromIso: String, toIso: String): Long? {
+        val fromEpoch = isoDateToEpochDay(fromIso) ?: return null
+        val toEpoch = isoDateToEpochDay(toIso) ?: return null
+        return toEpoch - fromEpoch
+    }
+
+    /**
+     * Calcola la latenza in giorni di calendario tra due indici della serie temporale.
+     * Fallback sulla differenza posizionale se le date ISO non sono valide o assenti.
+     */
+    fun calculateDaysSince(
+        processedData: List<ProcessedDay>,
+        todayIndex: Int,
+        pastIndex: Int,
+    ): Int {
+        if (todayIndex in processedData.indices && pastIndex in processedData.indices) {
+            val delta = daysBetween(processedData[pastIndex].dateIso, processedData[todayIndex].dateIso)
+            if (delta != null) return delta.toInt()
+        }
+        return todayIndex - pastIndex
+    }
+
     fun calculateEffectiveRainfall(
         dayIndex: Int,
         days: List<ProcessedDay>,
@@ -91,20 +149,38 @@ object MycoAlgorithms {
         val maxMemoryDays = ParameterRegistry.PHENOLOGY_MEMORY_DAYS.value
         val chillingDuration = ParameterRegistry.CHILLING_DURATION_DAYS.value
         val chillingExpansion = ParameterRegistry.CHILLING_LATENCY_EXPANSION_DAYS.value
-        val chillingStart = max(0, dayIndex - chillingDuration)
-        val chillingWindow = days.slice(chillingStart until dayIndex)
-        val hasChilling = chillingWindow.any { it.minTemp < species.toleratedTempMin }
+        val targetDay = days[dayIndex]
+        val targetEpoch = isoDateToEpochDay(targetDay.dateIso)
+
+        val hasChilling = (0 until dayIndex).any { i ->
+            val day = days[i]
+            val pastEpoch = isoDateToEpochDay(day.dateIso)
+            val tau = if (targetEpoch != null && pastEpoch != null) {
+                (targetEpoch - pastEpoch).toDouble()
+            } else {
+                (dayIndex - i).toDouble()
+            }
+            tau in 1.0..chillingDuration.toDouble() && day.minTemp < species.toleratedTempMin
+        }
         val effectiveTauPeak = if (hasChilling) {
             species.phenologyLatencyPeakDays + chillingExpansion
         } else {
             species.phenologyLatencyPeakDays
         }
-        val memoryWindowStart = max(0, dayIndex - maxMemoryDays)
+
         var weightedRain = 0.0
         val pastDeepSoilList = mutableListOf<Double>()
-        for (i in memoryWindowStart until dayIndex) {
-            val tau = (dayIndex - i).toDouble()
-            val precip = days[i].liquidPrecipMm
+        for (i in 0 until dayIndex) {
+            val pastDay = days[i]
+            val pastEpoch = isoDateToEpochDay(pastDay.dateIso)
+            val tau = if (targetEpoch != null && pastEpoch != null) {
+                (targetEpoch - pastEpoch).toDouble()
+            } else {
+                (dayIndex - i).toDouble()
+            }
+            if (tau <= 0.0 || tau > maxMemoryDays.toDouble()) continue
+
+            val precip = pastDay.liquidPrecipMm
             if (precip > 0.0) {
                 val weight = phenologyKernel(
                     tauDays = tau,
@@ -113,7 +189,7 @@ object MycoAlgorithms {
                 )
                 weightedRain += precip * weight
             }
-            days[i].soilMoisture7To28?.let { pastDeepSoilList.add(it) }
+            pastDay.soilMoisture7To28?.let { pastDeepSoilList.add(it) }
         }
         val avgPastDeepSoil = if (pastDeepSoilList.isNotEmpty()) pastDeepSoilList.average() else null
         val comp = deepSoilMoistureCompensation(avgPastDeepSoil)
@@ -216,10 +292,10 @@ object MycoAlgorithms {
                 phiSoil = soilEval.phiSoil,
             )
         } else {
-            val distinctEvents = clusterRainEvents(candidateEvents)
+            val distinctEvents = clusterRainEvents(candidateEvents, processedData)
             val recentTrigger = distinctEvents.first()
             val earlierCandidate = distinctEvents.drop(1).firstOrNull { earlier ->
-                val daysSinceEarlier = effectiveToday - earlier.triggerIndex
+                val daysSinceEarlier = calculateDaysSince(processedData, effectiveToday, earlier.triggerIndex)
                 daysSinceEarlier in (hydrationThreshold + 1)..fruitingThreshold && earlier.rainAmount > 15.0
             }
 
@@ -231,6 +307,7 @@ object MycoAlgorithms {
                 incubationThreshold = incubationThreshold,
                 fruitingThreshold = fruitingThreshold,
                 tauPeak = tauPeak,
+                processedData = processedData,
             )
 
             if (earlierCandidate == null) {
@@ -244,6 +321,7 @@ object MycoAlgorithms {
                     incubationThreshold = incubationThreshold,
                     fruitingThreshold = fruitingThreshold,
                     tauPeak = tauPeak,
+                    processedData = processedData,
                 )
 
                 val saturationFactor = smoothstep(15.0, 25.0, earlierCandidate.rainAmount)
@@ -297,14 +375,14 @@ object MycoAlgorithms {
             if (precip >= 10.0) {
                 candidateEvents.add(RainTrigger(i, precip))
                 i--
-            } else if (precip >= 0.5 && i >= 2) {
+            } else if (precip >= 0.5 && i >= 2 && calculateDaysSince(processedData, i, i - 2) <= 2) {
                 val threeDayRain = processedData[i].liquidPrecipMm +
                     processedData[i - 1].liquidPrecipMm +
                     processedData[i - 2].liquidPrecipMm
                 if (threeDayRain >= 17.5) {
                     candidateEvents.add(RainTrigger(i - 2, threeDayRain))
                     i -= 3
-                } else if (i >= 4) {
+                } else if (i >= 4 && calculateDaysSince(processedData, i, i - 4) <= 4) {
                     val fiveDayRain = threeDayRain +
                         processedData[i - 3].liquidPrecipMm +
                         processedData[i - 4].liquidPrecipMm
@@ -324,7 +402,10 @@ object MycoAlgorithms {
         return candidateEvents
     }
 
-    internal fun clusterRainEvents(events: List<RainTrigger>): List<RainTrigger> {
+    internal fun clusterRainEvents(
+        events: List<RainTrigger>,
+        processedData: List<ProcessedDay>? = null,
+    ): List<RainTrigger> {
         if (events.isEmpty()) return emptyList()
         val distinctEvents = mutableListOf<RainTrigger>()
         var currentClusterTriggerIndex = events[0].triggerIndex
@@ -332,7 +413,12 @@ object MycoAlgorithms {
 
         for (k in 1 until events.size) {
             val ev = events[k]
-            if (kotlin.math.abs(ev.triggerIndex - currentClusterTriggerIndex) <= 2) {
+            val dayDist = if (processedData != null) {
+                kotlin.math.abs(calculateDaysSince(processedData, ev.triggerIndex, currentClusterTriggerIndex))
+            } else {
+                kotlin.math.abs(ev.triggerIndex - currentClusterTriggerIndex)
+            }
+            if (dayDist <= 2) {
                 currentClusterRain += ev.rainAmount
                 currentClusterTriggerIndex = min(currentClusterTriggerIndex, ev.triggerIndex)
             } else {
@@ -353,8 +439,13 @@ object MycoAlgorithms {
         incubationThreshold: Int,
         fruitingThreshold: Int,
         tauPeak: Double,
+        processedData: List<ProcessedDay>? = null,
     ): GrowthPhaseEvaluation {
-        val daysSince = effectiveToday - activeTrigger.triggerIndex
+        val daysSince = if (processedData != null) {
+            calculateDaysSince(processedData, effectiveToday, activeTrigger.triggerIndex)
+        } else {
+            effectiveToday - activeTrigger.triggerIndex
+        }
         val multiplier: Double
         val phaseText: String
         val stage: GrowthStage
@@ -506,7 +597,7 @@ object MycoAlgorithms {
                     val drop = tempBefore - tempAfter
                     val minDrop = if (effectiveSpunBonus && spunHyphalDensity != null && spunHyphalDensity >= 5.0) 2.0 else 3.0
                     if (drop > minDrop) {
-                        val tau = (dayIndex - j).toDouble()
+                        val tau = calculateDaysSince(effectiveData, dayIndex, j).toDouble()
                         val phenoWeight = phenologyKernel(
                             tauDays = tau,
                             tauPeak = species.phenologyLatencyPeakDays,
@@ -651,6 +742,186 @@ object MycoAlgorithms {
             species = species,
             useHurdle = useHurdle,
         ).toInt().coerceIn(0, 100)
+    }
+
+    /**
+     * Valuta l'idoneità stazionale e la compatibilità ecologica sulla base di evidenze territoriali
+     * strutturate [HabitatEvidence] per qualsiasi specie e categoria ecologica (D03).
+     */
+    fun evaluateHabitat(
+        evidence: HabitatEvidence,
+        species: MushroomSpecies,
+        spunEcmRichness: Double? = null,
+    ): SpeciesHabitatEvaluation {
+        val effectiveCanopy = evidence.forestCoverFraction.coerceIn(0.0, 1.0)
+        val basalArea = canopyCoverToBasalArea(effectiveCanopy).toFloat()
+        val standScore = if (evidence.status == HabitatStatus.UNKNOWN) 1.0 else standDensityResponseUnimodal(effectiveCanopy, species)
+
+        val rawScore: Double
+        val baseText: String
+        var bonusText = "Nessuna essenza specifica o dato vegetativo rilevato."
+        var bonusMult = 1.0
+
+        when (species.category) {
+            EcologicalCategory.SAPROTROPHIC -> {
+                when (evidence.status) {
+                    HabitatStatus.KNOWN_UNSUITABLE -> {
+                        rawScore = 0.15
+                        baseText = "Habitat: Inadatto (area urbana o artificiale priva di lettiera o prato)."
+                    }
+                    HabitatStatus.UNKNOWN -> {
+                        rawScore = 0.50
+                        baseText = "Habitat: Dati geografici non disponibili (stima neutrale per specie umicola)."
+                    }
+                    HabitatStatus.KNOWN_SUITABLE -> {
+                        when {
+                            evidence.meadowFraction >= 0.25 -> {
+                                rawScore = 0.95
+                                baseText = "Habitat: Praticolo e pascoli aperti (favorevole per specie umicola)."
+                            }
+                            evidence.forestCoverFraction in 0.10..0.50 -> {
+                                rawScore = 0.90
+                                baseText = "Habitat: Margini boschivi e radure (ottimale per specie umicola)."
+                            }
+                            evidence.forestCoverFraction > 0.50 -> {
+                                rawScore = 0.75
+                                baseText = "Habitat: Bosco fitto (meno favorevole per specie eliofile da radura)."
+                            }
+                            else -> {
+                                rawScore = 0.85
+                                baseText = "Habitat: Ambiente aperto idoneo per specie da prato."
+                            }
+                        }
+                        if (evidence.meadowFraction > 0.20 || evidence.confirmedHostGenera.isNotEmpty()) {
+                            bonusText = "Bonus: Rilevate radure e microhabitat idonei per ${species.vernacularName}!"
+                        }
+                    }
+                }
+            }
+            EcologicalCategory.PARASITIC -> {
+                when (evidence.status) {
+                    HabitatStatus.KNOWN_UNSUITABLE -> {
+                        rawScore = 0.10
+                        baseText = "Habitat: Inadatto (assenza di formazioni arboree o ceppaie per specie lignicola)."
+                    }
+                    HabitatStatus.UNKNOWN -> {
+                        rawScore = 0.45
+                        baseText = "Habitat: Dati geografici non disponibili (stima neutrale per specie lignicola)."
+                    }
+                    HabitatStatus.KNOWN_SUITABLE -> {
+                        when {
+                            evidence.forestCoverFraction >= 0.60 -> {
+                                rawScore = 1.0
+                                baseText = "Habitat: Bosco con abbondante necromassa e substrato lignicolo."
+                            }
+                            evidence.forestCoverFraction >= 0.20 -> {
+                                rawScore = 0.85
+                                baseText = "Habitat: Presenza di formazioni arboree e ceppaie adatte."
+                            }
+                            else -> {
+                                rawScore = 0.30
+                                baseText = "Habitat: Formazioni arboree scarse o rade per specie lignicola."
+                            }
+                        }
+                        if (evidence.confirmedHostGenera.isNotEmpty()) {
+                            bonusText = "Bonus: Rilevate essenze ospiti e ceppaie idonee!"
+                        }
+                    }
+                }
+            }
+            EcologicalCategory.ECTOMYCORRHIZAL -> {
+                when (evidence.status) {
+                    HabitatStatus.KNOWN_UNSUITABLE -> {
+                        rawScore = 0.10
+                        baseText = "Habitat: Inadatto (area urbana o artificiale priva di copertura boschiva)."
+                    }
+                    HabitatStatus.UNKNOWN -> {
+                        rawScore = 0.50
+                        baseText = "Habitat: Dati geografici non disponibili (stima neutrale di copertura)."
+                    }
+                    HabitatStatus.KNOWN_SUITABLE -> {
+                        when {
+                            evidence.forestCoverFraction >= 0.65 -> {
+                                rawScore = 1.0
+                                baseText = "Habitat: Ideale (punto immerso in area boschiva)."
+                            }
+                            evidence.forestCoverFraction >= 0.35 -> {
+                                rawScore = 0.90
+                                baseText = "Habitat: Promettente (vicinanza a boschi e foreste)."
+                            }
+                            evidence.forestCoverFraction > 0.05 -> {
+                                rawScore = 0.65
+                                baseText = "Habitat: Misto (presenza di formazioni arboree sparse)."
+                            }
+                            else -> {
+                                rawScore = 0.15
+                                baseText = "Habitat: Non ideale (assenza di boschi o alberi ospiti)."
+                            }
+                        }
+
+                        val matchingHostGenus = species.preferredCanopyTypes.firstOrNull { pref ->
+                            evidence.confirmedHostGenera.any { it.equals(pref, ignoreCase = true) }
+                        }
+                        if (matchingHostGenus != null) {
+                            bonusMult = 1.15
+                            bonusText = "Bonus: Rilevati alberi ospiti ($matchingHostGenus) confermati!"
+                        }
+
+                        if (spunEcmRichness != null) {
+                            if (spunEcmRichness >= 50.0) {
+                                bonusMult = max(bonusMult, 1.15)
+                                bonusText = if (matchingHostGenus != null) {
+                                    "Bonus: Alberi ($matchingHostGenus) e simbiosi EcM SPUN ottimali (${spunEcmRichness.toInt()} specie)!"
+                                } else {
+                                    "Bonus SPUN: Rete ectomicorrizica eccellente (${spunEcmRichness.toInt()} specie)!"
+                                }
+                            } else if (spunEcmRichness < 15.0 && evidence.forestCoverFraction > 0.10) {
+                                bonusMult *= 0.80
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        val baseScore = (rawScore * standScore).coerceIn(0.10, 1.0)
+        val finalScore = (rawScore * bonusMult * standScore).coerceIn(0.10, 1.0)
+        return SpeciesHabitatEvaluation(
+            score = finalScore,
+            baseText = baseText,
+            bonusText = bonusText,
+            basalAreaM2Ha = basalArea,
+            standDensityScore = standScore,
+            baseScore = baseScore,
+        )
+    }
+
+    fun evaluateHabitat(
+        evidence: HabitatEvidence,
+        species: MushroomSpecies,
+    ): SpeciesHabitatEvaluation = evaluateHabitat(evidence, species, null)
+
+    fun evaluateHabitat(
+        forestCount: Int,
+        specificElementsCount: Int = 0,
+        species: MushroomSpecies = SpeciesCatalog.all[0],
+        spunEcmRichness: Double? = null,
+        canopyCover: Double? = null,
+    ): SpeciesHabitatEvaluation {
+        val effectiveCanopy = canopyCover ?: when {
+            forestCount >= 15 -> 0.85
+            forestCount >= 5 -> 0.70
+            forestCount >= 1 -> 0.45
+            else -> 0.0
+        }
+        val evidence = HabitatEvidence(
+            status = HabitatStatus.KNOWN_SUITABLE,
+            forestCoverFraction = effectiveCanopy,
+            meadowFraction = if (forestCount == 0) 0.80 else 0.10,
+            distanceToNearestForestMeters = if (forestCount > 0) 0.0 else 500.0,
+            confirmedHostGenera = if (specificElementsCount > 0) species.preferredCanopyTypes.toSet() else emptySet(),
+        )
+        return evaluateHabitat(evidence, species, spunEcmRichness)
     }
 
     fun ctmi(temp: Double, tMin: Double, tOpt: Double, tMax: Double): Double {

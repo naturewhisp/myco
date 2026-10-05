@@ -103,4 +103,23 @@ final class SpunBundleServiceTests: XCTestCase {
         attachment.lifetime = .keepAlways
         add(attachment)
     }
+
+    func testUnsupportedGuildReturnsExplicitUnavailableStatusAndDescription() async throws {
+        let service = SpunBundleService()
+        let raster = try await service.heatmap(
+            latitude: 45,
+            longitude: 10,
+            weatherScore: 70,
+            seasonalityScore: 0.8,
+            altitudeScore: 0.9,
+            speciesID: "macrolepiota_procera",
+            isDark: false
+        )
+        let result = try XCTUnwrap(raster)
+        XCTAssertEqual(result.status, .unavailableGuildNotSupported)
+        XCTAssertEqual(
+            result.statusDescription,
+            "Layer non disponibile: macromiceti saprotrofi praticoli non mappati da SPUN EcM forestale"
+        )
+    }
 }

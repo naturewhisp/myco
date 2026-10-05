@@ -347,3 +347,39 @@ val SPECIES_CATALOG: List<MushroomSpecies> = listOf(
         hurdleStrictness = 0.5
     )
 )
+
+/**
+ * Converte il modello [MushroomSpecies] dell'applicazione nel modello [github.naturewhisp.myco.core.MushroomSpecies] di :core.
+ */
+fun MushroomSpecies.toCore(): github.naturewhisp.myco.core.MushroomSpecies {
+    return github.naturewhisp.myco.core.SpeciesCatalog.all.firstOrNull { it.id == id }
+        ?: github.naturewhisp.myco.core.MushroomSpecies(
+            id = id,
+            binomialName = binomialName,
+            vernacularName = vernacularName,
+            category = when (category) {
+                EcologicalCategory.ECTOMYCORRHIZAL -> github.naturewhisp.myco.core.EcologicalCategory.ECTOMYCORRHIZAL
+                EcologicalCategory.SAPROTROPHIC -> github.naturewhisp.myco.core.EcologicalCategory.SAPROTROPHIC
+                EcologicalCategory.PARASITIC -> github.naturewhisp.myco.core.EcologicalCategory.PARASITIC
+            },
+            minElevation = minElevation,
+            maxElevation = maxElevation,
+            idealElevationMin = idealElevationMin,
+            idealElevationMax = idealElevationMax,
+            idealTempMin = idealTempMin.toDouble(),
+            idealTempMax = idealTempMax.toDouble(),
+            toleratedTempMin = toleratedTempMin.toDouble(),
+            toleratedTempMax = toleratedTempMax.toDouble(),
+            minRainAccumulation = minRainAccumulation.toDouble(),
+            preferredCanopyTypes = preferredCanopyTypes,
+            fruitingPeriodDescription = fruitingPeriodDescription,
+            activeMonths = activeMonths,
+            toxicLookAlikes = toxicLookAlikes,
+            edibilityWarning = edibilityWarning,
+            phenologyLatencyPeakDays = phenologyLatencyPeakDays,
+            phenologyShapeAlpha = phenologyShapeAlpha,
+            optimalTemp = optimalTemp.toDouble(),
+            optimalBasalAreaM2Ha = optimalBasalAreaM2Ha.toDouble(),
+            hurdleStrictness = hurdleStrictness
+        )
+}

@@ -98,9 +98,8 @@ struct MapView: View {
                         Text("Non calcolabile").font(.title3.bold())
                     }
                     if viewModel.heatmap == nil || viewModel.heatmap?.status != .available {
-                        let msg = viewModel.heatmap?.status == .unavailableGuildNotSupported
-                            ? "Mappa non disponibile: l'atlante SPUN supporta taxa ectomicorrizici (EcM)"
-                            : "Layer ecologico non disponibile per quest'area"
+                        let msg = viewModel.heatmap?.statusDescription
+                            ?? "Layer ecologico non disponibile per quest'area"
                         Label(msg, systemImage: "square.slash")
                             .font(.caption).foregroundStyle(colors.inkSoft)
                     }

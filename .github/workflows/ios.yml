@@ -10,6 +10,7 @@ permissions:
 jobs:
   build-and-test:
     runs-on: macos-15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -45,9 +46,14 @@ jobs:
               raise SystemExit("No available iPhone Simulator destination")
           print(selected["udid"])
           ' )"
+          echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
           echo "MYCO_SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
           xcrun simctl list devices available
-      - name: Build and test iOS
+      - name: Boot iPhone Simulator
+        run: |
+          xcrun simctl boot "$SIMULATOR_ID" 2>/dev/null || true
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+      - name: Build iOS app
         run: |
           xcodebuild \
             -project iosApp/MycoIOS.xcodeproj \
@@ -55,5 +61,15 @@ jobs:
             -sdk iphonesimulator \
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$MYCO_SIMULATOR_ID" \
-            build test \
+            build \
+            CODE_SIGNING_ALLOWED=NO
+      - name: Test iOS app
+        run: |
+          xcodebuild \
+            -project iosApp/MycoIOS.xcodeproj \
+            -scheme MycoIOS \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$MYCO_SIMULATOR_ID" \
+            test-without-building \
             CODE_SIGNING_ALLOWED=NO

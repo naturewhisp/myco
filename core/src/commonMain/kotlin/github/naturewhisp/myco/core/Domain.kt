@@ -49,6 +49,61 @@ data class Factor(
     val detail: String,
 )
 
+enum class HabitatStatus {
+    /** Presenza confermata di bosco, foresta, pascolo o radura biologicamente compatibile. */
+    KNOWN_SUITABLE,
+
+    /** Presenza confermata di contesto artificiale, urbano, industriale o specchio d'acqua. */
+    KNOWN_UNSUITABLE,
+
+    /** Nessun dato OSM o copertura geografica disponibile (offline, timeout, fuori copertura). */
+    UNKNOWN,
+}
+
+data class HabitatEvidence(
+    val status: HabitatStatus,
+    val forestCoverFraction: Double,
+    val meadowFraction: Double,
+    val distanceToNearestForestMeters: Double,
+    val confirmedHostGenera: Set<String>,
+    val dominantLeafType: String? = null,
+) {
+    constructor(
+        status: HabitatStatus,
+        forestCoverFraction: Double,
+        meadowFraction: Double,
+        distanceToNearestForestMeters: Double,
+        confirmedHostGenera: Set<String>,
+    ) : this(
+        status = status,
+        forestCoverFraction = forestCoverFraction,
+        meadowFraction = meadowFraction,
+        distanceToNearestForestMeters = distanceToNearestForestMeters,
+        confirmedHostGenera = confirmedHostGenera,
+        dominantLeafType = null,
+    )
+
+    companion object {
+        val UNKNOWN_HABITAT = HabitatEvidence(
+            status = HabitatStatus.UNKNOWN,
+            forestCoverFraction = 0.0,
+            meadowFraction = 0.0,
+            distanceToNearestForestMeters = 500.0,
+            confirmedHostGenera = emptySet(),
+            dominantLeafType = null,
+        )
+    }
+}
+
+data class SpeciesHabitatEvaluation(
+    val score: Double,
+    val baseText: String,
+    val bonusText: String,
+    val basalAreaM2Ha: Float,
+    val standDensityScore: Double,
+    val baseScore: Double = score,
+)
+
 enum class EcologicalCategory(val label: String, val description: String) {
     ECTOMYCORRHIZAL("Simbiotico EcM", "Legato a radici di alberi specifici"),
     SAPROTROPHIC("Saprofita umicolo", "Cresce su lettiera organica, prati e margini boschivi"),
@@ -209,6 +264,37 @@ data class AnalysisInputs(
         spunHyphalDensity: Double?,
         missingSources: List<String>,
         canopyCover: Double,
+        forestProximityIndex: Double,
+    ) : this(
+        days = days,
+        todayIndex = todayIndex,
+        speciesId = speciesId,
+        habitatScore = habitatScore,
+        habitatDescription = habitatDescription,
+        canopyTypes = canopyTypes,
+        elevationSamples = elevationSamples,
+        monthIndex = monthIndex,
+        spunEcmRichness = spunEcmRichness,
+        spunHyphalDensity = spunHyphalDensity,
+        missingSources = missingSources,
+        canopyCover = canopyCover,
+        forestProximityIndex = forestProximityIndex,
+        calculationMode = "ALL",
+    )
+
+    constructor(
+        days: List<ProcessedDay>,
+        todayIndex: Int,
+        speciesId: String,
+        habitatScore: Double,
+        habitatDescription: String,
+        canopyTypes: List<String>,
+        elevationSamples: List<Double>,
+        monthIndex: Int,
+        spunEcmRichness: Double?,
+        spunHyphalDensity: Double?,
+        missingSources: List<String>,
+        canopyCover: Double,
     ) : this(
         days = days,
         todayIndex = todayIndex,
@@ -253,6 +339,62 @@ data class AnalysisInputs(
         canopyCover = 0.0,
         forestProximityIndex = 0.0,
         calculationMode = "ALL",
+    )
+
+    companion object {
+        fun builder(): AnalysisInputsBuilder = AnalysisInputsBuilder()
+    }
+}
+
+class AnalysisInputsBuilder {
+    var days: List<ProcessedDay> = emptyList()
+    var todayIndex: Int = -1
+    var speciesId: String = "general"
+    var habitatScore: Double = 0.5
+    var habitatDescription: String = ""
+    var canopyTypes: List<String> = emptyList()
+    var elevationSamples: List<Double> = emptyList()
+    var monthIndex: Int = 0
+    var spunEcmRichness: Double? = null
+    var spunHyphalDensity: Double? = null
+    var missingSources: List<String> = emptyList()
+    var canopyCover: Double = 0.0
+    var forestProximityIndex: Double = 0.0
+    var calculationMode: String = "ALL"
+
+    fun days(days: List<ProcessedDay>) = apply { this.days = days }
+    fun todayIndex(todayIndex: Int) = apply { this.todayIndex = todayIndex }
+    fun speciesId(speciesId: String) = apply { this.speciesId = speciesId }
+    fun habitatScore(habitatScore: Double) = apply { this.habitatScore = habitatScore }
+    fun habitatDescription(habitatDescription: String) = apply { this.habitatDescription = habitatDescription }
+    fun canopyTypes(canopyTypes: List<String>) = apply { this.canopyTypes = canopyTypes }
+    fun elevationSamples(elevationSamples: List<Double>) = apply { this.elevationSamples = elevationSamples }
+    fun monthIndex(monthIndex: Int) = apply { this.monthIndex = monthIndex }
+    fun spunEcmRichness(spunEcmRichness: Double?) = apply { this.spunEcmRichness = spunEcmRichness }
+    fun spunHyphalDensity(spunHyphalDensity: Double?) = apply { this.spunHyphalDensity = spunHyphalDensity }
+    fun missingSources(missingSources: List<String>) = apply { this.missingSources = missingSources }
+    fun canopyCover(canopyCover: Double) = apply {
+        this.canopyCover = canopyCover
+        if (this.forestProximityIndex == 0.0) this.forestProximityIndex = canopyCover
+    }
+    fun forestProximityIndex(forestProximityIndex: Double) = apply { this.forestProximityIndex = forestProximityIndex }
+    fun calculationMode(calculationMode: String) = apply { this.calculationMode = calculationMode }
+
+    fun build(): AnalysisInputs = AnalysisInputs(
+        days = days,
+        todayIndex = todayIndex,
+        speciesId = speciesId,
+        habitatScore = habitatScore,
+        habitatDescription = habitatDescription,
+        canopyTypes = canopyTypes,
+        elevationSamples = elevationSamples,
+        monthIndex = monthIndex,
+        spunEcmRichness = spunEcmRichness,
+        spunHyphalDensity = spunHyphalDensity,
+        missingSources = missingSources,
+        canopyCover = canopyCover,
+        forestProximityIndex = forestProximityIndex,
+        calculationMode = calculationMode,
     )
 }
 

@@ -46,6 +46,7 @@ final class MycoViewModel: ObservableObject {
     private let spun = SpunBundleService()
     private let fieldNoteGenerator: any FieldNoteGenerating
     private let savedPlacesStore: SavedPlacesStore?
+    private let clock: @Sendable () -> Date
     private let analysisEngine = MycoAnalysisEngine()
     private var searchTask: Task<Void, Never>?
     private var environmentTask: Task<Void, Never>?
@@ -63,7 +64,8 @@ final class MycoViewModel: ObservableObject {
         overpass: OverpassClient = OverpassClient(),
         cacheStore: CacheStore? = nil,
         fieldNoteGenerator: any FieldNoteGenerating = FoundationModelService(),
-        savedPlacesStore: SavedPlacesStore? = nil
+        savedPlacesStore: SavedPlacesStore? = nil,
+        clock: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.locationSearch = locationSearch
         self.openMeteo = openMeteo
@@ -71,6 +73,7 @@ final class MycoViewModel: ObservableObject {
         self.cacheStore = cacheStore
         self.fieldNoteGenerator = fieldNoteGenerator
         self.savedPlacesStore = savedPlacesStore
+        self.clock = clock
         speciesCatalog = SpeciesCatalog.shared.all
         selectedSpecies = SpeciesCatalog.shared.byId(id: "general")
         refreshSavedPlaces()
@@ -308,9 +311,10 @@ final class MycoViewModel: ObservableObject {
             errorMessage = "La risposta meteo non contiene una serie oraria utilizzabile."
             return
         }
-        let todayDateIso = Self.isoDateFormatter(timezone: forecast.timezone).string(from: Date())
+        let now = clock()
+        let todayDateIso = Self.isoDateFormatter(timezone: forecast.timezone).string(from: now)
         let todayIndex = days.firstIndex(where: { $0.dateIso == todayDateIso }) ?? -1
-        let month = Calendar.current.component(.month, from: .now) - 1
+        let month = Calendar.current.component(.month, from: now) - 1
         let elevationSamples = (elevations.isEmpty ? [forecast.elevation ?? 0] : elevations).map { KotlinDouble(double: $0) }
         let input = AnalysisInputs(
             days: days,

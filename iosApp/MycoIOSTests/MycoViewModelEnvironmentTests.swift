@@ -115,6 +115,35 @@ final class MycoViewModelEnvironmentTests: XCTestCase {
         XCTAssertFalse(viewModel.isOfflineFallback)
     }
 
+    func testDeterministicClockInjectionControlsTodayAlignment() async throws {
+        let fixedDateIso = "2026-10-05"
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .iso8601)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Europe/Rome") ?? TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        let fixedDate = try XCTUnwrap(formatter.date(from: fixedDateIso))
+
+        let forecastPayload = Data("""
+        {"latitude":42.0,"longitude":12.0,"elevation":450.0,"timezone":"Europe/Rome","hourly":{"time":["\(fixedDateIso)T12:00"],"temperature_2m":[16.0],"relative_humidity_2m":[80.0],"precipitation":[3.0],"soil_moisture_0_to_7cm":[0.35],"soil_moisture_7_to_28cm":[0.42],"et0_fao_evapotranspiration":[0.2]},"daily":{"time":["\(fixedDateIso)"],"weather_code":[3],"precipitation_sum":[3.0],"temperature_2m_max":[18.0],"temperature_2m_min":[14.0]}}
+        """.utf8)
+        let weatherLoader = TestHTTPDataLoader { _ in (forecastPayload, httpResponse(for: $0)) }
+        let unavailable = TestHTTPDataLoader { _ in throw URLError(.notConnectedToInternet) }
+
+        let viewModel = MycoViewModel(
+            openMeteo: OpenMeteoClient(apiClient: APIClient(loader: weatherLoader)),
+            overpass: OverpassClient(apiClient: APIClient(loader: unavailable)),
+            clock: { fixedDate }
+        )
+
+        viewModel.select(coordinate: CLLocationCoordinate2D(latitude: 42, longitude: 12), name: "Fixed Clock Test")
+        try await waitUntil { viewModel.analysis != nil }
+
+        let analysis = try XCTUnwrap(viewModel.analysis)
+        XCTAssertTrue(analysis.isCalculable)
+        XCTAssertEqual(viewModel.environmentalDays.first?.date, fixedDate)
+    }
+
     private var forecastPayload: Data {
         let today = Self.todayIsoString()
         return Data("""

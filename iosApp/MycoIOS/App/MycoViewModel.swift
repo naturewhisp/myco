@@ -144,7 +144,7 @@ final class MycoViewModel: ObservableObject {
     }
 
     func refreshHeatmapPalette(isDark: Bool) {
-        guard let coordinate = selectedLocation?.coordinate, let analysis else { return }
+        guard let coordinate = selectedLocation?.coordinate, analysis != nil else { return }
         heatmapTask?.cancel()
         let generation = environmentGeneration
         let spun = spun
@@ -324,7 +324,9 @@ final class MycoViewModel: ObservableObject {
             spunEcmRichness: spunSample.map { KotlinDouble(double: $0.ecmRichness) },
             spunHyphalDensity: spunSample.map { KotlinDouble(double: $0.hyphalDensity) },
             missingSources: spunSample == nil ? missingSources + ["SPUN"] : missingSources,
-            canopyCover: habitat.canopyCover
+            canopyCover: habitat.canopyCover,
+            forestProximityIndex: habitat.canopyCover,
+            calculationMode: "ALL"
         )
         guard isCurrentEnvironment(generation) else { return }
         self.forecast = forecast

@@ -157,6 +157,23 @@ def main() -> int:
         if m and m.group(1) not in ("payload", "request", "let"):
             errors.append(f"{swift_file.name}: mutates captured variable '{m.group(1)}' in @Sendable TestHTTPDataLoader closure")
 
+    # 12. Check for illegal conditional binding (if let / guard let) on non-optional Kotlin properties
+    non_optional_kotlin_props = [
+        "bonusText", "baseText", "score", "basalAreaM2Ha",
+        "probability", "tier", "weatherScore", "habitatScore", "altitudeScore",
+        "seasonalityScore", "deterministicFieldNote", "isCalculable", "effectiveRainMm",
+        "argbPixels", "width", "height", "layerStatus", "statusDescription",
+        "forestCoverFraction", "meadowFraction", "distanceToNearestForestMeters", "confirmedHostGenera",
+        "fruitingPeriodDescription", "vernacularName", "scientificName"
+    ]
+    prop_pattern = r'\b(?:if|guard)\s+let\s+\w+\s*=\s*(?:[a-zA-Z0-9_?.()]+\.)(' + '|'.join(non_optional_kotlin_props) + r')\b'
+    cond_binding_regex = re.compile(prop_pattern)
+    for swift_file in swift_files:
+        content = swift_file.read_text(encoding="utf-8")
+        matches = cond_binding_regex.finditer(content)
+        for m in matches:
+            errors.append(f"{swift_file.name}: contains invalid conditional binding 'if/guard let' on non-optional Kotlin property '{m.group(1)}'")
+
     if errors:
         print("\n[FAIL] Cross-platform contract parity check failed with errors:")
         for err in errors:
@@ -170,6 +187,7 @@ def main() -> int:
     print("  - Verified MapView statusDescription binding")
     print("  - Verified MycoViewModel clock injection")
     print("  - Verified OverpassClient saprotrophic alignment")
+    print(f"  - Verified non-optional property bindings against {len(non_optional_kotlin_props)} Kotlin properties")
     return 0
 
 if __name__ == "__main__":

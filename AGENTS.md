@@ -13,7 +13,8 @@ This document defines the architectural guidelines, development workflows, and c
   2. `./gradlew compileDebugKotlin` (Kotlin compiler must report clean build).
   3. `./gradlew testDebugUnitTest` (All unit tests, invariants and benchmarks must pass 100%).
   4. `./gradlew assembleDebug` (Debug APK packaging must succeed).
-  5. If an Android device or emulator is connected (`adb devices`), stream-install the APK (`adb install -r`), launch the app, check logcat for zero runtime crashes, and capture screenshot proof.
+  5. `python scripts/check_swift_contracts.py` (Cross-platform Swift-Kotlin contract and syntax analysis must report `0 errors`).
+  6. If an Android device or emulator is connected (`adb devices`), stream-install the APK (`adb install -r`), launch the app, check logcat for zero runtime crashes, and capture screenshot proof.
 
 ---
 
@@ -206,9 +207,22 @@ docs/
 - **Time-Sensitive Unit Test Mock Invariance**:
   - Tutte le fixture di test e i payload mock di rete che alimentano motori con allineamento temporale su calendario (`deriveTodayIndex`, `days.firstIndex(where: { $0.dateIso == todayDateIso })`, `targetAnalysisDate`) non devono **mai** contenere date di calendario fisse nel passato o nel futuro (es. `"2026-09-13"`), a meno che il test non inietti un `nowProvider` deterministico.
   - I mock devono generare le date ISO dinamicamente ancorate a `Date()` nel fuso orario target della richiesta (`"Europe/Rome"`), prevenendo fallimenti asincroni della CI causati dal naturale scorrimento dei mesi del calendario reale (`todayIndex == -1` e `DEGRADED_OUT_OF_BOUNDS`).
+- **Swift 6 Strict Concurrency nelle Closure di Test (@Sendable)**:
+  - Nelle suite di test (`MycoIOSTests`), non catturare né mutare variabili locali non protette (`var counter += 1`) all'interno di closure `@Sendable` (es. `TestHTTPDataLoader`).
+  - Utilizzare il dispatching semantico sui parametri immutabili della richiesta (`request.url?.query?.contains(...)`) oppure incapsulare lo stato mutabile in un `actor` o in un helper protetto da `NSLock`.
+- **Visibilità dei Tipi KMP nei Test Swift**:
+  - Qualsiasi file di test in `iosApp/MycoIOSTests` che istanzia o tipizza esplicitamente entità esportate dal core Kotlin (es. `AnalysisResult`, `HeatmapRaster`) deve includere esplicitamente `import MycoCore`.
+- **Retrocompatibilità dell'Evoluzione dello Schema Cache in Swift**:
+  - Quando una struttura Swift persistita o memorizzata nella cache locale (`HabitatSnapshot`, `TerrainAspectData`) viene estesa con nuovi campi, deve implementare esplicitamente `init(from decoder: Decoder)` utilizzando `decodeIfPresent(..., forKey: ...)` con valori di fallback sicuri (es. `0.0`, `[]`, `nil`). È severamente vietato affidarsi a decodificatori rigidi che scartano la cache se mancano i campi aggiunti di recente.
+- **Isolamento Determinismo Temporale nei Test di Mock Clock**:
+  - I test che verificano l'allineamento della data corrente (`testDeterministicClockInjectionControlsTodayAlignment`) devono configurare i generatori di mock e i `DateFormatter` in UTC (`TimeZone(secondsFromGMT: 0)`). Questo impedisce derive di calendario spurie causate dalle differenze tra il fuso locale dell'esecutore CI e il fuso della località meteo.
 
-### 4.12 CI / GitHub Actions SDK Configuration Standard
+### 4.12 CI / GitHub Actions Configuration Standard
 - **Android SDK Setup Action (`setup-android@v3`)**: Whenever `android-actions/setup-android@v3` is referenced in `.github/workflows/*.yml`, agents must explicitly set `with: packages: ''` to prevent fatal failures caused by Google's permanent removal of the deprecated legacy `tools` package from `dl.google.com`. Required SDK components (`platforms`, `build-tools`, `cmdline-tools`) must be installed explicitly via subsequent `sdkmanager` steps.
+- **xcodebuild Action Invariant (`build-for-testing`)**:
+  - Nei workflow CI per iOS che separano compilazione ed esecuzione dei test, il comando di compilazione iniziale deve essere `xcodebuild ... build-for-testing CODE_SIGNING_ALLOWED=NO` (non il semplice `build`). Il comando `build` crea unicamente l'eseguibile `.app`, causando il fallimento o il blocco di `test-without-building` che non trova il bundle `MycoIOSTests.xctest`.
+- **Monitoraggio Esecuzioni CI con `gh run watch`**:
+  - Per monitorare lo stato di un workflow remoto senza cicli di polling manuali o controlli a intervalli ripetuti, avviare il monitoraggio tramite `gh run watch <RUN_ID>` lasciando che il runtime notifichi automaticamente il completamento.
 
 ---
 
@@ -229,7 +243,10 @@ Run these commands after making changes:
 # 4. Assemble complete debug APK
 .\gradlew.bat assembleDebug
 
-# 5. On-Device Verification (MANDATORY whenever an ADB device is connected):
+# 5. Check cross-platform Swift-Kotlin contracts and Swift 6 concurrency
+python scripts/check_swift_contracts.py
+
+# 6. On-Device Verification (MANDATORY whenever an ADB device is connected):
 # Check connected device: adb devices
 adb -s <DEVICE_ID> install -r app\build\outputs\apk\debug\app-debug.apk
 adb -s <DEVICE_ID> shell am force-stop github.naturewhisp.myco

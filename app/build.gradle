@@ -104,3 +104,18 @@ java {
         languageVersion = JavaLanguageVersion.of(17)
     }
 }
+
+tasks.register('checkSwiftContracts', Exec) {
+    description = 'Validates Swift-Kotlin cross-platform contracts and non-optional bindings'
+    group = 'verification'
+    workingDir = rootDir
+    if (org.apache.tools.ant.taskdefs.condition.Os.isFamily(org.apache.tools.ant.taskdefs.condition.Os.FAMILY_WINDOWS)) {
+        commandLine 'cmd', '/c', 'python scripts/check_swift_contracts.py'
+    } else {
+        commandLine 'python3', 'scripts/check_swift_contracts.py'
+    }
+}
+
+tasks.named('preBuild').configure {
+    dependsOn 'checkSwiftContracts'
+}

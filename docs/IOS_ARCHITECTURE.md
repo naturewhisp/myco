@@ -2,7 +2,7 @@
 
 Questo documento definisce l'architettura tecnica, le interfacce di sistema e la guida di porting per lo sviluppo della versione **iOS** (iPhone e iPad) dell'applicazione **Myco**.
 
-> Stato settembre 2026: il client iOS 18+ e il core deterministico KMP descritti qui sono implementati. I sottostanti snippet storici restano riferimenti semantici; l'inventario operativo aggiornato è in `docs/ios/COMPLETION_STATUS.md`.
+> Stato settembre 2026: il client iOS 18+ e il core deterministico KMP descritti qui sono implementati. I sottostanti snippet storici restano riferimenti semantici; l'inventario operativo aggiornato è in `docs/ios/COMPLETION_STATUS.md`. Per la strategia di disaccoppiamento package e verifica locale Swift su macchine non-macOS (Windows/Docker), consultare [SWIFT_ARCHITECTURE_AND_LOCAL_VERIFICATION.md](SWIFT_ARCHITECTURE_AND_LOCAL_VERIFICATION.md).
 
 ---
 

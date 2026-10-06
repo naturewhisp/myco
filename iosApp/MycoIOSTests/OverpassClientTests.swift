@@ -116,10 +116,9 @@ final class OverpassClientTests: XCTestCase {
         let emptyForestPayload = Data(#"{"version":0.6,"elements":[]}"#.utf8)
         let meadowPayload = Data(#"{"version":0.6,"elements":[{"type":"way","id":9,"tags":{"landuse":"meadow"}}]}"#.utf8)
         let endpoint = URL(string: "https://overpass.test/api")!
-        var requestCount = 0
         let loader = TestHTTPDataLoader { request in
-            requestCount += 1
-            let payload = requestCount == 1 ? emptyForestPayload : meadowPayload
+            let query = request.url?.query ?? ""
+            let payload = query.contains("meadow") ? meadowPayload : emptyForestPayload
             return (payload, httpResponse(for: request))
         }
         let client = OverpassClient(apiClient: APIClient(loader: loader), endpoints: [endpoint])

@@ -149,6 +149,14 @@ def main() -> int:
         if re.search(r'\bAnalysisResult\b', content) and "import MycoCore" not in content:
             errors.append(f"{swift_file.name}: references AnalysisResult but does not import MycoCore")
 
+    # 11. Check for mutable variable capture inside TestHTTPDataLoader closures (Swift 6 strict concurrency)
+    sendable_loader_pattern = re.compile(r'TestHTTPDataLoader\s*\{[^}]*(\b\w+\b)\s*(?:\+=|(?<!=)=(?!=))')
+    for swift_file in swift_files:
+        content = swift_file.read_text(encoding="utf-8")
+        m = sendable_loader_pattern.search(content)
+        if m and m.group(1) not in ("payload", "request", "let"):
+            errors.append(f"{swift_file.name}: mutates captured variable '{m.group(1)}' in @Sendable TestHTTPDataLoader closure")
+
     if errors:
         print("\n[FAIL] Cross-platform contract parity check failed with errors:")
         for err in errors:

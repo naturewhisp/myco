@@ -1,4 +1,3 @@
-import CoreLocation
 import MycoCore
 import SwiftData
 import XCTest
@@ -28,7 +27,7 @@ final class MycoViewModelEnvironmentTests: XCTestCase {
             )
         )
 
-        viewModel.select(coordinate: CLLocationCoordinate2D(latitude: 50, longitude: 2), name: "Fuori copertura SPUN")
+        viewModel.select(coordinate: GeoCoordinates(latitude: 50, longitude: 2), name: "Fuori copertura SPUN")
         try await waitUntil { viewModel.analysis != nil }
 
         let analysis = try XCTUnwrap(viewModel.analysis)
@@ -46,7 +45,7 @@ final class MycoViewModelEnvironmentTests: XCTestCase {
             overpass: OverpassClient(apiClient: APIClient(loader: unavailable))
         )
 
-        viewModel.select(coordinate: CLLocationCoordinate2D(latitude: 42, longitude: 12), name: "Test")
+        viewModel.select(coordinate: GeoCoordinates(latitude: 42, longitude: 12), name: "Test")
         try await Task.sleep(for: .milliseconds(200))
 
         XCTAssertNil(viewModel.analysis)
@@ -64,7 +63,7 @@ final class MycoViewModelEnvironmentTests: XCTestCase {
             cacheStore: cache
         )
 
-        viewModel.select(coordinate: CLLocationCoordinate2D(latitude: 42, longitude: 12), name: "Offline")
+        viewModel.select(coordinate: GeoCoordinates(latitude: 42, longitude: 12), name: "Offline")
         try await waitUntil { viewModel.analysis != nil }
 
         let analysis = try XCTUnwrap(viewModel.analysis)
@@ -89,7 +88,7 @@ final class MycoViewModelEnvironmentTests: XCTestCase {
             cacheStore: cache
         )
 
-        viewModel.select(coordinate: CLLocationCoordinate2D(latitude: 42, longitude: 12), name: "Cached sources")
+        viewModel.select(coordinate: GeoCoordinates(latitude: 42, longitude: 12), name: "Cached sources")
         try await waitUntil { viewModel.analysis != nil }
 
         let analysis = try XCTUnwrap(viewModel.analysis)
@@ -108,7 +107,7 @@ final class MycoViewModelEnvironmentTests: XCTestCase {
             cacheStore: cache
         )
 
-        viewModel.select(coordinate: CLLocationCoordinate2D(latitude: 42, longitude: 12), name: "Corrupt cache")
+        viewModel.select(coordinate: GeoCoordinates(latitude: 42, longitude: 12), name: "Corrupt cache")
         try await waitUntil { !viewModel.isLoadingEnvironment }
 
         XCTAssertNil(viewModel.analysis)
@@ -137,7 +136,7 @@ final class MycoViewModelEnvironmentTests: XCTestCase {
             clock: { fixedDate }
         )
 
-        viewModel.select(coordinate: CLLocationCoordinate2D(latitude: 42, longitude: 12), name: "Fixed Clock Test")
+        viewModel.select(coordinate: GeoCoordinates(latitude: 42, longitude: 12), name: "Fixed Clock Test")
         try await waitUntil { viewModel.analysis != nil }
 
         let analysis: AnalysisResult = try XCTUnwrap(viewModel.analysis)

@@ -968,6 +968,17 @@ object MycoAlgorithms {
 
     fun extractHabitatEvidence(
         elements: List<OsmHabitatElement>?,
+        target: GeoCoordinates,
+        searchRadiusMeters: Int = 1500,
+    ): HabitatEvidence = extractHabitatEvidence(
+        elements = elements,
+        targetLat = target.latitude,
+        targetLon = target.longitude,
+        searchRadiusMeters = searchRadiusMeters,
+    )
+
+    fun extractHabitatEvidence(
+        elements: List<OsmHabitatElement>?,
         targetLat: Double,
         targetLon: Double,
         searchRadiusMeters: Int = 1500,

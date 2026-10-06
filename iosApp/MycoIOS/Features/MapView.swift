@@ -60,15 +60,15 @@ struct MapView: View {
             }
             mapButton("Selezione", icon: "mappin") {
                 guard let selected = viewModel.selectedLocation else { return }
-                cameraCommand = MapCameraCommand(coordinate: selected.coordinate)
+                cameraCommand = MapCameraCommand(coordinate: selected.coordinate.clCoordinate)
             }
             mapButton("Nord", icon: "safari") {
-                let coordinate = viewModel.selectedLocation?.coordinate ?? CLLocationCoordinate2D(latitude: 42.5, longitude: 12.5)
+                let coordinate = viewModel.selectedLocation?.coordinate.clCoordinate ?? CLLocationCoordinate2D(latitude: 42.5, longitude: 12.5)
                 cameraCommand = MapCameraCommand(coordinate: coordinate, heading: 0, pitch: isPitched ? 55 : 0)
             }
             mapButton(isPitched ? "Vista piana" : "Vista 3D", icon: "view.3d") {
                 isPitched.toggle()
-                let coordinate = viewModel.selectedLocation?.coordinate ?? CLLocationCoordinate2D(latitude: 42.5, longitude: 12.5)
+                let coordinate = viewModel.selectedLocation?.coordinate.clCoordinate ?? CLLocationCoordinate2D(latitude: 42.5, longitude: 12.5)
                 cameraCommand = MapCameraCommand(coordinate: coordinate, pitch: isPitched ? 55 : 0)
             }
             mapButton(mapType == .standard ? "Satellite" : "Standard", icon: "square.3.layers.3d") {
@@ -171,7 +171,7 @@ private struct MycoMapRepresentable: UIViewRepresentable {
         map.removeAnnotations(map.annotations.filter { !($0 is MKUserLocation) })
         if let selectedLocation {
             let annotation = MKPointAnnotation()
-            annotation.coordinate = selectedLocation.coordinate
+            annotation.coordinate = selectedLocation.coordinate.clCoordinate
             annotation.title = selectedLocation.name
             map.addAnnotation(annotation)
         }

@@ -1,5 +1,5 @@
-import CoreLocation
 import Foundation
+import MycoCore
 import XCTest
 @testable import MycoIOS
 
@@ -17,7 +17,7 @@ final class OpenMeteoClientTests: XCTestCase {
             elevationURL: URL(string: "https://meteo.test/elevation")!
         )
 
-        let forecast = try await client.forecast(for: CLLocationCoordinate2D(latitude: 41.9, longitude: 12.5), timezone: "Europe/Rome")
+        let forecast = try await client.forecast(for: GeoCoordinates(latitude: 41.9, longitude: 12.5), timezone: "Europe/Rome")
 
         XCTAssertEqual(forecast.current?.temperature2m, 24.5)
         XCTAssertEqual(forecast.current?.relativeHumidity2m, 61.0)
@@ -40,7 +40,7 @@ final class OpenMeteoClientTests: XCTestCase {
         }
         let client = OpenMeteoClient(apiClient: APIClient(loader: loader), elevationURL: URL(string: "https://meteo.test/elevation")!)
 
-        let elevation = try await client.elevation(for: CLLocationCoordinate2D(latitude: 41.9, longitude: 12.5))
+        let elevation = try await client.elevation(for: GeoCoordinates(latitude: 41.9, longitude: 12.5))
 
         XCTAssertEqual(elevation.firstElevation, 35.0)
         let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(loader.requests.first?.url), resolvingAgainstBaseURL: false))

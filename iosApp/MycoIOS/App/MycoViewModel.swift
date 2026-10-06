@@ -1,4 +1,3 @@
-import CoreLocation
 import Foundation
 import MycoCore
 
@@ -15,7 +14,7 @@ struct EnvironmentalDay: Identifiable {
 
 struct SelectedLocation: Identifiable, Sendable {
     let name: String
-    let coordinate: CLLocationCoordinate2D
+    let coordinate: GeoCoordinates
 
     var id: String { "\(coordinate.latitude),\(coordinate.longitude)" }
 }
@@ -121,7 +120,7 @@ final class MycoViewModel: ObservableObject {
         select(coordinate: place.coordinate, name: place.name)
     }
 
-    func select(coordinate: CLLocationCoordinate2D, name: String = "Punto selezionato") {
+    func select(coordinate: GeoCoordinates, name: String = "Punto selezionato") {
         searchTask?.cancel()
         isSearching = false
         selectedLocation = SelectedLocation(name: name, coordinate: coordinate)
@@ -132,7 +131,7 @@ final class MycoViewModel: ObservableObject {
     }
 
     func useCurrentLocation(latitude: Double, longitude: Double) {
-        select(coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude), name: "Posizione attuale")
+        select(coordinate: GeoCoordinates(latitude: latitude, longitude: longitude), name: "Posizione attuale")
     }
 
     func chooseSpecies(_ species: MushroomSpecies) {
@@ -213,7 +212,7 @@ final class MycoViewModel: ObservableObject {
         }
     }
 
-    private func loadEnvironment(for coordinate: CLLocationCoordinate2D) {
+    private func loadEnvironment(for coordinate: GeoCoordinates) {
         environmentTask?.cancel()
         heatmapTask?.cancel()
         environmentGeneration += 1
@@ -299,7 +298,7 @@ final class MycoViewModel: ObservableObject {
         habitat: HabitatSnapshot,
         spunSample: SpunSampleValue?,
         missingSources: [String],
-        coordinate: CLLocationCoordinate2D,
+        coordinate: GeoCoordinates,
         species: MushroomSpecies,
         generation: Int
     ) async {
@@ -402,7 +401,7 @@ private struct CacheKeys {
     let elevation: String
     let habitat: String
 
-    init(coordinate: CLLocationCoordinate2D, speciesID: String) {
+    init(coordinate: GeoCoordinates, speciesID: String) {
         let locale = Locale(identifier: "en_US_POSIX")
         let location = String(format: "%.4f_%.4f", locale: locale, coordinate.latitude, coordinate.longitude)
         forecast = "weather_\(location)"

@@ -1,5 +1,5 @@
-import CoreLocation
 import Foundation
+import MycoCore
 
 struct OpenMeteoForecast: Codable, Sendable {
     let latitude: Double
@@ -83,7 +83,7 @@ struct OpenMeteoClient: Sendable {
         self.elevationURL = elevationURL
     }
 
-    func forecast(for coordinate: CLLocationCoordinate2D, timezone: String = "auto") async throws -> OpenMeteoForecast {
+    func forecast(for coordinate: GeoCoordinates, timezone: String = "auto") async throws -> OpenMeteoForecast {
         var components = URLComponents(url: forecastURL, resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "latitude", value: String(coordinate.latitude)),
@@ -98,21 +98,21 @@ struct OpenMeteoClient: Sendable {
         return try await apiClient.decode(OpenMeteoForecast.self, from: URLRequest(url: components.url!))
     }
 
-    func elevation(for coordinate: CLLocationCoordinate2D) async throws -> OpenMeteoElevation {
+    func elevation(for coordinate: GeoCoordinates) async throws -> OpenMeteoElevation {
         try await elevations(around: coordinate)
     }
 
     /// Samples center, north, south, east and west at the same 75 m spacing used by Android.
-    func elevations(around coordinate: CLLocationCoordinate2D, deltaMeters: Double = 75) async throws -> OpenMeteoElevation {
+    func elevations(around coordinate: GeoCoordinates, deltaMeters: Double = 75) async throws -> OpenMeteoElevation {
         let latitudeDelta = deltaMeters / 111_320
         let longitudeScale = max(1, 111_320 * cos(coordinate.latitude * .pi / 180))
         let longitudeDelta = deltaMeters / longitudeScale
         let coordinates = [
             coordinate,
-            CLLocationCoordinate2D(latitude: coordinate.latitude + latitudeDelta, longitude: coordinate.longitude),
-            CLLocationCoordinate2D(latitude: coordinate.latitude - latitudeDelta, longitude: coordinate.longitude),
-            CLLocationCoordinate2D(latitude: coordinate.latitude, longitude: coordinate.longitude + longitudeDelta),
-            CLLocationCoordinate2D(latitude: coordinate.latitude, longitude: coordinate.longitude - longitudeDelta),
+            GeoCoordinates(latitude: coordinate.latitude + latitudeDelta, longitude: coordinate.longitude),
+            GeoCoordinates(latitude: coordinate.latitude - latitudeDelta, longitude: coordinate.longitude),
+            GeoCoordinates(latitude: coordinate.latitude, longitude: coordinate.longitude + longitudeDelta),
+            GeoCoordinates(latitude: coordinate.latitude, longitude: coordinate.longitude - longitudeDelta),
         ]
         var components = URLComponents(url: elevationURL, resolvingAgainstBaseURL: false)!
         components.queryItems = [

@@ -1,5 +1,5 @@
-import CoreLocation
 import Foundation
+import MycoCore
 
 struct NominatimPlace: Codable, Identifiable, Sendable {
     let placeID: Int
@@ -9,7 +9,7 @@ struct NominatimPlace: Codable, Identifiable, Sendable {
     let address: NominatimAddress?
 
     var id: Int { placeID }
-    var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
+    var coordinate: GeoCoordinates { GeoCoordinates(latitude: latitude, longitude: longitude) }
 
     enum CodingKeys: String, CodingKey {
         case placeID = "place_id"
@@ -80,7 +80,7 @@ struct NominatimClient: Sendable {
         return try await apiClient.decode([NominatimPlace].self, from: request(for: components.url!, locale: locale))
     }
 
-    func reverse(coordinate: CLLocationCoordinate2D, locale: Locale = .current) async throws -> NominatimPlace {
+    func reverse(coordinate: GeoCoordinates, locale: Locale = .current) async throws -> NominatimPlace {
         var components = URLComponents(url: baseURL.appending(path: "reverse"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "lat", value: String(coordinate.latitude)),

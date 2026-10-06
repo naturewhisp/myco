@@ -1,14 +1,13 @@
 package github.naturewhisp.myco.platform
 
+import github.naturewhisp.myco.core.GeoCoordinates
 import kotlinx.coroutines.flow.Flow
 
 /**
  * Coordinate geografiche WGS84 agnostiche dalla piattaforma.
+ * Allineate con il Value Object di dominio condiviso [GeoCoordinates].
  */
-data class LocationCoordinates(
-    val latitude: Double,
-    val longitude: Double
-)
+typealias LocationCoordinates = GeoCoordinates
 
 /**
  * Astrazione per l'acquisizione della posizione geografica corrente del dispositivo.

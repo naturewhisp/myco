@@ -1,4 +1,3 @@
-import CoreLocation
 import Foundation
 import MycoCore
 
@@ -131,7 +130,7 @@ struct OverpassClient: Sendable {
         throw OverpassClientError.allEndpointsFailed(failedEndpoints)
     }
 
-    func elements(around coordinate: CLLocationCoordinate2D, radiusMeters: Int, filter: String) async throws -> OverpassResponse {
+    func elements(around coordinate: GeoCoordinates, radiusMeters: Int, filter: String) async throws -> OverpassResponse {
         let radius = min(max(radiusMeters, 1), 50_000)
         let query = "[out:json][timeout:25];(nwr(around:\(radius),\(coordinate.latitude),\(coordinate.longitude))[\(filter)];);out center tags;"
         return try await self.query(query)
@@ -140,7 +139,7 @@ struct OverpassClient: Sendable {
     /// Extracts structured habitat evidence from Overpass elements in lockstep with Android and :core.
     func extractHabitatEvidence(
         from elements: [OverpassResponse.Element],
-        around coordinate: CLLocationCoordinate2D,
+        around coordinate: GeoCoordinates,
         radiusMeters: Int = Self.defaultHabitatRadiusMeters
     ) -> HabitatEvidence {
         let osmElements: [OsmHabitatElement] = elements.map { el in
@@ -167,8 +166,7 @@ struct OverpassClient: Sendable {
 
         return MycoAlgorithms.shared.extractHabitatEvidence(
             elements: osmElements,
-            targetLat: coordinate.latitude,
-            targetLon: coordinate.longitude,
+            target: coordinate,
             searchRadiusMeters: Int32(radiusMeters)
         )
     }
@@ -177,7 +175,7 @@ struct OverpassClient: Sendable {
     /// and evaluates the final habitat factor via MycoAlgorithms.shared.evaluateHabitat.
     /// Supports 0.95 score branch for saprotrophic open habitats in lockstep with shared core.
     func habitat(
-        around coordinate: CLLocationCoordinate2D,
+        around coordinate: GeoCoordinates,
         radiusMeters: Int = Self.defaultHabitatRadiusMeters,
         preferredCanopyTypes: [String],
         ecologicalCategory: HabitatEcologicalCategory = .treeAssociated
@@ -241,7 +239,7 @@ struct OverpassClient: Sendable {
         )
     }
 
-    static func forestQuery(around coordinate: CLLocationCoordinate2D, radiusMeters: Int) -> String {
+    static func forestQuery(around coordinate: GeoCoordinates, radiusMeters: Int) -> String {
         let radius = min(max(radiusMeters, 1), 50_000)
         return "[out:json][timeout:25];(nwr[\"natural\"=\"wood\"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude));nwr[\"landuse\"=\"forest\"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude)););out center tags;"
     }
@@ -249,7 +247,7 @@ struct OverpassClient: Sendable {
     /// Matches Android's category-specific Overpass acquisition: open habitats for
     /// saprotrophs, and forest canopy plus preferred host genera for tree-associated species.
     static func specificHabitatQuery(
-        around coordinate: CLLocationCoordinate2D,
+        around coordinate: GeoCoordinates,
         radiusMeters: Int,
         preferredCanopyTypes: [String],
         ecologicalCategory: HabitatEcologicalCategory

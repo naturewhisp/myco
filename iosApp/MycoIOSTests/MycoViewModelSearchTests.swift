@@ -1,5 +1,5 @@
-import CoreLocation
 import Foundation
+import MycoCore
 import XCTest
 @testable import MycoIOS
 
@@ -20,9 +20,9 @@ final class MycoViewModelSearchTests: XCTestCase {
         let gate = FirstBatchGate(blockedRequestCount: 3)
         let viewModel = makeViewModel(networkGate: gate)
 
-        viewModel.select(coordinate: CLLocationCoordinate2D(latitude: 42, longitude: 12), name: "A")
+        viewModel.select(coordinate: GeoCoordinates(latitude: 42, longitude: 12), name: "A")
         await gate.waitUntilBlocked()
-        viewModel.select(coordinate: CLLocationCoordinate2D(latitude: 43, longitude: 13), name: "B")
+        viewModel.select(coordinate: GeoCoordinates(latitude: 43, longitude: 13), name: "B")
         try await waitUntil { viewModel.forecast?.latitude == 43 && viewModel.analysis != nil }
 
         await gate.releaseFirstBatch()
@@ -37,7 +37,7 @@ final class MycoViewModelSearchTests: XCTestCase {
         let viewModel = makeViewModel(networkGate: gate)
         let speciesB = try XCTUnwrap(viewModel.speciesCatalog.first { $0.id == "macrolepiota_procera" })
 
-        viewModel.select(coordinate: CLLocationCoordinate2D(latitude: 42, longitude: 12), name: "Species race")
+        viewModel.select(coordinate: GeoCoordinates(latitude: 42, longitude: 12), name: "Species race")
         await gate.waitUntilBlocked()
         viewModel.chooseSpecies(speciesB)
         try await waitUntil { viewModel.analysis != nil && !viewModel.isLoadingEnvironment }
@@ -56,9 +56,9 @@ final class MycoViewModelSearchTests: XCTestCase {
         let noteGenerator = NonCooperativeFieldNoteGenerator()
         let viewModel = makeViewModel(fieldNoteGenerator: noteGenerator)
 
-        viewModel.select(coordinate: CLLocationCoordinate2D(latitude: 42, longitude: 12), name: "A")
+        viewModel.select(coordinate: GeoCoordinates(latitude: 42, longitude: 12), name: "A")
         await noteGenerator.waitUntilFirstCallBegins()
-        viewModel.select(coordinate: CLLocationCoordinate2D(latitude: 43, longitude: 13), name: "B")
+        viewModel.select(coordinate: GeoCoordinates(latitude: 43, longitude: 13), name: "B")
         try await waitUntil { viewModel.fieldNote == "AI-B" }
 
         await noteGenerator.releaseFirstCall()
@@ -71,7 +71,7 @@ final class MycoViewModelSearchTests: XCTestCase {
     func testFullyOnlineEnvironmentHasNoOfflineFallbackOrLiveSourceMarkers() async throws {
         let viewModel = makeViewModel()
 
-        viewModel.select(coordinate: CLLocationCoordinate2D(latitude: 42, longitude: 12), name: "Online")
+        viewModel.select(coordinate: GeoCoordinates(latitude: 42, longitude: 12), name: "Online")
         try await waitUntil { viewModel.analysis != nil && !viewModel.isLoadingEnvironment }
 
         let analysis = try XCTUnwrap(viewModel.analysis)
@@ -232,7 +232,7 @@ private struct DelayedSearchService: LocationSearching {
                 id: query,
                 name: query,
                 detail: nil,
-                coordinate: CLLocationCoordinate2D(latitude: 42, longitude: 12)
+                coordinate: GeoCoordinates(latitude: 42, longitude: 12)
             ),
         ]
     }

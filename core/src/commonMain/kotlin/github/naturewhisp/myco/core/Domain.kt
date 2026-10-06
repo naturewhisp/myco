@@ -1,5 +1,47 @@
 package github.naturewhisp.myco.core
 
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
+
+/**
+ * Rappresentazione geodetica WGS84 immutabile e cross-platform di una coordinata geografica.
+ * Fornisce validazione di dominio dei range angolari e calcolo delle distanze tramite formula Haversine.
+ */
+data class GeoCoordinates(
+    val latitude: Double,
+    val longitude: Double,
+) {
+    init {
+        require(latitude in -90.0..90.0) { "Latitudine non valida: $latitude (intervallo ammesso [-90.0, 90.0])" }
+        require(longitude in -180.0..180.0) { "Longitudine non valida: $longitude (intervallo ammesso [-180.0, 180.0])" }
+    }
+
+    /**
+     * Calcola la distanza geodetica in metri rispetto a un'altra coordinata (formula di Haversine).
+     */
+    fun distanceToMeters(other: GeoCoordinates): Double {
+        val r = 6371000.0
+        val lat1Rad = latitude * (PI / 180.0)
+        val lat2Rad = other.latitude * (PI / 180.0)
+        val dLat = (other.latitude - latitude) * (PI / 180.0)
+        val dLon = (other.longitude - longitude) * (PI / 180.0)
+
+        val sinDLat2 = sin(dLat / 2.0)
+        val sinDLon2 = sin(dLon / 2.0)
+        val a = sinDLat2 * sinDLat2 + cos(lat1Rad) * cos(lat2Rad) * sinDLon2 * sinDLon2
+        val c = 2.0 * atan2(sqrt(a), sqrt(1.0 - a))
+        return r * c
+    }
+
+    /**
+     * Calcola la distanza geodetica in chilometri rispetto a un'altra coordinata.
+     */
+    fun distanceToKm(other: GeoCoordinates): Double = distanceToMeters(other) / 1000.0
+}
+
 enum class ProbabilityTier(
     val tierIndex: Int,
     val minProbability: Int,

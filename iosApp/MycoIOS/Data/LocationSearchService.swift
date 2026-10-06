@@ -1,12 +1,12 @@
-import CoreLocation
 import Foundation
 @preconcurrency import MapKit
+import MycoCore
 
 struct LocationSearchResult: Identifiable, Sendable {
     let id: String
     let name: String
     let detail: String?
-    let coordinate: CLLocationCoordinate2D
+    let coordinate: GeoCoordinates
 }
 
 @MainActor
@@ -27,7 +27,8 @@ struct MKLocalSearchService: LocationSearching {
         let response = try await MKLocalSearch(request: request).start()
 
         return response.mapItems.prefix(12).map { item in
-            let coordinate = item.placemark.coordinate
+            let clCoord = item.placemark.coordinate
+            let coordinate = GeoCoordinates(latitude: clCoord.latitude, longitude: clCoord.longitude)
             let name = item.name ?? trimmed
             return LocationSearchResult(
                 id: "\(coordinate.latitude),\(coordinate.longitude),\(name)",

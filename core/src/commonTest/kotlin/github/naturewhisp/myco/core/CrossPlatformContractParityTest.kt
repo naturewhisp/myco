@@ -468,4 +468,50 @@ class CrossPlatformContractParityTest {
         assertTrue(result.deterministicFieldNote.contains("Serie meteorologica lacunosa o incompleta."))
         assertTrue(result.deterministicFieldNote.contains("meteo lacunoso"))
     }
+
+    @Test
+    fun testGeoCoordinatesDomainValidationAndHaversineDistance() {
+        val roma = GeoCoordinates(41.8902, 12.4922)
+        val milano = GeoCoordinates(45.4642, 9.1900)
+
+        // Validazione coordinate
+        assertEquals(41.8902, roma.latitude)
+        assertEquals(12.4922, roma.longitude)
+
+        // Eccezioni su coordinate invalide
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            GeoCoordinates(91.0, 0.0)
+        }
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            GeoCoordinates(-90.1, 0.0)
+        }
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            GeoCoordinates(0.0, 180.1)
+        }
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            GeoCoordinates(0.0, -180.1)
+        }
+
+        // Distanza verso se stesso
+        assertEquals(0.0, roma.distanceToMeters(roma), 1e-6)
+        assertEquals(0.0, roma.distanceToKm(roma), 1e-6)
+
+        // Distanza Roma-Milano (~477 km)
+        val distKm = roma.distanceToKm(milano)
+        assertTrue(distKm in 470.0..485.0, "Distanza attesa ~477 km, ottenuta $distKm")
+        assertEquals(distKm * 1000.0, roma.distanceToMeters(milano), 1.0)
+
+        // Simmetria
+        assertEquals(roma.distanceToMeters(milano), milano.distanceToMeters(roma), 1e-3)
+
+        // Overload extractHabitatEvidence con GeoCoordinates target
+        val elements = listOf(
+            OsmHabitatElement(lat = 41.8910, lon = 12.4930, isWoodOrForest = true, isMeadowOrGrass = false, isUrbanOrBuilt = false, genus = "Quercus"),
+        )
+        val evidenceFromCoords = MycoAlgorithms.extractHabitatEvidence(elements, roma, 1000)
+        val evidenceFromDoubles = MycoAlgorithms.extractHabitatEvidence(elements, roma.latitude, roma.longitude, 1000)
+        assertEquals(evidenceFromDoubles.forestCoverFraction, evidenceFromCoords.forestCoverFraction)
+        assertEquals(evidenceFromDoubles.confirmedHostGenera, evidenceFromCoords.confirmedHostGenera)
+        assertEquals(evidenceFromDoubles.status, evidenceFromCoords.status)
+    }
 }

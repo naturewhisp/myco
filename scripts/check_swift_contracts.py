@@ -174,6 +174,26 @@ def main() -> int:
         for m in matches:
             errors.append(f"{swift_file.name}: contains invalid conditional binding 'if/guard let' on non-optional Kotlin property '{m.group(1)}'")
 
+    # 13. Verify GeoCoordinates in Domain.kt
+    if "data class GeoCoordinates" not in domain_content:
+        errors.append("Kotlin Domain.kt missing GeoCoordinates data class")
+    if "distanceToMeters" not in domain_content or "distanceToKm" not in domain_content:
+        errors.append("Kotlin GeoCoordinates missing distance calculation methods")
+
+    # 14. Verify CoreLocation isolation: must NOT be imported in data clients, services or viewmodel
+    allowed_core_location_files = {
+        "CoreLocationService.swift",
+        "CoreLocationServiceTests.swift",
+        "AppleMapsNavigator.swift",
+        "GeoCoordinates+CoreLocation.swift",
+        "MapView.swift",
+    }
+    for swift_file in swift_files:
+        if swift_file.name not in allowed_core_location_files:
+            content = swift_file.read_text(encoding="utf-8")
+            if re.search(r'^\s*(?:@\w+\s+)?import\s+CoreLocation\b', content, re.MULTILINE):
+                errors.append(f"{swift_file.name}: violates architectural isolation by importing CoreLocation outside allowed platform adapters")
+
     if errors:
         print("\n[FAIL] Cross-platform contract parity check failed with errors:")
         for err in errors:
@@ -184,6 +204,8 @@ def main() -> int:
     print(f"  - Verified {len(expected_raster_props)} HeatmapRaster properties")
     print(f"  - Verified {len(expected_result_props)} AnalysisResult properties")
     print("  - Verified AnalysisInputs builders & constructors")
+    print("  - Verified GeoCoordinates value object & Haversine distance contracts")
+    print("  - Verified CoreLocation architectural isolation (zero CoreLocation in data/viewmodel)")
     print("  - Verified MapView statusDescription binding")
     print("  - Verified MycoViewModel clock injection")
     print("  - Verified OverpassClient saprotrophic alignment")

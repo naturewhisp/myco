@@ -1,5 +1,5 @@
-import CoreLocation
 import Foundation
+import MycoCore
 import XCTest
 @testable import MycoIOS
 
@@ -7,7 +7,7 @@ final class OverpassClientTests: XCTestCase {
     func testSaprotrophicQueryTargetsOpenHabitatsAtDefaultRadius() {
         XCTAssertEqual(OverpassClient.defaultHabitatRadiusMeters, 1_500)
         let query = OverpassClient.specificHabitatQuery(
-            around: CLLocationCoordinate2D(latitude: 41.9, longitude: 12.5),
+            around: GeoCoordinates(latitude: 41.9, longitude: 12.5),
             radiusMeters: OverpassClient.defaultHabitatRadiusMeters,
             preferredCanopyTypes: [],
             ecologicalCategory: .saprotrophic
@@ -21,7 +21,7 @@ final class OverpassClientTests: XCTestCase {
 
     func testTreeAssociatedQueryTargetsForestAndPreferredCanopyGenera() {
         let query = OverpassClient.specificHabitatQuery(
-            around: CLLocationCoordinate2D(latitude: 45.4642, longitude: 9.19),
+            around: GeoCoordinates(latitude: 45.4642, longitude: 9.19),
             radiusMeters: 2_000,
             preferredCanopyTypes: ["quercus", "FAGUS", "unknown"],
             ecologicalCategory: .treeAssociated
@@ -44,7 +44,7 @@ final class OverpassClientTests: XCTestCase {
         let client = OverpassClient(apiClient: APIClient(loader: loader), endpoints: [endpoint])
 
         let snapshot = try await client.habitat(
-            around: CLLocationCoordinate2D(latitude: 41.9, longitude: 12.5),
+            around: GeoCoordinates(latitude: 41.9, longitude: 12.5),
             preferredCanopyTypes: [],
             ecologicalCategory: .saprotrophic
         )
@@ -124,7 +124,7 @@ final class OverpassClientTests: XCTestCase {
         let client = OverpassClient(apiClient: APIClient(loader: loader), endpoints: [endpoint])
 
         let snapshot = try await client.habitat(
-            around: CLLocationCoordinate2D(latitude: 41.9, longitude: 12.5),
+            around: GeoCoordinates(latitude: 41.9, longitude: 12.5),
             preferredCanopyTypes: [],
             ecologicalCategory: .saprotrophic
         )

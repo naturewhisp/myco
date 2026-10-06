@@ -83,31 +83,34 @@ graph TD
     MycoDataKit -.->|Compilabile e testabile localmente con| Local Non-macOS Tooling
 ```
 
-### 3.1 Il Protocollo `GeoCoordinate` (Disaccoppiamento da CoreLocation)
-Attualmente `OverpassClient` richiede `CLLocationCoordinate2D` solo per leggere `.latitude` e `.longitude`.
-Nel package puro `MycoDataKit`:
-```swift
-public protocol GeoCoordinateRepresentable: Sendable {
-    var latitude: Double { get }
-    var longitude: Double { get }
-}
+### 3.1 Value Object di Dominio Condiviso (`GeoCoordinates` da `:core`)
+Anziché creare un protocollo fittizio solo lato Swift, la soluzione adottata ed effettivamente integrata nel commit `a9133ec` ha introdotto il tipo di dominio ufficiale cross-platform direttamente in Kotlin Multiplatform `:core`:
 
-public struct GeoCoordinate: GeoCoordinateRepresentable, Hashable, Codable, Sendable {
-    public let latitude: Double
-    public let longitude: Double
-    
-    public init(latitude: Double, longitude: Double) {
-        self.latitude = latitude
-        self.longitude = longitude
+```kotlin
+// core/src/commonMain/kotlin/github/naturewhisp/myco/core/Domain.kt
+data class GeoCoordinates(
+    val latitude: Double,
+    val longitude: Double,
+) {
+    init {
+        require(latitude in -90.0..90.0) { "Latitudine non valida: $latitude" }
+        require(longitude in -180.0..180.0) { "Longitudine non valida: $longitude" }
     }
-}
 
-#if canImport(CoreLocation)
-import CoreLocation
-extension CLLocationCoordinate2D: GeoCoordinateRepresentable {}
-#endif
+    fun distanceToMeters(other: GeoCoordinates): Double { ... }
+    fun distanceToKm(other: GeoCoordinates): Double = distanceToMeters(other) / 1000.0
+}
 ```
-In questo modo, su Windows/Linux il package usa `GeoCoordinate`, mentre nell'app iOS su macOS `CLLocationCoordinate2D` vi aderisce trasparentemente.
+
+Esportato verso Swift come `MycoCore.GeoCoordinates`, questo Value Object:
+1. Sostituisce completamente `CLLocationCoordinate2D` in `OpenMeteoClient`, `OverpassClient`, `NominatimClient`, `LocationSearchService`, `MycoViewModel` e in tutte le suite di test.
+2. Isola `CoreLocation` rigidamente nel solo platform bridge (`Platform/GeoCoordinates+CoreLocation.swift`), nel sensore GPS (`CoreLocationService.swift`) e nella mappa UI (`MapView.swift`).
+3. È coperto da conformance a Swift 6:
+   ```swift
+   // iosApp/MycoIOS/Platform/GeoCoordinates+CoreLocation.swift
+   extension GeoCoordinates: @retroactive @unchecked Sendable {}
+   ```
+4. È verificato e blindato dalla **Regola #14** di `check_swift_contracts.py` (divieto tassativo di `CoreLocation` e `CLLocationCoordinate2D` al di fuori degli adapter platform).
 
 ### 3.2 Anti-Corruption Layer (`KmpBridgeAdapter.swift`)
 Per evitare che discrepanze di esportazione KMP (es. tipi non-opzionali esportati da Kotlin come `String` e non `String?`) si propaghino nelle viste:
@@ -119,45 +122,63 @@ Per evitare che discrepanze di esportazione KMP (es. tipi non-opzionali esportat
 
 ## 4. Pipeline di Verifica Locale su Windows (Zero CI Latency)
 
-### 4.1 Livello 1: Pre-Commit Hook & Static Contract Checker (0.15s)
-Già attivo e configurato nel repository:
+### 4.1 Livello 1: Pre-Commit Hook & Static Contract Checker (0.15s - Operativo)
+Attivo e configurato nel repository come guardiano primario:
 - File: [`scripts/check_swift_contracts.py`](file:///c:/Users/dendo/Documents/GitHub/myco/scripts/check_swift_contracts.py)
 - Hook Git: `scripts/hooks/pre-commit` (attivato con `git config core.hooksPath scripts/hooks`)
 - Integrazione Gradle: Task `:app:checkSwiftContracts` agganciato a `:app:preBuild`
-- **Regole verificate:**
-  1. Integrità e completezza delle proprietà di `AnalysisResult` e `HeatmapRaster`.
-  2. Firme e parametri obbligatori dei costruttori KMP (`AnalysisInputs`).
-  3. **Regola 12 (Cruciale):** Divieto assoluto di conditional binding (`if let` / `guard let`) su proprietà Kotlin non-opzionali (`bonusText`, `baseText`, `score`, `probability`, `tier`, ecc.).
-  4. Swift 6 Concurrency: divieto di mutazioni di variabili catturate in closure `@Sendable`.
-  5. Sintassi illegali cross-platform.
+- **15 Regole verificate in tempo reale:**
+  1. Integrità e completezza delle 9 proprietà di `HeatmapRaster`.
+  2. Completezza delle 13 proprietà di `AnalysisResult`.
+  3. Presenza di `AnalysisInputsBuilder` in `Domain.kt`.
+  4. Firme e parametri obbligatori dei costruttori Swift di `AnalysisInputs`.
+  5. Binding di `statusDescription` del raster in `MapView.swift`.
+  6. Iniezione del `clock` deterministico in `MycoViewModel.swift`.
+  7. Presenza del test per guild non supportate in `SpunBundleServiceTests.swift`.
+  8. Allineamento dei punteggi praticoli saprotrofi (0.95) in `OverpassClient.swift`.
+  9. Rilevamento di sintassi illegali cross-platform (es. `{ _ in ... $0 }`).
+  10. Obbligo di `import MycoCore` per file che referenziano tipi di dominio.
+  11. Swift 6 Concurrency: divieto di mutazioni di variabili catturate in closure `@Sendable`.
+  12. **Regola Cruciale:** Divieto assoluto di conditional binding (`if let` / `guard let`) su proprietà Kotlin non-opzionali (25 proprietà tracciate).
+  13. Presenza di `GeoCoordinates` con metodi di distanza Haversine in `Domain.kt`.
+  14. **Isolamento Architetturale di `CoreLocation`:** Divieto tassativo di `import CoreLocation` o tipi `CLLocationCoordinate2D` al di fuori dei soli 6 file platform/mappa autorizzati.
+  15. Conformità a Swift 6 Sendable per estensioni KMP (`@retroactive @unchecked Sendable` e `@preconcurrency`).
 
-### 4.2 Livello 2: Analisi Statica SwiftLint via Docker (1.5s)
-Eseguibile localmente in qualsiasi momento prima del commit:
-```bash
-docker run --rm -v "%cd%:/work" -w /work ghcr.io/realm/swiftlint:latest swiftlint lint iosApp/
-```
-Garantisce conformità formale, assenza di force casts o errori di sintassi grezzi.
+### 4.2 Livello 2: Opzioni di Compilazione Locale su Ambienti Non-macOS (WSL, Docker, Windows Nativo)
+Qualora si desideri eseguire un ciclo di compilazione binaria locale prima di inviare a GitHub Actions:
 
-### 4.3 Livello 3: Compilazione & Unit Test del Package tramite Docker
-Per eseguire la build e i test del package Swift puro:
-```bash
-docker run --rm -v "%cd%/iosApp/MycoDataKit:/src" -w /src swift:6.0 swift test
-```
-Tutti i test di parsing, serializzazione e mapping vengono eseguiti dal vero compilatore Swift di Apple (versione Linux), garantendo zero warning e zero errori prima del push.
+1. **WSL (Ubuntu) & Antigravity Remote WSL:**
+   - La macchina dispone di una distribuzione `Ubuntu` (WSL 2). Antigravity supporta la connessione nativa *"Connect to WSL > Ubuntu"* dalla tray icon.
+   - Su Ubuntu Linux, la toolchain Swift ufficiale non dipende da Visual Studio o UCRT: usa direttamente `clang`/`glibc`.
+   - È possibile eseguire direttamente i test del package senza avviare container pesanti:
+     ```bash
+     wsl -d Ubuntu swift test --package-path /mnt/c/Users/dendo/Documents/GitHub/myco/iosApp/MycoDataKit
+     ```
+2. **SwiftLint Static Analysis via Docker (1.5s):**
+   ```bash
+   docker run --rm -v "%cd%:/work" -w /work ghcr.io/realm/swiftlint:latest swiftlint lint iosApp/
+   ```
+3. **Container Swift Docker:**
+   ```bash
+   docker run --rm -v "%cd%/iosApp/MycoDataKit:/src" -w /src swift:6.0 swift test
+   ```
+4. **Swift Toolchain Nativo Windows (Swift 6.4):**
+   - Disponibile sul sistema (`swift.exe`), subordinata all'allineamento dei path MSVC/UCRT del compiler C++ di Visual Studio.
 
 ---
 
-## 5. Roadmap di Implementazione
+## 5. Stato di Avanzamento e Roadmap
 
-1. **Fase 1 (Completata):**
-   - Implementazione della Regola #12 in `check_swift_contracts.py`.
-   - Aggancio del task `:app:checkSwiftContracts` a Gradle `preBuild`.
-   - Creazione del Git pre-commit hook tracciato in `scripts/hooks/pre-commit`.
-2. **Fase 2 (Strutturazione KmpBridgeAdapter):**
+1. **Fase 1 (Completata - Commit `a9133ec`):**
+   - Introduzione del Value Object `GeoCoordinates` in `:core`.
+   - Bonifica totale di `CoreLocation` da 10 file client e test in `iosApp`.
+   - Conformance Swift 6 `@retroactive @unchecked Sendable`.
+   - Implementazione e blindatura delle 15 regole in `check_swift_contracts.py`.
+   - **Risultato:** CI GitHub Actions 100% Green su tutti i job (Android, KMP `:core`, iOS con 15 suite e 53 unit test superati).
+2. **Fase 2 (Strutturazione Anti-Corruption Layer):**
    - Consolidamento delle chiamate `MycoAlgorithms` e `SpeciesCatalog` dentro un adapter Swift unico in `iosApp/MycoIOS/Platform/KmpBridgeAdapter.swift`.
 3. **Fase 3 (Package `MycoDataKit`):**
-   - Creazione di `Package.swift` in `iosApp/MycoDataKit`.
-   - Spostamento di `Data/` e `DomainAdapters/` nel package.
+   - Isolamento formale di `Data/` e `DomainAdapters/` in `iosApp/MycoDataKit/Package.swift`.
    - Integrazione come local package in `iosApp/MycoIOS.xcodeproj`.
 4. **Fase 4 (GitHub Actions Fast-Fail):**
    - Aggiunta di un job rapido su runner Ubuntu Linux in `.github/workflows/ios.yml` che esegue `swift test` su `MycoDataKit` in 25 secondi prima di avviare il runner macOS da 8 minuti.

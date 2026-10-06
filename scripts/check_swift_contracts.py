@@ -28,6 +28,11 @@ def main() -> int:
 
     errors = []
 
+    # Kotlin parameter names become Swift argument labels in the exported framework.
+    engine_content = (core_dir / "MycoAnalysisEngine.kt").read_text(encoding="utf-8")
+    if not re.search(r'fun\s+analyze\s*\(\s*input\s*:\s*AnalysisInputs\s*\)', engine_content):
+        errors.append("MycoAnalysisEngine must export analyze(input: AnalysisInputs) for Swift analyze(input:)")
+
     # 1. Verify HeatmapRaster properties in Domain.kt
     expected_raster_props = ["argbPixels", "width", "height", "north", "south", "west", "east", "layerStatus", "statusDescription"]
     for prop in expected_raster_props:

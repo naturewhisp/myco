@@ -4,7 +4,9 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 class MycoAnalysisEngine {
-    fun analyze(rawInput: AnalysisInputs): AnalysisResult {
+    fun analyze(input: AnalysisInputs): AnalysisResult = analyzePrepared(input)
+
+    private fun analyzePrepared(rawInput: AnalysisInputs): AnalysisResult {
         val target = rawInput.days.getOrNull(rawInput.todayIndex)
             ?: return emptyResult(DataQualityStatus.DEGRADED_OUT_OF_BOUNDS)
         val targetEpoch = MycoAlgorithms.isoDateToEpochDay(target.dateIso)

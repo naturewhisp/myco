@@ -1033,6 +1033,13 @@ object MycoAlgorithms {
             else -> baseForestCover
         }.coerceIn(0.0, 1.0)
 
+        val meadowDistances = meadowElements.mapNotNull { el ->
+            if (el.lat != null && el.lon != null) {
+                haversineDistanceKm(targetLat, targetLon, el.lat, el.lon) * 1000.0
+            } else null
+        }
+        val minMeadowDist = meadowDistances.minOrNull() ?: searchRadiusMeters.toDouble()
+
         val meadowSectors = BooleanArray(8)
         for (el in meadowElements) {
             val elLat = el.lat ?: continue
@@ -1053,7 +1060,21 @@ object MycoAlgorithms {
         } else {
             coveredMeadowSectors
         }
-        val meadowFraction = (effectiveCoveredMeadow / 8.0).coerceIn(0.0, 1.0)
+        val baseMeadowCover = effectiveCoveredMeadow / 8.0
+
+        val effectiveMinMeadowDist = if (meadowDistances.isNotEmpty()) {
+            minMeadowDist
+        } else if (meadowElements.isNotEmpty()) {
+            50.0
+        } else {
+            searchRadiusMeters.toDouble()
+        }
+
+        val meadowFraction = when {
+            effectiveMinMeadowDist <= 50.0 -> maxOf(baseMeadowCover, 0.50)
+            effectiveMinMeadowDist <= 150.0 -> maxOf(baseMeadowCover, 0.25)
+            else -> baseMeadowCover
+        }.coerceIn(0.0, 1.0)
 
         val isUrbanDominant = urbanElements.isNotEmpty() && urbanElements.size > (forestElements.size + meadowElements.size) && forestCoverFraction < 0.20
         val status = when {

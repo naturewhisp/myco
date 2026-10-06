@@ -133,6 +133,6 @@ final class OverpassClientTests: XCTestCase {
         XCTAssertEqual(snapshot.canopyCover, 0.0)
         XCTAssertEqual(snapshot.forestProximityIndex, 0.0)
         XCTAssertEqual(snapshot.canopyTypes, ["saprotrophic_habitat"])
-        XCTAssertTrue(snapshot.description.contains("praticolo"))
+        XCTAssertTrue(snapshot.description.lowercased().contains("praticolo"))
     }
 }

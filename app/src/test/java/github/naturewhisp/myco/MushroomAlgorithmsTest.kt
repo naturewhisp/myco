@@ -418,14 +418,13 @@ class MushroomAlgorithmsTest {
         val day = processed[0]
         assertEquals("2026-09-10", day.date)
         assertEquals(18.0f, day.avgTemp, 0.01f)
-        assertEquals(4.0f, day.totalPrecip, 0.01f)
+        assertTrue(day.totalPrecip.isNaN())
         assertEquals(70.0f, day.avgHumidity, 0.01f)
-        assertNotNull(day.avgSoilMoisture0To7cm)
-        assertEquals(0.30f, day.avgSoilMoisture0To7cm!!, 0.01f)
-        assertNotNull(day.avgSoilMoisture7To28cm)
-        assertEquals(0.25f, day.avgSoilMoisture7To28cm!!, 0.01f)
-        assertNotNull(day.totalEvapotranspiration)
-        assertEquals(2.2f, day.totalEvapotranspiration!!, 0.01f)
+        assertEquals(null, day.avgSoilMoisture0To7cm)
+        assertEquals(null, day.avgSoilMoisture7To28cm)
+        assertEquals(null, day.totalEvapotranspiration)
+        assertEquals(false, day.coverage?.weatherUsable)
+
     }
 
     @Test
@@ -900,7 +899,7 @@ class MushroomAlgorithmsTest {
     }
 
     @Test
-    fun testEvaluateGrowthPhaseResetsToHydrationWhenRecentRainIsHeavierOrEarlierInsufficient() {
+    fun testEvaluateGrowthPhaseBlendsEarlierAndRecentRainContinuously() {
         val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
         // Scenario Mindino reale:
         // Day 16 (10 set): 22.3 mm (non saturante e seguito da secco)
@@ -927,13 +926,13 @@ class MushroomAlgorithmsTest {
         val evalSep18 = MushroomAlgorithms.evaluateGrowthPhase(days, edulis, dayIndex = 24)
         assertEquals(GrowthStage.MYCELIAL_HYDRATION, evalSep18.stage)
         assertEquals(1, evalSep18.daysSinceTrigger)
-        assertTrue("Il moltiplicatore il 18 settembre deve essere basso (<= 0.40, attuale: ${evalSep18.multiplier})", evalSep18.multiplier <= 0.40)
+        assertTrue(evalSep18.phiBase > MushroomAlgorithms.evaluateGrowthPhase(days.mapIndexed { index, day -> if (index == 16) day.copy(totalPrecip = 0f) else day }, edulis, 24).phiBase)
 
         // Il 21 settembre (Day 27, 4 giorni dopo la pioggia di 25.3mm)
         val evalSep21 = MushroomAlgorithms.evaluateGrowthPhase(days, edulis, dayIndex = 27)
         assertEquals(GrowthStage.MYCELIAL_HYDRATION, evalSep21.stage)
         assertEquals(4, evalSep21.daysSinceTrigger)
-        assertTrue("Il moltiplicatore il 21 settembre deve rispecchiare l'idratazione (<= 0.55, attuale: ${evalSep21.multiplier})", evalSep21.multiplier <= 0.55)
+        assertTrue(evalSep21.phiBase >= evalSep18.phiBase)
     }
 
     @Test

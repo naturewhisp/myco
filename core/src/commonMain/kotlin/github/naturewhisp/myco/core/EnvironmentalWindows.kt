@@ -1,7 +1,5 @@
 package github.naturewhisp.myco.core
 
-import kotlin.math.max
-import kotlin.math.min
 
 /**
  * Canonical observation windows shared by scoring, factor display and parity fixtures.
@@ -50,41 +48,24 @@ data class EnvironmentalWindows(
             val targetDay = days[todayIndex]
             val targetEpoch = MycoAlgorithms.isoDateToEpochDay(targetDay.dateIso)
 
-            val (temperature, rain, humidity) = if (targetEpoch != null) {
-                val dayByEpoch = days.mapNotNull { d -> MycoAlgorithms.isoDateToEpochDay(d.dateIso)?.let { it to d } }.toMap()
-                val tempDays = (5 downTo 1).mapNotNull { dayByEpoch[targetEpoch - it] }
-                val rainDays = (10 downTo 3).mapNotNull { dayByEpoch[targetEpoch - it] }
-                val humDays = (3 downTo 0).mapNotNull { dayByEpoch[targetEpoch - it] }
-                Triple(tempDays, rainDays, humDays)
-            } else {
-                Triple(
-                    days.slice(max(0, todayIndex - 5), todayIndex),
-                    days.slice(max(0, todayIndex - 10), max(0, todayIndex - 2)),
-                    days.slice(max(0, todayIndex - 3), min(days.size, todayIndex + 1))
-                )
-            }
-
-            val shallow = humidity.mapNotNull { it.soilMoisture0To7 }
-            val deep = humidity.mapNotNull { it.soilMoisture7To28 }
+            if (targetEpoch == null) return empty()
+            val dayByEpoch = days.mapNotNull { d -> MycoAlgorithms.isoDateToEpochDay(d.dateIso)?.let { it to d } }.toMap()
+            val temperature = (5 downTo 1).mapNotNull { dayByEpoch[targetEpoch - it] }
+            val rain = (10 downTo 3).mapNotNull { dayByEpoch[targetEpoch - it] }
+            val humidity = (3 downTo 0).mapNotNull { dayByEpoch[targetEpoch - it] }
+            val soil = (2 downTo 0).mapNotNull { dayByEpoch[targetEpoch - it] }
+            val shallow = soil.mapNotNull { it.soilMoisture0To7 }
+            val deep = soil.mapNotNull { it.soilMoisture7To28 }
             val et0 = humidity.mapNotNull { it.evapotranspiration }
-            val drop = if (targetEpoch != null) {
-                val dayByEpoch = days.mapNotNull { d -> MycoAlgorithms.isoDateToEpochDay(d.dateIso)?.let { it to d } }.toMap()
-                val dayMinus4 = dayByEpoch[targetEpoch - 4]
-                val dayMinus1 = dayByEpoch[targetEpoch - 1]
-                if (dayMinus4 != null && dayMinus1 != null) {
-                    dayMinus4.avgTemp - dayMinus1.avgTemp
-                } else null
-            } else if (todayIndex > 4) {
-                days[todayIndex - 4].avgTemp - days[todayIndex - 1].avgTemp
-            } else {
-                null
-            }
+            val dayMinus4 = dayByEpoch[targetEpoch - 4]
+            val dayMinus1 = dayByEpoch[targetEpoch - 1]
+            val drop = if (dayMinus4 != null && dayMinus1 != null) dayMinus4.avgTemp - dayMinus1.avgTemp else null
 
             return EnvironmentalWindows(
                 temperature = temperature,
                 rain = rain,
                 humidity = humidity,
-                soil = humidity,
+                soil = soil,
                 evapotranspiration = humidity,
                 rainWindowTotalMm = rain.sumOf { it.liquidPrecipMm },
                 averageTempWindowC = temperature.averageOfOrZero { it.avgTemp },
@@ -112,9 +93,6 @@ data class EnvironmentalWindows(
         )
     }
 }
-
-private fun List<ProcessedDay>.slice(start: Int, endExclusive: Int): List<ProcessedDay> =
-    if (start < endExclusive) subList(start, endExclusive) else emptyList()
 
 private inline fun List<ProcessedDay>.averageOfOrZero(selector: (ProcessedDay) -> Double): Double =
     if (isEmpty()) 0.0 else sumOf(selector) / size

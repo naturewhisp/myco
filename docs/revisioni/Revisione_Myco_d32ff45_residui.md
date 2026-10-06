@@ -1,5 +1,7 @@
 # Myco — Revisione integrativa del commit d32ff45
 
+**Aggiornamento 6 ottobre 2026:** l'implementazione successiva e i relativi limiti di verifica sono registrati in [Bonifica operativa](Bonifica_operativa_2026-10-06.md). Il testo seguente conserva la valutazione storica del commit d32ff45; il recupero del payload Mindino non certifica il contesto originale di esecuzione.
+
 **Data della verifica:** 1 ottobre 2026, UTC.  
 **Commit esaminato:** `d32ff459008131f7d2a72bcb21e58a8739fa062c`.  
 **Confronto:** `67b5362a78480ff647d8d3259c34cba35f17bfeb`, piano RES-01..09 e successiva revisione C01..C11.  

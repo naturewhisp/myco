@@ -48,7 +48,8 @@ android {
 
     testOptions {
         unitTests.all {
-            jvmArgs '-Xmx2048m'
+            systemProperty 'myco.fixture.root', rootProject.file('testFixtures').absolutePath
+            jvmArgs '-Xmx2048m', '-Xshare:off'
         }
     }
 }

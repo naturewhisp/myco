@@ -8,6 +8,8 @@ struct EnvironmentalDay: Identifiable {
     let humidity: Double
     let probability: Int
     let tierLabel: String
+    let isCalculable: Bool
+    let qualityReasons: [String]
 
     var id: Date { date }
 }
@@ -207,7 +209,9 @@ final class MycoViewModel: ObservableObject {
                 rainfall: outlook.totalPrecipMm,
                 humidity: outlook.avgHumidityPercent,
                 probability: Int(outlook.probability),
-                tierLabel: outlook.tier.shortLabel
+                tierLabel: outlook.tier.shortLabel,
+                isCalculable: outlook.isCalculable,
+                qualityReasons: outlook.qualityReasons
             )
         }
     }
@@ -239,7 +243,8 @@ final class MycoViewModel: ObservableObject {
             async let loadedHabitat = try? overpass.habitat(
                     around: coordinate,
                     preferredCanopyTypes: preferredCanopyTypes,
-                    ecologicalCategory: habitatEcologicalCategory
+                    ecologicalCategory: habitatEcologicalCategory,
+                    selectedSpecies: species
                 )
             let (freshForecast, freshElevation, freshHabitat) = await (loadedForecast, loadedElevation, loadedHabitat)
             guard !Task.isCancelled, self.isCurrentEnvironment(generation) else { return }
@@ -313,23 +318,29 @@ final class MycoViewModel: ObservableObject {
         let now = clock()
         let todayDateIso = Self.isoDateFormatter(timezone: forecast.timezone).string(from: now)
         let todayIndex = days.firstIndex(where: { $0.dateIso == todayDateIso }) ?? -1
-        let month = Calendar.current.component(.month, from: now) - 1
+        var locationCalendar = Calendar(identifier: .gregorian)
+        locationCalendar.timeZone = TimeZone(identifier: forecast.timezone) ?? TimeZone(secondsFromGMT: 0)!
+        let month = locationCalendar.component(.month, from: now) - 1
         let elevationSamples = (elevations.isEmpty ? [forecast.elevation ?? 0] : elevations).map { KotlinDouble(double: $0) }
+        let evidence = overpass.extractHabitatEvidence(from: habitat.rawElements ?? [], around: coordinate)
+        let habitatEvaluation = MycoAlgorithms.shared.evaluateHabitat(evidence: evidence, species: species, spunEcmRichness: nil)
         let input = AnalysisInputs(
             days: days,
             todayIndex: Int32(todayIndex),
             speciesId: species.id,
-            habitatScore: habitat.score,
-            habitatDescription: habitat.description,
-            canopyTypes: habitat.canopyTypes,
+            habitatScore: habitatEvaluation.baseScore,
+            habitatDescription: habitatEvaluation.baseText,
+            canopyTypes: Array(evidence.confirmedHostGenera),
             elevationSamples: elevationSamples,
             monthIndex: Int32(month),
             spunEcmRichness: spunSample.map { KotlinDouble(double: $0.ecmRichness) },
             spunHyphalDensity: spunSample.map { KotlinDouble(double: $0.hyphalDensity) },
-            missingSources: spunSample == nil ? missingSources + ["SPUN"] : missingSources,
-            canopyCover: habitat.canopyCover,
-            forestProximityIndex: habitat.forestProximityIndex,
-            calculationMode: "ALL"
+            missingSources: missingSources + (spunSample == nil ? ["SPUN"] : []) + (evidence.geometryComplete ? [] : ["geometrie habitat OSM incomplete"]),
+            canopyCover: evidence.forestCoverFraction,
+            forestProximityIndex: evidence.forestProximityIndex,
+            calculationMode: "ALL",
+            targetDateIso: todayDateIso,
+            habitatEvidence: evidence
         )
         guard isCurrentEnvironment(generation) else { return }
         self.forecast = forecast
@@ -406,6 +417,6 @@ private struct CacheKeys {
         let location = String(format: "%.4f_%.4f", locale: locale, coordinate.latitude, coordinate.longitude)
         forecast = "weather_\(location)"
         elevation = "terrain_\(location)"
-        habitat = "habitat_\(speciesID)_\(location)"
+        habitat = "habitat_geom_v2_\(location)"
     }
 }

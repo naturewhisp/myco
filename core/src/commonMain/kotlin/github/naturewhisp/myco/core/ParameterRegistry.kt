@@ -43,6 +43,62 @@ data class EcologicalParameter<T>(
  */
 object ParameterRegistry {
 
+    val HABITAT_RESPONSE_PRIORS = EcologicalParameter(
+        key = "habitat.response_priors", name = "Nodi Hermite e livelli habitat per guild",
+        value = listOf(0.10, 0.20, 0.25, 0.35, 0.40, 0.60, 0.65, 0.85, 0.95, 0.30, 0.45, 0.50, 0.15, 0.55, 0.05),
+        unit = "frazioni e fattori", provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Bonifica operativa 2026-10-06", domain = "Habitat",
+        description = "Nodi e livelli delle curve per guild in evaluateHabitat; stime comparative, prive di calibrazione di campo.",
+    )
+    val ECM_RESPONSE_PRIORS = EcologicalParameter(
+        key = "habitat.ecm_response_priors", name = "Nodi EcM e fattore minimo",
+        value = listOf(5.0, 25.0, 40.0, 60.0, 0.8), unit = "ricchezza e fattore",
+        provenance = ParameterProvenance.EXPERT_PRIOR, reference = "Bonifica operativa 2026-10-06",
+        domain = "Habitat EcM", description = "Raccordi Hermite del modificatore correlato agli ospiti; non applicabile alle altre guild.",
+    )
+    val PHASE_WANING_DAYS = EcologicalParameter(
+        key = "phenology.waning_days", name = "Raccordo esaurimento evento", value = 11.0, unit = "giorni",
+        provenance = ParameterProvenance.EXPERT_PRIOR, reference = "Bonifica operativa 2026-10-06",
+        domain = "Fenologia", description = "Transizione Hermite da 0.85 a 0.30 dopo il limite di fruttificazione.",
+    )
+    val CARDINAL_BOUNDARY_POWER = EcologicalParameter(
+        key = "temperature.cardinal_boundary_power", name = "Raccordo cardinale C1", value = 2.0, unit = "esponente",
+        provenance = ParameterProvenance.EXPERT_PRIOR, reference = "Bonifica operativa 2026-10-06",
+        domain = "Temperatura", description = "Potenza della risposta cardinale normalizzata, derivata nulla ai limiti; non è calibrazione biologica.",
+    )
+
+    val PHASE_RAIN_ACTIVATION_MM = EcologicalParameter(
+        key = "phenology.phase_rain_activation", name = "Raccordo attivazione eventi", value = 10.0,
+        unit = "mm", provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Bonifica operativa 2026-10-06", domain = "Ensemble fenologico",
+        description = "Pesi continui R*smoothstep(0,10,R), senza soglie di esclusione o reset. Non altera il volume della convoluzione pluviometrica.",
+    )
+
+    val HABITAT_SURFACE_GRID = EcologicalParameter(
+        key = "habitat.surface_grid", name = "Risoluzione quadratura superfici", value = 20,
+        unit = "passi per semiraggio", provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Bonifica operativa 2026-10-06", domain = "Proxy geografico",
+        description = "Unione di poligoni campionata su disco; non misura chioma o necromassa.",
+    )
+
+    val HABITAT_HOST_MODIFIER = EcologicalParameter(
+        key = "habitat.host_modifier", name = "Modificatore ospite confermato", value = 1.15,
+        unit = "moltiplicatore", provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Bonifica operativa 2026-10-06", domain = "Habitat",
+        description = "Indizio correlato a EcM: non si moltiplicano i due bonus.",
+    )
+
+    val WEATHER_MEAN_COVERAGE = EcologicalParameter(
+        key = "quality.weather_mean_coverage",
+        name = "Copertura minima delle medie orarie",
+        value = 0.75,
+        unit = "frazione delle ore locali attese",
+        provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Bonifica operativa 2026-10-06",
+        domain = "Qualità dati",
+        description = "Temperatura, umidità e suolo richiedono almeno il 75%; pioggia ed ET0 richiedono tutte le ore. Non è una soglia biologica.",
+    )
+
     val KNEE_THRESHOLD = EcologicalParameter(
         key = "calibration.knee_threshold",
         name = "Soglia asintotica (Knee)",
@@ -209,6 +265,14 @@ object ParameterRegistry {
     )
 
     val ALL: List<EcologicalParameter<*>> = listOf(
+        HABITAT_RESPONSE_PRIORS,
+        ECM_RESPONSE_PRIORS,
+        PHASE_WANING_DAYS,
+        CARDINAL_BOUNDARY_POWER,
+        WEATHER_MEAN_COVERAGE,
+        PHASE_RAIN_ACTIVATION_MM,
+        HABITAT_SURFACE_GRID,
+        HABITAT_HOST_MODIFIER,
         KNEE_THRESHOLD,
         ASYMPTOTE_SCALE,
         WEATHER_EXPONENT,

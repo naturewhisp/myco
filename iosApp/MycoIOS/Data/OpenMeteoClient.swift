@@ -2,8 +2,8 @@ import Foundation
 import MycoCore
 
 struct OpenMeteoForecast: Codable, Sendable {
-    let latitude: Double
-    let longitude: Double
+    let latitude: Double?
+    let longitude: Double?
     let elevation: Double?
     let timezone: String
     let current: Current?
@@ -20,7 +20,9 @@ struct OpenMeteoForecast: Codable, Sendable {
             case time, precipitation
             case temperature2m = "temperature_2m"
             case relativeHumidity2m = "relative_humidity_2m"
+            case legacyRelativeHumidity2m = "relativehumidity_2m"
         }
+
     }
 
     struct Hourly: Codable, Sendable {
@@ -36,10 +38,12 @@ struct OpenMeteoForecast: Codable, Sendable {
             case time, precipitation
             case temperature2m = "temperature_2m"
             case relativeHumidity2m = "relative_humidity_2m"
+            case legacyRelativeHumidity2m = "relativehumidity_2m"
             case soilMoisture0To7 = "soil_moisture_0_to_7cm"
             case soilMoisture7To28 = "soil_moisture_7_to_28cm"
             case evapotranspiration = "et0_fao_evapotranspiration"
         }
+
     }
 
     struct Daily: Codable, Sendable {
@@ -55,7 +59,74 @@ struct OpenMeteoForecast: Codable, Sendable {
             case temperature2mMax = "temperature_2m_max"
             case temperature2mMin = "temperature_2m_min"
             case weatherCode = "weather_code"
+            case legacyWeatherCode = "weathercode"
         }
+
+    }
+}
+
+extension OpenMeteoForecast.Current {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        time = try container.decode(String.self, forKey: .time)
+        temperature2m = try container.decodeIfPresent(Double.self, forKey: .temperature2m)
+        relativeHumidity2m = try container.decodeIfPresent(Double.self, forKey: .relativeHumidity2m)
+            ?? (try container.decodeIfPresent(Double.self, forKey: .legacyRelativeHumidity2m))
+        precipitation = try container.decodeIfPresent(Double.self, forKey: .precipitation)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(time, forKey: .time)
+        try container.encodeIfPresent(temperature2m, forKey: .temperature2m)
+        try container.encodeIfPresent(relativeHumidity2m, forKey: .relativeHumidity2m)
+        try container.encodeIfPresent(precipitation, forKey: .precipitation)
+    }
+}
+
+extension OpenMeteoForecast.Hourly {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        time = try container.decode([String].self, forKey: .time)
+        temperature2m = try container.decodeIfPresent([Double?].self, forKey: .temperature2m)
+        relativeHumidity2m = try container.decodeIfPresent([Double?].self, forKey: .relativeHumidity2m)
+            ?? (try container.decodeIfPresent([Double?].self, forKey: .legacyRelativeHumidity2m))
+        precipitation = try container.decodeIfPresent([Double?].self, forKey: .precipitation)
+        soilMoisture0To7 = try container.decodeIfPresent([Double?].self, forKey: .soilMoisture0To7)
+        soilMoisture7To28 = try container.decodeIfPresent([Double?].self, forKey: .soilMoisture7To28)
+        evapotranspiration = try container.decodeIfPresent([Double?].self, forKey: .evapotranspiration)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(time, forKey: .time)
+        try container.encodeIfPresent(temperature2m, forKey: .temperature2m)
+        try container.encodeIfPresent(relativeHumidity2m, forKey: .relativeHumidity2m)
+        try container.encodeIfPresent(precipitation, forKey: .precipitation)
+        try container.encodeIfPresent(soilMoisture0To7, forKey: .soilMoisture0To7)
+        try container.encodeIfPresent(soilMoisture7To28, forKey: .soilMoisture7To28)
+        try container.encodeIfPresent(evapotranspiration, forKey: .evapotranspiration)
+    }
+}
+
+extension OpenMeteoForecast.Daily {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        time = try container.decode([String].self, forKey: .time)
+        precipitationSum = try container.decodeIfPresent([Double?].self, forKey: .precipitationSum)
+        temperature2mMax = try container.decodeIfPresent([Double?].self, forKey: .temperature2mMax)
+        temperature2mMin = try container.decodeIfPresent([Double?].self, forKey: .temperature2mMin)
+        weatherCode = try container.decodeIfPresent([Int?].self, forKey: .weatherCode)
+            ?? (try container.decodeIfPresent([Int?].self, forKey: .legacyWeatherCode))
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(time, forKey: .time)
+        try container.encodeIfPresent(precipitationSum, forKey: .precipitationSum)
+        try container.encodeIfPresent(temperature2mMax, forKey: .temperature2mMax)
+        try container.encodeIfPresent(temperature2mMin, forKey: .temperature2mMin)
+        try container.encodeIfPresent(weatherCode, forKey: .weatherCode)
     }
 }
 

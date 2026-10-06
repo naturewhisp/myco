@@ -147,14 +147,14 @@ class MushroomRepository(
         val roundedLat = String.format(Locale.US, "%.4f", latitude)
         val roundedLon = String.format(Locale.US, "%.4f", longitude)
         val radius = cacheManager.radius
-        val cacheKey = "habitat_${radius}m_${roundedLat}_${roundedLon}"
+        val cacheKey = "habitat_geom_v2_${radius}m_${roundedLat}_${roundedLon}"
 
         val cached = cacheManager.getCachedData(cacheKey, OverpassResponse::class.java, 24 * 60 * 60 * 1000) // 24 hours
         if (cached != null) {
             return cached
         }
 
-        val query = "[out:json];(nwr[\"natural\"=\"wood\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"=\"forest\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"~\"meadow|grass|pasture\"](around:$radius,$latitude,$longitude);nwr[\"natural\"~\"grassland|heath\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"~\"residential|commercial|industrial\"](around:$radius,$latitude,$longitude););out tags center;"
+        val query = "[out:json];(nwr[\"natural\"=\"wood\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"=\"forest\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"~\"meadow|grass|pasture\"](around:$radius,$latitude,$longitude);nwr[\"natural\"~\"grassland|heath\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"~\"residential|commercial|industrial\"](around:$radius,$latitude,$longitude);nwr[\"genus\"](around:$radius,$latitude,$longitude););out tags geom;"
 
         for (service in overpassServices) {
             try {
@@ -216,9 +216,9 @@ class MushroomRepository(
         }
 
         val query = if (species?.category == EcologicalCategory.SAPROTROPHIC) {
-            "[out:json];(nwr[\"landuse\"~\"meadow|grass|pasture\"](around:$radius,$latitude,$longitude);nwr[\"natural\"~\"grassland|heath\"](around:$radius,$latitude,$longitude););out tags center;"
+            "[out:json];(nwr[\"landuse\"~\"meadow|grass|pasture\"](around:$radius,$latitude,$longitude);nwr[\"natural\"~\"grassland|heath\"](around:$radius,$latitude,$longitude););out tags geom;"
         } else {
-            "[out:json];nwr[\"genus\"~\"$genusRegex\"](around:$radius,$latitude,$longitude);out tags center;"
+            "[out:json];nwr[\"genus\"~\"$genusRegex\"](around:$radius,$latitude,$longitude);out tags geom;"
         }
 
         for (service in overpassServices) {
@@ -255,7 +255,7 @@ class MushroomRepository(
         if (response == null) {
             return HabitatEvidence.UNKNOWN_HABITAT
         }
-        val rawElements = response.elements.map { el ->
+        val rawElements = response.elements.distinctBy { it.type to it.id }.map { el ->
             github.naturewhisp.myco.core.OsmHabitatElement(
                 lat = el.coordinate?.first,
                 lon = el.coordinate?.second,
@@ -264,6 +264,16 @@ class MushroomRepository(
                 isUrbanOrBuilt = el.isUrbanOrBuilt,
                 genus = el.genus,
                 leafType = el.leafType,
+                elementKey = "${el.type}/${el.id}",
+                surfaces = buildList {
+                    fun ring(points: List<github.naturewhisp.myco.model.OverpassCenter>?, inner: Boolean) {
+                        if (points != null && points.size >= 2 && points.all { it.lat in -90.0..90.0 && it.lon in -180.0..180.0 }) {
+                            add(github.naturewhisp.myco.core.OsmSurface(points.map { github.naturewhisp.myco.core.GeoCoordinates(it.lat, it.lon) }, inner))
+                        }
+                    }
+                    ring(el.geometry, false)
+                    el.members.orEmpty().forEach { ring(it.geometry, it.role == "inner") }
+                },
             )
         }
         return github.naturewhisp.myco.core.MycoAlgorithms.extractHabitatEvidence(

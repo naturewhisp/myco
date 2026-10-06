@@ -94,7 +94,8 @@ fun ForecastScreen(
         }
 
         // Grafico del trend continuo a 7 giorni
-        TrendCurve(days = outlooks)
+        if (outlooks.all { it.isCalculable }) TrendCurve(days = outlooks)
+        else Text("Trend non completo: alcuni giorni non sono calcolabili.")
 
         Spacer(modifier = Modifier.height(20.dp))
         BotanicalBreak()
@@ -124,13 +125,14 @@ fun ForecastScreen(
                         )
 
                         Text(
-                            text = "${currentDay.tierLabel.uppercase(Locale.getDefault())} (${currentDay.probability}/100)",
+                            text = if (currentDay.isCalculable) "${currentDay.tierLabel.uppercase(Locale.getDefault())} (${currentDay.probability}/100)" else "Indice non calcolabile",
                             color = if (currentDay.tier == 0) MaterialTheme.colorScheme.onSurfaceVariant else mycoColors.scaleForTier(currentDay.tier),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
 
+                    if (currentDay.qualityReasons.isNotEmpty()) Text(currentDay.qualityReasons.joinToString(", "), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                     Spacer(modifier = Modifier.height(8.dp))
                     MycoDivider(subtle = true)
                     Spacer(modifier = Modifier.height(8.dp))
@@ -141,17 +143,17 @@ fun ForecastScreen(
                     ) {
                         Column {
                             Text(text = "TEMPERATURA", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            Text(text = String.format(Locale.ITALIAN, "%.1f°C", currentDay.avgTemp), color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(text = if (currentDay.isCalculable) String.format(Locale.ITALIAN, "%.1f°C", currentDay.avgTemp) else "—", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         }
 
                         Column {
                             Text(text = "PRECIPITAZIONI", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            Text(text = String.format(Locale.ITALIAN, "%.1f mm", currentDay.totalPrecipMm), color = mycoColors.meteo, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(text = if (currentDay.isCalculable) String.format(Locale.ITALIAN, "%.1f mm", currentDay.totalPrecipMm) else "—", color = mycoColors.meteo, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         }
 
                         Column {
                             Text(text = "UMIDITÀ", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            Text(text = String.format(Locale.ITALIAN, "%.0f%%", currentDay.avgHumidityPercent), color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(text = if (currentDay.isCalculable) String.format(Locale.ITALIAN, "%.0f%%", currentDay.avgHumidityPercent) else "—", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }

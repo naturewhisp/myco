@@ -26,7 +26,9 @@ data class OverpassElement(
     @SerializedName("lat") val lat: Double? = null,
     @SerializedName("lon") val lon: Double? = null,
     @SerializedName("center") val center: OverpassCenter? = null,
-    @SerializedName("tags") val tags: Map<String, String>? = null
+    @SerializedName("tags") val tags: Map<String, String>? = null,
+    @SerializedName("geometry") val geometry: List<OverpassCenter>? = null,
+    @SerializedName("members") val members: List<OverpassMember>? = null,
 ) {
     /**
      * Restituisce la coordinata (lat, lon) dell'elemento, estraendola da `(lat, lon)` o da `center`.
@@ -89,3 +91,7 @@ data class OverpassCenter(
     @SerializedName("lon") val lon: Double
 )
 
+data class OverpassMember(
+    val role: String?,
+    val geometry: List<OverpassCenter>?,
+)

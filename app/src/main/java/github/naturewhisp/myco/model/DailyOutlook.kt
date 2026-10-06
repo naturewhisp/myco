@@ -56,7 +56,9 @@ data class DailyOutlook(
     val avgHumidityPercent: Float,
     val probability: Int,
     val tier: Int,
-    val condition: WeatherCondition = weatherCondition(weatherCode)
+    val condition: WeatherCondition = weatherCondition(weatherCode),
+    val isCalculable: Boolean = true,
+    val qualityReasons: List<String> = emptyList(),
 ) {
     /**
      * Punteggio normalizzato di idoneità ambientale (Indice Euristico, 0..100).

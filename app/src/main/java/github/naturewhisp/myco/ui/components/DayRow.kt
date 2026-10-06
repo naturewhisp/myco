@@ -98,13 +98,13 @@ fun DayRow(
             // Temperatura e pioggia
             Column(modifier = Modifier.width(80.dp)) {
                 Text(
-                    text = String.format(Locale.ITALIAN, "%.1f°C", outlook.avgTemp),
+                    text = if (outlook.isCalculable) String.format(Locale.ITALIAN, "%.1f°C", outlook.avgTemp) else "—",
                     color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium
                 )
                 Text(
-                    text = String.format(Locale.ITALIAN, "%.0f mm", outlook.totalPrecipMm),
+                    text = if (outlook.isCalculable) String.format(Locale.ITALIAN, "%.0f mm", outlook.totalPrecipMm) else "Dati incompleti",
                     color = mycoColors.meteo,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Normal
@@ -115,14 +115,14 @@ fun DayRow(
 
             // Barra di probabilità compatta
             Box(modifier = Modifier.weight(1f)) {
-                ProbabilityBar(probability = outlook.probability, height = 4.dp)
+                if (outlook.isCalculable) ProbabilityBar(probability = outlook.probability, height = 4.dp)
             }
 
             Spacer(modifier = Modifier.width(12.dp))
 
             // Punteggio su 100 con font Newsreader
             Text(
-                text = "${outlook.probability}/100",
+                text = if (outlook.isCalculable) "${outlook.probability}/100" else "N/D",
                 color = scoreColor,
                 fontFamily = NewsreaderFontFamily,
                 fontSize = 14.sp,

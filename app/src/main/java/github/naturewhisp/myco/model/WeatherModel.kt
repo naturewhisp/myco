@@ -27,12 +27,12 @@ data class WeatherResponse(
  */
 data class HourlyData(
     @SerializedName("time") val time: List<String>,
-    @SerializedName("temperature_2m") val temperature2m: List<Float>,
-    @SerializedName("relativehumidity_2m") val relativeHumidity2m: List<Float>,
-    @SerializedName("precipitation") val precipitation: List<Float>,
-    @SerializedName("soil_moisture_0_to_7cm") val soilMoisture0To7cm: List<Float>? = null,
-    @SerializedName("soil_moisture_7_to_28cm") val soilMoisture7To28cm: List<Float>? = null,
-    @SerializedName("et0_fao_evapotranspiration") val evapotranspiration: List<Float>? = null
+    @SerializedName("temperature_2m") val temperature2m: List<Float?>,
+    @SerializedName(value = "relativehumidity_2m", alternate = ["relative_humidity_2m"]) val relativeHumidity2m: List<Float?>,
+    @SerializedName("precipitation") val precipitation: List<Float?>,
+    @SerializedName("soil_moisture_0_to_7cm") val soilMoisture0To7cm: List<Float?>? = null,
+    @SerializedName("soil_moisture_7_to_28cm") val soilMoisture7To28cm: List<Float?>? = null,
+    @SerializedName("et0_fao_evapotranspiration") val evapotranspiration: List<Float?>? = null
 )
 
 /**
@@ -43,7 +43,7 @@ data class HourlyData(
  */
 data class DailyData(
     @SerializedName("time") val time: List<String>,
-    @SerializedName("weathercode") val weatherCode: List<Int?>
+    @SerializedName(value = "weathercode", alternate = ["weather_code"]) val weatherCode: List<Int?>
 )
 
 /**
@@ -69,7 +69,8 @@ data class ProcessedDay(
     val totalEvapotranspiration: Float? = null,
     val minTemp: Float = avgTemp,
     val maxTemp: Float = avgTemp,
-    val snowfall: Float = 0.0f
+    val snowfall: Float = 0.0f,
+    val coverage: github.naturewhisp.myco.core.WeatherCoverage? = null,
 ) {
     /**
      * Precipitazione liquida effettiva: se la temperatura media giornaliera è <= 0°C o il codice WMO

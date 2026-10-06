@@ -7,6 +7,7 @@
 
 /* Begin PBXBuildFile section */
 		A10000000000000000000071 /* spun_italy.bin in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000070 /* spun_italy.bin */; };
+		B10000000000000000000072 /* testFixtures in Resources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000073 /* testFixtures */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -14,6 +15,7 @@
 		A10000000000000000000070 /* spun_italy.bin */ = {isa = PBXFileReference; lastKnownFileType = file; name = spun_italy.bin; path = ../app/src/main/assets/spun/spun_italy.bin; sourceTree = SOURCE_ROOT; };
 		B10000000000000000000010 /* MycoIOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MycoIOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C10000000000000000000010 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Shared.xcconfig; sourceTree = SOURCE_ROOT; };
+		B10000000000000000000073 /* testFixtures */ = {isa = PBXFileReference; lastKnownFileType = folder; name = testFixtures; path = ../testFixtures; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -41,7 +43,7 @@
 
 /* Begin PBXResourcesBuildPhase section */
 		A10000000000000000000033 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000071 /* spun_italy.bin in Resources */, ); runOnlyForDeploymentPostprocessing = 0; };
-		B10000000000000000000033 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		B10000000000000000000033 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (B10000000000000000000072 /* testFixtures in Resources */, ); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */

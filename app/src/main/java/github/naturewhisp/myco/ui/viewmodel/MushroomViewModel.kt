@@ -38,7 +38,6 @@ import github.naturewhisp.myco.repository.SpunDataManager
 import github.naturewhisp.myco.ui.theme.ThemeMode
 import github.naturewhisp.myco.ui.theme.ThemePreference
 import github.naturewhisp.myco.utils.HeatmapGenerator
-import github.naturewhisp.myco.utils.MoonPhaseResult
 import github.naturewhisp.myco.utils.MushroomAlgorithms
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -374,9 +373,6 @@ class MushroomViewModel(
     // Cache parametri correnti per ricalibrazione dinamica istantanea
     private var lastProcessedDays: List<ProcessedDay>? = null
     private var lastFinalHabitatScore: Double = 1.0
-    private var lastHabitatBaseText: String = ""
-    private var lastForestCount: Int = 0
-    private var lastSpecificForestCount: Int = 0
     private var lastHabitatEvidence: HabitatEvidence? = null
     private var lastElevation: Float = 800f
     private var lastSpunData: SpunData? = null
@@ -384,8 +380,6 @@ class MushroomViewModel(
     private var lastLon: Double = 12.4922
     private var lastDisplayName: String = ""
     private var lastGrowthPhaseVal: String = ""
-    private var lastMoonPhase: MoonPhaseResult? = null
-    private var lastSlopeTextVal: String = ""
     private var lastTerrainData: TerrainAspectData? = null
     private var lastTerrainEvaluation: TerrainAspectEvaluation? = null
     private var lastCurrentMonth: Int = 8
@@ -403,18 +397,6 @@ class MushroomViewModel(
         selectedSpecies = species
         recalculateForSpecies()
 
-        // Rilevamento asincrono alberi ospiti per la nuova specie senza ereditare lo stato precedente (F09, REG-12)
-        if (lastProcessedDays != null && species.category == EcologicalCategory.ECTOMYCORRHIZAL) {
-            viewModelScope.launch {
-                val bonus = repository.fetchSpecificHabitatBonus(lastLat, lastLon, species)
-                if (bonus != null && bonus.elements.isNotEmpty()) {
-                    val bonusGenera = bonus.elements.mapNotNull { it.genus }.toSet()
-                    val currentEv = lastHabitatEvidence ?: HabitatEvidence.UNKNOWN_HABITAT
-                    lastHabitatEvidence = currentEv.copy(confirmedHostGenera = currentEv.confirmedHostGenera + bonusGenera)
-                    recalculateForSpecies()
-                }
-            }
-        }
     }
 
     fun setTargetSpeciesSheetVisibility(open: Boolean) {
@@ -469,18 +451,7 @@ class MushroomViewModel(
         val seasonScore = MushroomAlgorithms.calculateSpeciesSeasonalityScore(lastCurrentMonth, species)
 
         // Copertura arborea stazionale: proprietà fisica ambientale del sito, indipendente dalla specie target (F18)
-        val evidence = lastHabitatEvidence ?: HabitatEvidence(
-            status = if (lastForestCount > 0 || lastSpecificForestCount > 0) HabitatStatus.KNOWN_SUITABLE else HabitatStatus.UNKNOWN,
-            forestCoverFraction = when {
-                lastForestCount > 15 -> 0.85
-                lastForestCount > 4 -> 0.70
-                lastForestCount > 0 -> 0.45
-                else -> 0.0
-            },
-            meadowFraction = if (lastForestCount == 0 && lastSpecificForestCount > 0) 0.80 else if (lastForestCount == 0) 0.0 else 0.10,
-            distanceToNearestForestMeters = if (lastForestCount > 0) 0.0 else 500.0,
-            confirmedHostGenera = if (lastSpecificForestCount > 0) species.preferredCanopyTypes.toSet() else emptySet()
-        )
+        val evidence = lastHabitatEvidence ?: HabitatEvidence.UNKNOWN_HABITAT
         val siteCanopyCover = if (evidence.status == HabitatStatus.UNKNOWN) 0.0 else evidence.forestCoverFraction
 
         val habEval = github.naturewhisp.myco.core.MycoAlgorithms.evaluateHabitat(
@@ -508,7 +479,8 @@ class MushroomViewModel(
                 soilMoisture7To28 = d.avgSoilMoisture7To28cm?.toDouble(),
                 evapotranspiration = d.totalEvapotranspiration?.toDouble(),
                 minTemp = d.minTemp.toDouble(),
-                maxTemp = d.maxTemp.toDouble()
+                maxTemp = d.maxTemp.toDouble(),
+                coverage = d.coverage
             )
         }
 
@@ -525,10 +497,13 @@ class MushroomViewModel(
             spunHyphalDensity = lastSpunData?.hyphalDensity?.toDouble(),
             missingSources = buildList {
                 if (lastSpunData == null) add("SPUN")
+                if (!evidence.geometryComplete) add("geometrie habitat OSM incomplete")
             },
             canopyCover = siteCanopyCover,
-            forestProximityIndex = siteCanopyCover,
-            calculationMode = calculationMode
+            forestProximityIndex = evidence.forestProximityIndex,
+            calculationMode = calculationMode,
+            targetDateIso = requestedDate,
+            habitatEvidence = evidence,
         )
 
         val engine = github.naturewhisp.myco.core.MycoAnalysisEngine()
@@ -543,17 +518,16 @@ class MushroomViewModel(
         waterDiagnosisText = result.waterDiagnosis
         lastFinalHabitatScore = result.habitatScore
         summaryText = result.deterministicFieldNote
+        rainText = result.factors.firstOrNull { it.id == github.naturewhisp.myco.core.FactorId.PRECIPITATION }?.formattedValue ?: "Dati non disponibili"
+        tempText = result.factors.firstOrNull { it.id == github.naturewhisp.myco.core.FactorId.TEMPERATURE }?.formattedValue ?: "Dati non disponibili"
+        val moon = MushroomAlgorithms.getMoonPhase()
+        moonPhaseText = "Luna: ${moon.text} (informativa)"
+        moonPhaseEmoji = moon.emoji
+        forecastDays = days.filter { it.date >= requestedDate }.take(5).filter { it.coverage?.weatherUsable != false }
 
-        habitatText = if (evidence.status == HabitatStatus.UNKNOWN) {
-            "Habitat: Dati geografici non disponibili"
-        } else if (evidence.forestCoverFraction >= 0.35) {
-            "Habitat: Bosco idoneo"
-        } else {
-            "Habitat: Margine o prato"
-        }
-        habitatBonusText = if (evidence.confirmedHostGenera.isNotEmpty()) {
-            "Alberi ospiti confermati: ${evidence.confirmedHostGenera.joinToString()}"
-        } else ""
+
+        habitatText = habEval.baseText
+        habitatBonusText = habEval.bonusText
 
         altitudeText = altScore.text
         seasonText = seasonScore.text
@@ -591,7 +565,9 @@ class MushroomViewModel(
                 avgHumidityPercent = o.avgHumidityPercent.toFloat(),
                 probability = o.probability,
                 tier = o.tier.ordinal,
-                condition = weatherCondition(o.weatherCode)
+                condition = weatherCondition(o.weatherCode),
+                isCalculable = o.isCalculable,
+                qualityReasons = o.qualityReasons
             )
         }
 
@@ -1169,13 +1145,11 @@ class MushroomViewModel(
                 // Fetch weather, habitat, SPUN micorrize, and terrain aspect in parallel
                 val weatherDeferred = async { repository.fetchWeather(lat, lon) }
                 val habitatDeferred = async { repository.fetchHabitat(lat, lon) }
-                val habitatBonusDeferred = async { repository.fetchSpecificHabitatBonus(lat, lon, selectedSpecies) }
                 val spunDeferred = async { repository.fetchSpunData(lat, lon, searchRadius) }
                 val terrainDeferred = async { repository.fetchTerrainAspect(lat, lon) }
 
                 val weather = weatherDeferred.await()
                 val habitat = habitatDeferred.await()
-                val habitatBonus = habitatBonusDeferred.await()
                 val spunData = spunDeferred.await()
                 val terrainData = terrainDeferred.await()
                 val resolvedGeo = geocodeDeferred?.await() ?: cachedGeo
@@ -1200,101 +1174,22 @@ class MushroomViewModel(
                 }
 
                 // Calculate Habitat Evidence & Score using Species-Aware Ecological Evaluation (F08, F09)
-                val forestCount = habitat?.elements?.size ?: 0
-                val specificForestCount = habitatBonus?.elements?.size ?: 0
-                lastForestCount = forestCount
-                lastSpecificForestCount = specificForestCount
 
-                val baseEvidence = repository.extractHabitatEvidence(habitat, lat, lon, searchRadius)
-                val bonusGenera = habitatBonus?.elements?.mapNotNull { it.genus }?.toSet() ?: emptySet()
-                val evidence = baseEvidence.copy(confirmedHostGenera = baseEvidence.confirmedHostGenera + bonusGenera)
+                val evidence = repository.extractHabitatEvidence(habitat, lat, lon, searchRadius)
                 lastHabitatEvidence = evidence
 
-                val siteCanopyCover = if (evidence.status == HabitatStatus.UNKNOWN) 0.0 else evidence.forestCoverFraction
 
-                val initialHabEval = MushroomAlgorithms.evaluateSpeciesHabitat(
-                    evidence = evidence,
-                    spunData = spunData,
-                    species = selectedSpecies
-                )
-                val finalHabitatScore = initialHabEval.score
-                val habitatBaseText = initialHabEval.baseText
-                val habitatBonusTextVal = initialHabEval.bonusText
-
-                // Process weather
+                // Acquisition stores evidence; the shared engine owns every scientific calculation.
                 lastWeatherTimezone = weather.timezone
                 val processedDays = MushroomAlgorithms.processWeatherData(weather)
-                val requestedDate = getRequestedAnalysisDate(weather.timezone)
-                val todayIndex = MushroomAlgorithms.deriveTodayIndex(processedDays, weather.timezone, requestedDate, clock)
-                
-                // Forecast grid: next 5 days starting today (todayIndex to todayIndex+4)
-                forecastDays = if (todayIndex in processedDays.indices) {
-                    processedDays.subList(todayIndex, min(processedDays.size, todayIndex + 5))
-                } else {
-                    emptyList()
-                }
-
-                val elevation = weather.elevation
-                val altitudeScore = MushroomAlgorithms.calculateSpeciesAltitudeScore(elevation, selectedSpecies)
-                val currentMonth = try {
-                    java.time.LocalDate.parse(requestedDate).monthValue - 1
-                } catch (_: Exception) {
-                    val zId = try { java.time.ZoneId.of(weather.timezone) } catch (_: Exception) { clock.zone }
-                    java.time.LocalDate.now(clock.withZone(zId)).monthValue - 1
-                }
-                val seasonalityScore = MushroomAlgorithms.calculateSpeciesSeasonalityScore(currentMonth, selectedSpecies)
-                val bufferedDays = if (siteCanopyCover > 0.001) MushroomAlgorithms.applyCanopyBuffering(processedDays, siteCanopyCover) else processedDays
-                val growthPhaseEval = MushroomAlgorithms.evaluateGrowthPhase(bufferedDays, selectedSpecies, todayIndex)
-                val growthPhaseVal = growthPhaseEval.phaseText
-                val moonPhase = MushroomAlgorithms.getMoonPhase()
-
-                // Rain calculation with phenological integration
-                val effectiveRain = MushroomAlgorithms.calculateEffectiveRainfall(todayIndex, bufferedDays, selectedSpecies)
-                val rainStatus = MushroomAlgorithms.getRainStatus(effectiveRain)
-                val rainTextVal = "Pioggia: ${effectiveRain.toInt()}mm (${rainStatus.label})"
-
-                // Temp window calculation (last 5 days)
-                val tempStart = max(0, todayIndex - 5)
-                val tempWindow = if (todayIndex > 0) bufferedDays.subList(tempStart, todayIndex) else emptyList()
-                val avgTempLast5Days = if (tempWindow.isNotEmpty()) {
-                    tempWindow.sumOf { it.avgTemp.toDouble() } / tempWindow.size
-                } else {
-                    0.0
-                }
-                val tempStatus = MushroomAlgorithms.getTempStatus(avgTempLast5Days)
-                val tempTextVal = String.format(Locale.ITALIAN, "Temp. media: %.1f°C (%s)", avgTempLast5Days, tempStatus.label)
-
-                val slopeTextVal = MushroomAlgorithms.getSlopeRecommendation(seasonalityScore.score, avgTempLast5Days, currentMonth)
-
-                // Today's weather score ponderato con la densità ifale SPUN e inerzia fenologica (FEAT-08)
-                val rawWeatherScore = MushroomAlgorithms.calculateWeatherScore(
-                    todayIndex,
-                    processedDays,
-                    spunHyphalDensity = spunData?.hyphalDensity,
-                    species = selectedSpecies,
-                    config = EcologicalWeightsConfig.PHENOLOGICAL,
-                    canopyCover = siteCanopyCover
-                )
-
-                // Assign states
+                lastProcessedDays = processedDays
+                lastTerrainData = terrainData
+                lastElevation = weather.elevation
+                lastSpunData = spunData
+                lastLat = lat
+                lastLon = lon
+                lastDisplayName = resolvedDisplayName
                 locationName = resolvedDisplayName
-                growthPhase = growthPhaseVal
-                habitatText = habitatBaseText
-                habitatBonusText = habitatBonusTextVal
-                altitudeText = altitudeScore.text
-                seasonText = seasonalityScore.text
-                rainText = rainTextVal
-                tempText = tempTextVal
-                moonPhaseText = "Luna: ${moonPhase.text} (${if (moonPhase.favorable) "Favorevole" else "Ininfluente"})"
-                moonPhaseEmoji = moonPhase.emoji
-                slopeText = if (terrainData != null && !terrainData.isFlat) {
-                    "${terrainData.cardinalDirection} (${terrainData.slopeDegrees.roundToInt()}°)"
-                } else if (terrainData != null && terrainData.isFlat) {
-                    "Pianeggiante (${terrainData.slopeDegrees.roundToInt()}°)"
-                } else {
-                    slopeTextVal
-                }
-
                 if (spunData != null) {
                     spunEcmText = spunData.ecmText
                     spunHyphalText = spunData.hyphalText
@@ -1306,26 +1201,7 @@ class MushroomViewModel(
                     spunRegionName = null
                     spunDataAvailable = false
                 }
-
-                lastTerrainData = terrainData
-                // Memorizza i dati per ricalibrazioni istantanee con specie bersaglio differenti
-                lastProcessedDays = processedDays
-                lastFinalHabitatScore = finalHabitatScore
-                lastHabitatBaseText = habitatBaseText
-                lastForestCount = forestCount
-                lastElevation = elevation
-                lastSpunData = spunData
-                lastLat = lat
-                lastLon = lon
-                lastDisplayName = resolvedDisplayName
-                lastGrowthPhaseVal = growthPhaseVal
-                lastMoonPhase = moonPhase
-                lastSlopeTextVal = slopeTextVal
-                lastCurrentMonth = currentMonth
-
                 recalculateForSpecies()
-
-                val futureTrend = MushroomAlgorithms.analyzeFutureTrend(processedDays, todayIndex = todayIndex)
 
                 // Salva nella cronologia recenti (solo se toponimo reale e non segnaposto)
                 if (!SavedLocation.isPlaceholderName(resolvedDisplayName)) {

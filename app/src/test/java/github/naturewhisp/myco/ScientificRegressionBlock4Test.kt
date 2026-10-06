@@ -464,8 +464,8 @@ class ScientificRegressionBlock4Test {
         assertEquals(GrowthStage.MYCELIAL_HYDRATION, evalVisit.stage)
         assertEquals(1, evalVisit.daysSinceTrigger)
         assertTrue(
-            "Il moltiplicatore fenologico il 18 set deve essere <= 0.45 (attuale: ${evalVisit.multiplier})",
-            evalVisit.multiplier <= 0.45
+            "L'evento precedente deve contribuire senza reset rigido",
+            evalVisit.phiBase > MushroomAlgorithms.evaluateGrowthPhase(series.mapIndexed { index, day -> if (index == 16) day.copy(totalPrecip = 0f) else day }, edulis, 24).phiBase
         )
 
         // Calcolo della probabilità al 18 settembre: deve riflettere la stasi fisiologica (<= 45%)

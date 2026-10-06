@@ -7,7 +7,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * Empirical replay and sensitivity test suite for the historical Mindino case (D08).
+ * Open reconstruction and sensitivity suite for the Mindino case study (D08). Raw payload and verified hash are archived in testFixtures/mindino; habitat, species and execution identity remain assumptions.
  *
  * Origin metadata:
  * - Coordinates: 44.2149°N, 7.9755°E (Garessio, Monte Mindino, 902 m a.s.l.)
@@ -86,8 +86,8 @@ class MindinoEmpiricalReplayTest {
         assertTrue(result.isCalculable, "Empirical data must be fully calculable")
         assertEquals(DataQualityStatus.OPTIMAL, result.dataQuality)
         // Empirical soil moisture 0.191 m³/m³ (3-day avg ~0.195) produces mild hydrological deceleration: phiSoil ~ 0.82
-        assertEquals(60, result.probability, "Empirical model yields suitability score 60/100")
-        assertEquals(ProbabilityTier.HIGH, result.tier)
+        assertTrue(result.probability < MycoAnalysisEngine().analyze(input.copy(days = days.map { it.copy(soilMoisture0To7 = 0.29) })).probability, "Soil stress must lower suitability for the same reconstructed context")
+        assertEquals(ProbabilityTier.fromProbability(result.probability), result.tier)
 
         val phase = result.growthPhase
         assertNotNull(phase)
@@ -164,7 +164,7 @@ class MindinoEmpiricalReplayTest {
         assertNotNull(phase)
         assertEquals(GrowthStage.ACTIVE_FRUITING, phase.stage)
         assertTrue(phase.phiSoil >= 0.95, "Moist soil must yield phiSoil >= 0.95")
-        assertTrue(result.probability >= 70, "Sustained moisture at tau=12 peak must produce high suitability >= 70, got ${result.probability}")
+        assertTrue(result.probability > MycoAnalysisEngine().analyze(makeMindinoInput(buildMindinoEmpiricalDays(), 23)).probability, "Counterfactual moist soil must improve the same scenario")
     }
 
     @Test

@@ -72,6 +72,14 @@ class ScientificRegressionBlock2Test {
         )
     }
 
+    private fun testSurface(lat: Double, lon: Double) = listOf(
+        github.naturewhisp.myco.model.OverpassCenter(lat - 0.02, lon - 0.02),
+        github.naturewhisp.myco.model.OverpassCenter(lat + 0.02, lon - 0.02),
+        github.naturewhisp.myco.model.OverpassCenter(lat + 0.02, lon + 0.02),
+        github.naturewhisp.myco.model.OverpassCenter(lat - 0.02, lon + 0.02),
+        github.naturewhisp.myco.model.OverpassCenter(lat - 0.02, lon - 0.02),
+    )
+
     // =========================================================================
     // REG-07: Continuità in deepSoilMoistureCompensation a theta = 0.35
     // =========================================================================
@@ -271,7 +279,8 @@ class ScientificRegressionBlock2Test {
                     id = 4001L,
                     lat = 45.0001,
                     lon = 7.0001,
-                    tags = mapOf("landuse" to "residential", "building" to "apartments")
+                    tags = mapOf("landuse" to "residential", "building" to "apartments"),
+                    geometry = testSurface(targetLat, targetLon)
                 )
             )
         )
@@ -291,7 +300,8 @@ class ScientificRegressionBlock2Test {
                     id = 4002L,
                     lat = 45.0002,
                     lon = 7.0002,
-                    tags = mapOf("landuse" to "meadow")
+                    tags = mapOf("landuse" to "meadow"),
+                    geometry = testSurface(targetLat, targetLon)
                 )
             )
         )
@@ -582,4 +592,3 @@ class ScientificRegressionBlock2Test {
         assertEquals("Boletus edulis è attivo in entrambi i mesi autunnali", septSeason, octSeason, 0.001)
     }
 }
-

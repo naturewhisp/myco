@@ -24,12 +24,19 @@ struct OverpassResponse: Codable, Sendable {
         let longitude: Double?
         let tags: [String: String]?
         let center: Center?
+        let geometry: [Center]?
+        let members: [Member]?
 
         enum CodingKeys: String, CodingKey {
-            case type, id, tags, center
+            case type, id, tags, center, geometry, members
             case latitude = "lat"
             case longitude = "lon"
         }
+    }
+
+    struct Member: Codable, Sendable {
+        let role: String?
+        let geometry: [Center]?
     }
 
     struct Center: Codable, Sendable {
@@ -49,13 +56,15 @@ struct HabitatSnapshot: Codable, Sendable {
     let canopyTypes: [String]
     let canopyCover: Double
     let forestProximityIndex: Double
+    let rawElements: [OverpassResponse.Element]?
 
-    init(score: Double, description: String, canopyTypes: [String], canopyCover: Double = 0.0, forestProximityIndex: Double = 0.0) {
+    init(score: Double, description: String, canopyTypes: [String], canopyCover: Double = 0.0, forestProximityIndex: Double = 0.0, rawElements: [OverpassResponse.Element]? = nil) {
         self.score = score
         self.description = description
         self.canopyTypes = canopyTypes
         self.canopyCover = canopyCover
         self.forestProximityIndex = forestProximityIndex
+        self.rawElements = rawElements
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -64,6 +73,7 @@ struct HabitatSnapshot: Codable, Sendable {
         case canopyTypes
         case canopyCover
         case forestProximityIndex
+        case rawElements
     }
 
     init(from decoder: Decoder) throws {
@@ -73,6 +83,7 @@ struct HabitatSnapshot: Codable, Sendable {
         self.canopyTypes = try container.decode([String].self, forKey: .canopyTypes)
         self.canopyCover = try container.decodeIfPresent(Double.self, forKey: .canopyCover) ?? 0.0
         self.forestProximityIndex = try container.decodeIfPresent(Double.self, forKey: .forestProximityIndex) ?? 0.0
+        self.rawElements = try container.decodeIfPresent([OverpassResponse.Element].self, forKey: .rawElements)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -82,6 +93,7 @@ struct HabitatSnapshot: Codable, Sendable {
         try container.encode(canopyTypes, forKey: .canopyTypes)
         try container.encode(canopyCover, forKey: .canopyCover)
         try container.encode(forestProximityIndex, forKey: .forestProximityIndex)
+        try container.encodeIfPresent(rawElements, forKey: .rawElements)
     }
 }
 
@@ -132,7 +144,7 @@ struct OverpassClient: Sendable {
 
     func elements(around coordinate: GeoCoordinates, radiusMeters: Int, filter: String) async throws -> OverpassResponse {
         let radius = min(max(radiusMeters, 1), 50_000)
-        let query = "[out:json][timeout:25];(nwr(around:\(radius),\(coordinate.latitude),\(coordinate.longitude))[\(filter)];);out center tags;"
+        let query = "[out:json][timeout:25];(nwr(around:\(radius),\(coordinate.latitude),\(coordinate.longitude))[\(filter)];);out tags geom;"
         return try await self.query(query)
     }
 
@@ -160,7 +172,15 @@ struct OverpassClient: Sendable {
                 isMeadowOrGrass: isMeadow,
                 isUrbanOrBuilt: isUrban,
                 genus: genus,
-                leafType: leafType
+                leafType: leafType,
+                elementKey: "\(el.type)/\(el.id)",
+                surfaces: ([el.geometry.map { ($0, false) }].compactMap { $0 } + (el.members ?? []).compactMap { member in
+                    member.geometry.map { ($0, member.role == "inner") }
+                }).compactMap { points, inner in
+                    guard points.count >= 2,
+                          points.allSatisfy({ (-90...90).contains($0.latitude) && (-180...180).contains($0.longitude) }) else { return nil }
+                    return OsmSurface(vertices: points.map { GeoCoordinates(latitude: $0.latitude, longitude: $0.longitude) }, inner: inner)
+                }
             )
         }
 
@@ -178,7 +198,8 @@ struct OverpassClient: Sendable {
         around coordinate: GeoCoordinates,
         radiusMeters: Int = Self.defaultHabitatRadiusMeters,
         preferredCanopyTypes: [String],
-        ecologicalCategory: HabitatEcologicalCategory = .treeAssociated
+        ecologicalCategory: HabitatEcologicalCategory = .treeAssociated,
+        selectedSpecies: MushroomSpecies? = nil
     ) async throws -> HabitatSnapshot {
         let radius = min(max(radiusMeters, 1), 50_000)
         let forest = try await query(Self.forestQuery(around: coordinate, radiusMeters: radius))
@@ -195,7 +216,9 @@ struct OverpassClient: Sendable {
         let evidence = extractHabitatEvidence(from: combinedElements, around: coordinate, radiusMeters: radius)
 
         let species: MushroomSpecies
-        if ecologicalCategory == .saprotrophic {
+        if let selectedSpecies {
+            species = selectedSpecies
+        } else if ecologicalCategory == .saprotrophic {
             species = SpeciesCatalog.shared.all.first { $0.category == .saprotrophic }
                 ?? SpeciesCatalog.shared.byId(id: "macrolepiota_procera")
         } else {
@@ -228,20 +251,21 @@ struct OverpassClient: Sendable {
             description = cleanText
         }
         let canopyCover = evidence.forestCoverFraction
-        let proximityIndex = evidence.forestCoverFraction
+        let proximityIndex = evidence.forestProximityIndex
 
         return HabitatSnapshot(
             score: score,
             description: description,
             canopyTypes: detected.isEmpty ? Array(evidence.confirmedHostGenera).sorted() : detected.sorted(),
             canopyCover: canopyCover,
-            forestProximityIndex: proximityIndex
+            forestProximityIndex: proximityIndex,
+            rawElements: combinedElements
         )
     }
 
     static func forestQuery(around coordinate: GeoCoordinates, radiusMeters: Int) -> String {
         let radius = min(max(radiusMeters, 1), 50_000)
-        return "[out:json][timeout:25];(nwr[\"natural\"=\"wood\"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude));nwr[\"landuse\"=\"forest\"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude)););out center tags;"
+        return "[out:json][timeout:25];(nwr[\"natural\"~\"wood|grassland|heath\"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude));nwr[\"landuse\"~\"forest|meadow|grass|pasture|residential|commercial|industrial\"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude));nwr[\"genus\"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude)););out tags geom;"
     }
 
     /// Matches Android's category-specific Overpass acquisition: open habitats for
@@ -256,10 +280,10 @@ struct OverpassClient: Sendable {
         let location = "(around:\(radius),\(coordinate.latitude),\(coordinate.longitude))"
         switch ecologicalCategory {
         case .saprotrophic:
-            return "[out:json][timeout:25];(nwr[\"landuse\"~\"meadow|grass|pasture\"]\(location);nwr[\"natural\"~\"grassland|heath\"]\(location);nwr[\"leaf_type\"~\"broadleaved|needleleaved\"]\(location););out center tags;"
+            return "[out:json][timeout:25];(nwr[\"landuse\"~\"meadow|grass|pasture\"]\(location);nwr[\"natural\"~\"grassland|heath\"]\(location);nwr[\"leaf_type\"~\"broadleaved|needleleaved\"]\(location););out tags geom;"
         case .treeAssociated:
             let genusRegex = preferredGenusRegex(from: preferredCanopyTypes)
-            return "[out:json][timeout:25];(nwr[\"natural\"=\"wood\"]\(location);nwr[\"landuse\"=\"forest\"]\(location);nwr[\"leaf_type\"~\"broadleaved|needleleaved\"]\(location);nwr[\"genus\"~\"\(genusRegex)\"]\(location););out center tags;"
+            return "[out:json][timeout:25];(nwr[\"natural\"=\"wood\"]\(location);nwr[\"landuse\"=\"forest\"]\(location);nwr[\"leaf_type\"~\"broadleaved|needleleaved\"]\(location);nwr[\"genus\"~\"\(genusRegex)\"]\(location););out tags geom;"
         }
     }
 

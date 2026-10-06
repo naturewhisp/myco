@@ -279,7 +279,7 @@ class ComparativeValidationTest {
     @Test
     fun parameterRegistryCompleteness() {
         assertTrue(ParameterRegistry.ALL.isNotEmpty())
-        assertEquals(15, ParameterRegistry.ALL.size)
+        assertEquals(ParameterRegistry.ALL.size, ParameterRegistry.ALL.map { it.key }.distinct().size)
 
         // Verifica che ogni parametro abbia metadati completi e non vuoti
         ParameterRegistry.ALL.forEach { param ->

@@ -9,7 +9,7 @@ struct ForecastView: View {
         NavigationStack {
             Group {
                 if viewModel.isLoadingEnvironment {
-                    ProgressView("Calcolo previsione probabilistica")
+                    ProgressView("Calcolo indice previsionale")
                 } else if let selectedLocation = viewModel.selectedLocation, !viewModel.environmentalDays.isEmpty {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 24) {
@@ -17,6 +17,7 @@ struct ForecastView: View {
                             Text("Indice di idoneità prodotto dal core condiviso per \(viewModel.selectedSpecies.vernacularName).")
                                 .font(.subheadline).foregroundStyle(colors.inkSoft)
 
+                            if viewModel.environmentalDays.prefix(7).allSatisfy({ $0.isCalculable }) {
                             Chart(viewModel.environmentalDays.prefix(7)) { day in
                                 LineMark(x: .value("Giorno", day.date, unit: .day), y: .value("Indice", day.probability))
                                     .foregroundStyle(colors.warning)
@@ -29,8 +30,9 @@ struct ForecastView: View {
                             .chartXAxis { AxisMarks(values: .stride(by: .day)) { _ in AxisGridLine(); AxisValueLabel(format: .dateTime.weekday(.narrow)) } }
                             .frame(height: 240)
                             .accessibilityLabel("Indice di idoneità ambientale nei prossimi sette giorni")
+                            } else { Text("Trend incompleto: alcuni giorni non sono calcolabili.").foregroundStyle(colors.inkSoft) }
 
-                            Chart(viewModel.environmentalDays.prefix(7)) { day in
+                            Chart(viewModel.environmentalDays.prefix(7).filter { $0.isCalculable }) { day in
                                 LineMark(x: .value("Giorno", day.date, unit: .day), y: .value("Temperatura", day.averageTemperature))
                                     .foregroundStyle(colors.forest)
                                 BarMark(x: .value("Giorno", day.date, unit: .day), y: .value("Pioggia", day.rainfall))
@@ -44,7 +46,7 @@ struct ForecastView: View {
                             ForEach(viewModel.environmentalDays.prefix(7)) { day in
                                 HStack {
                                     Text(day.date.formatted(.dateTime.weekday(.abbreviated).day().month())).frame(maxWidth: .infinity, alignment: .leading)
-                                    Text("\(day.probability)/100 · \(day.tierLabel)").fontWeight(.semibold)
+                                    Text(day.isCalculable ? "\(day.probability)/100 · \(day.tierLabel)" : "Indice non calcolabile").fontWeight(.semibold)
                                 }
                                 .frame(minHeight: 44)
                                 .accessibilityElement(children: .combine)

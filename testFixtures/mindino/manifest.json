@@ -1,0 +1,19 @@
+{
+  "classification": "open_reconstruction",
+  "source": "Antigravity local artifact myco_cache.db, conversation bbaeae07-45ce-4585-9fe2-6ef60c411ea9",
+  "cacheKey": "weather_44.2149_7.9755",
+  "cachedTimestamp": 1791133963798,
+  "payloadSha256": "6fee1178c9ce95e15e2b4828ff74ed72d5256dcb90e49f8bdd91fb9b6b0b5467",
+  "targetDate": "2026-09-29",
+  "timezone": "Europe/Rome",
+  "assumptions": [
+    "species Boletus edulis",
+    "historical runtime mode unknown",
+    "habitat and canopy must be separately acquired or varied as counterfactuals"
+  ],
+  "limits": [
+    "Cache acquired after original field report; payload is not an original execution trace.",
+    "Daily numbers in the previous Kotlin test are rounded reconstructions; use raw hourly payload.",
+    "An environmental score is not evidence of observed fruiting or foraging yield."
+  ]
+}

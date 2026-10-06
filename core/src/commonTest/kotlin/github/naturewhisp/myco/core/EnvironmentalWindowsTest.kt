@@ -22,7 +22,7 @@ class EnvironmentalWindowsTest {
         assertEquals((9..13).toList(), windows.temperature.map(::dayIndex))
         assertEquals((4..11).toList(), windows.rain.map(::dayIndex))
         assertEquals((11..14).toList(), windows.humidity.map(::dayIndex))
-        assertEquals(windows.humidity.map(::dayIndex), windows.soil.map(::dayIndex))
+        assertEquals((12..14).toList(), windows.soil.map(::dayIndex))
         assertEquals(windows.humidity.map(::dayIndex), windows.evapotranspiration.map(::dayIndex))
     }
 

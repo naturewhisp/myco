@@ -16,7 +16,7 @@ final class OverpassClientTests: XCTestCase {
         XCTAssertTrue(query.contains("[\"landuse\"~\"meadow|grass|pasture\"](around:1500,41.9,12.5)"))
         XCTAssertTrue(query.contains("[\"natural\"~\"grassland|heath\"](around:1500,41.9,12.5)"))
         XCTAssertFalse(query.contains("[\"natural\"=\"wood\"]"))
-        XCTAssertTrue(query.hasSuffix("out center tags;"))
+        XCTAssertTrue(query.hasSuffix("out tags geom;"))
     }
 
     func testTreeAssociatedQueryTargetsForestAndPreferredCanopyGenera() {
@@ -30,12 +30,31 @@ final class OverpassClientTests: XCTestCase {
         XCTAssertTrue(query.contains("[\"natural\"=\"wood\"](around:2000,45.4642,9.19)"))
         XCTAssertTrue(query.contains("[\"landuse\"=\"forest\"](around:2000,45.4642,9.19)"))
         XCTAssertTrue(query.contains("[\"genus\"~\"Quercus|Fagus\"](around:2000,45.4642,9.19)"))
-        XCTAssertTrue(query.hasSuffix("out center tags;"))
+        XCTAssertTrue(query.hasSuffix("out tags geom;"))
+    }
+
+    func testSharedSurfaceFixtureUsesGeometryAndRetainsRawElements() throws {
+        let payload = try fixture("habitat/surfaces.json")
+        let response = try JSONDecoder().decode(OverpassResponse.self, from: payload)
+        let client = OverpassClient(apiClient: APIClient(loader: TestHTTPDataLoader { request in
+            (payload, httpResponse(for: request))
+        }))
+        let evidence = client.extractHabitatEvidence(
+            from: response.elements,
+            around: GeoCoordinates(latitude: 44.2149, longitude: 7.9755),
+            radiusMeters: 1_500
+        )
+
+        XCTAssertEqual(response.elements.count, 4)
+        XCTAssertFalse(evidence.geometryComplete)
+        XCTAssertTrue((0.96...0.99).contains(evidence.forestCoverFraction))
+        XCTAssertTrue((0.9...1.0).contains(evidence.forestProximityIndex))
+        XCTAssertTrue(evidence.confirmedHostGenera.contains("fagus"))
     }
 
     func testSaprotrophicHabitatSignalsSpecificMatchToSharedCore() async throws {
         let payload = Data("""
-        {"version":0.6,"elements":[{"type":"way","id":9,"tags":{"landuse":"meadow"}}]}
+        {"version":0.6,"elements":[{"type":"way","id":9,"tags":{"landuse":"meadow"},"geometry":[{"lat":41.89,"lon":12.49},{"lat":41.91,"lon":12.49},{"lat":41.91,"lon":12.51},{"lat":41.89,"lon":12.51},{"lat":41.89,"lon":12.49}]}]}
         """.utf8)
         let endpoint = URL(string: "https://overpass.test/api")!
         let loader = TestHTTPDataLoader { request in
@@ -43,10 +62,12 @@ final class OverpassClientTests: XCTestCase {
         }
         let client = OverpassClient(apiClient: APIClient(loader: loader), endpoints: [endpoint])
 
+        let species = try XCTUnwrap(SpeciesCatalog.shared.byId(id: "macrolepiota_procera"))
         let snapshot = try await client.habitat(
             around: GeoCoordinates(latitude: 41.9, longitude: 12.5),
             preferredCanopyTypes: [],
-            ecologicalCategory: .saprotrophic
+            ecologicalCategory: .saprotrophic,
+            selectedSpecies: species
         )
 
         XCTAssertEqual(snapshot.score, 0.95)
@@ -112,21 +133,20 @@ final class OverpassClientTests: XCTestCase {
         }
     }
 
-    func testSaprotrophicHabitatWithZeroForestsYieldsMeadowScore() async throws {
-        let emptyForestPayload = Data(#"{"version":0.6,"elements":[]}"#.utf8)
-        let meadowPayload = Data(#"{"version":0.6,"elements":[{"type":"way","id":9,"tags":{"landuse":"meadow"}}]}"#.utf8)
+    func testSaprotrophicHabitatWithClosedMeadowSurfaceYieldsMeadowScore() async throws {
+        let meadowPayload = Data(#"{"version":0.6,"elements":[{"type":"way","id":9,"tags":{"landuse":"meadow"},"geometry":[{"lat":41.89,"lon":12.49},{"lat":41.91,"lon":12.49},{"lat":41.91,"lon":12.51},{"lat":41.89,"lon":12.51},{"lat":41.89,"lon":12.49}]}]}"#.utf8)
         let endpoint = URL(string: "https://overpass.test/api")!
         let loader = TestHTTPDataLoader { request in
-            let query = request.url?.query ?? ""
-            let payload = query.contains("meadow") ? meadowPayload : emptyForestPayload
-            return (payload, httpResponse(for: request))
+            return (meadowPayload, httpResponse(for: request))
         }
         let client = OverpassClient(apiClient: APIClient(loader: loader), endpoints: [endpoint])
 
+        let species = try XCTUnwrap(SpeciesCatalog.shared.byId(id: "macrolepiota_procera"))
         let snapshot = try await client.habitat(
             around: GeoCoordinates(latitude: 41.9, longitude: 12.5),
             preferredCanopyTypes: [],
-            ecologicalCategory: .saprotrophic
+            ecologicalCategory: .saprotrophic,
+            selectedSpecies: species
         )
 
         XCTAssertEqual(snapshot.score, 0.95)
@@ -134,5 +154,34 @@ final class OverpassClientTests: XCTestCase {
         XCTAssertEqual(snapshot.forestProximityIndex, 0.0)
         XCTAssertEqual(snapshot.canopyTypes, ["saprotrophic_habitat"])
         XCTAssertTrue(snapshot.description.lowercased().contains("praticolo"))
+        XCTAssertNotNil(snapshot.rawElements)
+    }
+
+    func testCachedHabitatSnapshotWithoutRawElementsDecodesToUnknownGeometry() throws {
+        let legacy = Data(#"{"score":0.9,"description":"Habitat cached","canopyTypes":["fagus"],"canopyCover":0.7,"forestProximityIndex":0.7}"#.utf8)
+        let snapshot = try JSONDecoder().decode(HabitatSnapshot.self, from: legacy)
+        let client = OverpassClient(apiClient: APIClient(loader: TestHTTPDataLoader { request in
+            (Data(#"{"version":0.6,"elements":[]}"#.utf8), httpResponse(for: request))
+        }))
+        let evidence = client.extractHabitatEvidence(
+            from: snapshot.rawElements ?? [],
+            around: GeoCoordinates(latitude: 42, longitude: 12)
+        )
+
+        XCTAssertNil(snapshot.rawElements)
+        XCTAssertFalse(evidence.geometryComplete)
+        XCTAssertEqual(evidence.forestCoverFraction, 0)
+        XCTAssertEqual(evidence.forestProximityIndex, 0)
+    }
+
+    private func fixture(_ path: String) throws -> Data {
+        let components = path.split(separator: "/").map(String.init)
+        let fileURL = URL(fileURLWithPath: try XCTUnwrap(components.last))
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(
+            forResource: fileURL.deletingPathExtension().lastPathComponent,
+            withExtension: fileURL.pathExtension,
+            subdirectory: "testFixtures/\(components.dropLast().joined(separator: "/"))"
+        ))
+        return try Data(contentsOf: url)
     }
 }

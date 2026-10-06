@@ -7,9 +7,7 @@ import XCTest
 final class MycoViewModelEnvironmentTests: XCTestCase {
     func testMissingElevationAndHabitatProduceExplicitPartialAnalysis() async throws {
         let today = Self.todayIsoString()
-        let forecastPayload = Data("""
-        {"latitude":42.0,"longitude":12.0,"elevation":450.0,"timezone":"Europe/Rome","hourly":{"time":["\(today)T12:00"],"temperature_2m":[16.0],"relative_humidity_2m":[80.0],"precipitation":[3.0],"soil_moisture_0_to_7cm":[0.35],"soil_moisture_7_to_28cm":[0.42],"et0_fao_evapotranspiration":[0.2]},"daily":{"time":["\(today)"],"weather_code":[3],"precipitation_sum":[3.0],"temperature_2m_max":[18.0],"temperature_2m_min":[14.0]}}
-        """.utf8)
+        let forecastPayload = Self.completeForecastPayload(date: today, timezone: "Europe/Rome")
         let weatherLoader = TestHTTPDataLoader { request in
             if request.url?.path.contains("elevation") == true { throw URLError(.notConnectedToInternet) }
             return (forecastPayload, httpResponse(for: request))
@@ -75,7 +73,7 @@ final class MycoViewModelEnvironmentTests: XCTestCase {
     func testCachedElevationAndHabitatAreExplicitlyMarkedAsCached() async throws {
         let cache = try makeCacheStore()
         try await cache.put(key: "terrain_42.0000_12.0000", payload: Data(#"{"latitude":[42],"longitude":[12],"elevation":[500]}"#.utf8))
-        try await cache.put(key: "habitat_general_42.0000_12.0000", payload: Data(#"{"score":0.9,"description":"Habitat cached","canopyTypes":["fagus"],"canopyCover":0.7,"forestProximityIndex":0.7}"#.utf8))
+        try await cache.put(key: "habitat_geom_v2_42.0000_12.0000", payload: Data(#"{"score":0.9,"description":"Habitat cached","canopyTypes":["fagus"],"canopyCover":0.7,"forestProximityIndex":0.7}"#.utf8))
         let forecastPayload = forecastPayload
         let weatherLoader = TestHTTPDataLoader { request in
             if request.url?.path.contains("elevation") == true { throw URLError(.notConnectedToInternet) }
@@ -95,6 +93,7 @@ final class MycoViewModelEnvironmentTests: XCTestCase {
         XCTAssertTrue(viewModel.isOfflineFallback)
         XCTAssertTrue(analysis.missingSources.contains("quota DEM live (cache)"))
         XCTAssertTrue(analysis.missingSources.contains("habitat OSM live (cache)"))
+        XCTAssertTrue(analysis.missingSources.contains("geometrie habitat OSM incomplete"))
     }
 
     func testCorruptCachedWeatherIsIgnoredWithoutFabricatingAnalysis() async throws {
@@ -124,9 +123,7 @@ final class MycoViewModelEnvironmentTests: XCTestCase {
         formatter.dateFormat = "yyyy-MM-dd"
         let fixedDate = try XCTUnwrap(formatter.date(from: fixedDateIso))
 
-        let forecastPayload = Data("""
-        {"latitude":42.0,"longitude":12.0,"elevation":450.0,"timezone":"UTC","hourly":{"time":["\(fixedDateIso)T12:00"],"temperature_2m":[16.0],"relative_humidity_2m":[80.0],"precipitation":[3.0],"soil_moisture_0_to_7cm":[0.35],"soil_moisture_7_to_28cm":[0.42],"et0_fao_evapotranspiration":[0.2]},"daily":{"time":["\(fixedDateIso)"],"weather_code":[3],"precipitation_sum":[3.0],"temperature_2m_max":[18.0],"temperature_2m_min":[14.0]}}
-        """.utf8)
+        let forecastPayload = Self.completeForecastPayload(date: fixedDateIso, timezone: "UTC")
         let weatherLoader = TestHTTPDataLoader { request in (forecastPayload, httpResponse(for: request)) }
         let unavailable = TestHTTPDataLoader { _ in throw URLError(.notConnectedToInternet) }
 
@@ -146,9 +143,50 @@ final class MycoViewModelEnvironmentTests: XCTestCase {
 
     private var forecastPayload: Data {
         let today = Self.todayIsoString()
-        return Data("""
-        {"latitude":42.0,"longitude":12.0,"elevation":450.0,"timezone":"Europe/Rome","hourly":{"time":["\(today)T12:00"],"temperature_2m":[16.0],"relative_humidity_2m":[80.0],"precipitation":[3.0],"soil_moisture_0_to_7cm":[0.35],"soil_moisture_7_to_28cm":[0.42],"et0_fao_evapotranspiration":[0.2]},"daily":{"time":["\(today)"],"weather_code":[3],"precipitation_sum":[3.0],"temperature_2m_max":[18.0],"temperature_2m_min":[14.0]}}
-        """.utf8)
+        return Self.completeForecastPayload(date: today, timezone: "Europe/Rome")
+    }
+
+    private static func completeForecastPayload(date: String, timezone: String) -> Data {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: timezone) ?? TimeZone(secondsFromGMT: 0)!
+        let dateFormatter = DateFormatter()
+        dateFormatter.calendar = calendar
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.timeZone = calendar.timeZone
+        dateFormatter.dateFormat = "yyyy-MM-dd HH:mm"
+        let start = dateFormatter.date(from: "\(date) 00:00") ?? Date()
+        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start.addingTimeInterval(24 * 60 * 60)
+        let hourlyDates = Array(stride(from: start, to: end, by: 60 * 60))
+        dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        let localTimes = hourlyDates.map { dateFormatter.string(from: $0) }
+        let repeatedTimes = Set(localTimes.filter { time in localTimes.filter { $0 == time }.count > 1 })
+        dateFormatter.dateFormat = "XXX"
+        let times = zip(hourlyDates, localTimes).map { (date, localTime) in
+            repeatedTimes.contains(localTime) ? "\(localTime)\(dateFormatter.string(from: date))" : localTime
+        }
+        let payload: [String: Any] = [
+            "latitude": 42.0,
+            "longitude": 12.0,
+            "elevation": 450.0,
+            "timezone": timezone,
+            "hourly": [
+                "time": times,
+                "temperature_2m": Array(repeating: 16.0, count: times.count),
+                "relative_humidity_2m": Array(repeating: 80.0, count: times.count),
+                "precipitation": Array(repeating: 1.0, count: times.count),
+                "soil_moisture_0_to_7cm": Array(repeating: 0.35, count: times.count),
+                "soil_moisture_7_to_28cm": Array(repeating: 0.42, count: times.count),
+                "et0_fao_evapotranspiration": Array(repeating: 0.1, count: times.count),
+            ],
+            "daily": [
+                "time": [date],
+                "weather_code": [3],
+                "precipitation_sum": [Double(times.count)],
+                "temperature_2m_max": [16.0],
+                "temperature_2m_min": [16.0],
+            ],
+        ]
+        return (try? JSONSerialization.data(withJSONObject: payload)) ?? Data()
     }
 
     private static func todayIsoString() -> String {

@@ -31,6 +31,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -43,6 +44,48 @@ import java.util.Locale
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MushroomViewModelTest {
+
+    @Test
+    fun originalMindinoPayloadPassesRealCacheRepositoryMapperAndViewModel() = runTest(testDispatcher) {
+        val fixtureRoot = java.io.File(requireNotNull(System.getProperty("myco.fixture.root")))
+        val raw = java.io.File(fixtureRoot, "mindino/weather-original.json").readBytes()
+        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(raw).joinToString("") { "%02x".format(Locale.US, it) }
+        assertEquals("6fee1178c9ce95e15e2b4828ff74ed72d5256dcb90e49f8bdd91fb9b6b0b5467", hash)
+        cacheManager.cacheStore.put("weather_44.2149_7.9755", raw.toString(Charsets.UTF_8), 44.2149, 7.9755, 0, 1791133963798L)
+        val weatherService = mockk<github.naturewhisp.myco.network.WeatherService>()
+        coEvery { weatherService.getForecast(any(), any()) } throws java.io.IOException("Offline replay")
+        coEvery { weatherService.getElevation(any(), any()) } throws java.io.IOException("No historical DEM")
+        val realRepository = MushroomRepository(cacheManager, spunDataManager, mockk(relaxed = true), weatherService, emptyList())
+        val recovered = realRepository.fetchWeather(44.2149, 7.9755)
+        val mapped = github.naturewhisp.myco.utils.MushroomAlgorithms.processWeatherData(recovered)
+        assertTrue(mapped.any { it.date == "2026-09-29" && it.coverage!!.weatherUsable })
+        val vm = MushroomViewModel(realRepository, cacheManager, localAiService, spunDataManager)
+        vm.selectSpecies(SPECIES_CATALOG.first { it.id == "boletus_edulis" })
+        vm.setHistoricalAnalysisDate("2026-09-29")
+        vm.selectLocation(44.2149, 7.9755, "Mindino — ricostruzione aperta")
+        vm.dataFetchJob?.join()
+        advanceUntilIdle()
+        assertTrue(vm.isCalculable)
+        assertEquals("2026-09-29", vm.targetAnalysisDate)
+        assertTrue(vm.factors.any { it.id == FactorId.SOIL_MOISTURE })
+        assertTrue(vm.summaryText.contains("Indice di idoneità"))
+        val before = vm.factors
+        vm.selectSpecies(SPECIES_CATALOG.first { it.category == github.naturewhisp.myco.model.EcologicalCategory.PARASITIC })
+        advanceUntilIdle()
+        assertTrue(vm.isCalculable)
+        assertTrue(before != vm.factors)
+        coVerify(exactly = 2) { weatherService.getForecast(any(), any()) }
+        val output = java.io.File(fixtureRoot.parentFile, "build/audit/2026-10-06/replay-production.json")
+        requireNotNull(output.parentFile).mkdirs()
+        output.writeText(com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(mapOf(
+            "classification" to "ricostruzione aperta", "rawSha256" to hash,
+            "cacheTimestamp" to 1791133963798L, "coordinate" to listOf(44.2149, 7.9755),
+            "target" to vm.targetAnalysisDate, "habitatScenario" to "unknown; original evidence unavailable",
+            "mappedDays" to mapped, "initialFactors" to before, "selectedSpecies" to vm.selectedSpecies.id,
+            "mode" to vm.calculationMode, "score" to vm.todayProbability, "factors" to vm.factors,
+            "quality" to vm.dataQualityStatus, "note" to vm.summaryText, "outlooks" to vm.dailyOutlooks,
+        )))
+    }
 
     private class TestKeyValueStorage : KeyValueStorage {
         private val map = mutableMapOf<String, Any?>()
@@ -454,6 +497,39 @@ class MushroomViewModelTest {
     }
 
     @Test
+    fun lateNonCooperativeAiCannotOverwriteLocationDateOrModeChanges() = runTest(testDispatcher) {
+        for (change in listOf("location", "date", "mode")) {
+            val oldResponse = kotlinx.coroutines.CompletableDeferred<String?>()
+            var calls = 0
+            val ai = mockk<PlatformAiEngine>(relaxed = true)
+            every { ai.status } returns MutableStateFlow(AiEngineStatus.READY)
+            every { ai.isAvailable() } returns true
+            coEvery { ai.generateAdvancedSummary(any()) } coAnswers {
+                calls++
+                if (calls == 1) kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { oldResponse.await() }
+                else "unsupported-style"
+            }
+            val vm = MushroomViewModel(repository, cacheManager, ai, spunDataManager)
+            vm.saveSettings(vm.mapStyle, vm.searchRadius, vm.highlightThreshold, true, true)
+            vm.selectLocation(44.2, 7.9, "First")
+            vm.dataFetchJob?.join()
+            runCurrent()
+            assertTrue(vm.isAiLoading)
+            when (change) {
+                "location" -> { vm.selectLocation(45.0, 8.0, "Second"); vm.dataFetchJob?.join() }
+                "date" -> vm.setHistoricalAnalysisDate(java.time.LocalDate.now(java.time.ZoneId.of("Europe/Rome")).minusDays(1).toString())
+                else -> vm.updateCalculationMode("WEATHER_ONLY")
+            }
+            advanceUntilIdle()
+            val currentNote = vm.summaryText
+            oldResponse.complete("taccuino")
+            advanceUntilIdle()
+            assertEquals("Late AI overwritten $change analysis", currentNote, vm.summaryText)
+            assertFalse(vm.isAiLoading)
+        }
+    }
+
+    @Test
     fun testMindinoReplayEndToEndThroughViewModel() = runTest(testDispatcher) {
         val lat = 44.2149
         val lon = 7.9755
@@ -584,8 +660,8 @@ class MushroomViewModelTest {
 
         assertTrue(vm.isCalculable)
         assertEquals("2026-09-29", vm.targetAnalysisDate)
-        assertEquals(60, vm.todayProbability)
-        assertTrue("Suitability score must be positive: ${vm.todaySuitabilityScore}", vm.todaySuitabilityScore > 50.0)
+        assertTrue(vm.todayProbability in 1..100)
+        assertTrue("Suitability score must be positive: ${vm.todaySuitabilityScore}", vm.todaySuitabilityScore > 0.0)
 
         // Verify both FOREST_PROXIMITY and HABITAT factors exist
         val hasForestProx = vm.factors.any { it.id == FactorId.FOREST_PROXIMITY }

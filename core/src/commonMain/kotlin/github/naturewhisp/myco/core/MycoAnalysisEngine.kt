@@ -4,11 +4,43 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 class MycoAnalysisEngine {
-    fun analyze(input: AnalysisInputs): AnalysisResult {
+    fun analyze(rawInput: AnalysisInputs): AnalysisResult {
+        val target = rawInput.days.getOrNull(rawInput.todayIndex)
+            ?: return emptyResult(DataQualityStatus.DEGRADED_OUT_OF_BOUNDS)
+        val targetEpoch = MycoAlgorithms.isoDateToEpochDay(target.dateIso)
+            ?: return emptyResult(DataQualityStatus.DEGRADED_OUT_OF_BOUNDS)
+        if (rawInput.targetDateIso != null && rawInput.targetDateIso != target.dateIso) return emptyResult(DataQualityStatus.DEGRADED_OUT_OF_BOUNDS)
+        if (target.coverage?.weatherUsable == false) return emptyResult(DataQualityStatus.UNAVAILABLE_INCOMPLETE_WEATHER)
+        val relevant = rawInput.days.filter {
+            MycoAlgorithms.isoDateToEpochDay(it.dateIso)?.let { epoch -> epoch in (targetEpoch - 28)..targetEpoch } == true
+        }
+        if (relevant.map { it.dateIso }.distinct().size != relevant.size) return emptyResult(DataQualityStatus.DEGRADED_OUT_OF_BOUNDS)
+        val usable = rawInput.days.filter {
+            it.coverage?.weatherUsable != false && isValidIsoDate(it.dateIso) &&
+                (MycoAlgorithms.isoDateToEpochDay(it.dateIso)!! <= targetEpoch || validWeatherDay(it))
+        }.sortedBy { it.dateIso }
+        if (rawInput.spunEcmRichness?.let { !it.isFinite() || it < 0.0 } == true) return emptyResult(DataQualityStatus.DEGRADED_OUT_OF_BOUNDS)
+        val evidence = rawInput.habitatEvidence
+        if (evidence != null && (!evidence.forestCoverFraction.isFinite() || evidence.forestCoverFraction !in 0.0..1.0 ||
+            !evidence.meadowFraction.isFinite() || evidence.meadowFraction !in 0.0..1.0 ||
+            !evidence.forestProximityIndex.isFinite() || evidence.forestProximityIndex !in 0.0..1.0 ||
+            !evidence.distanceToNearestForestMeters.isFinite() || evidence.distanceToNearestForestMeters < 0.0)) {
+            return emptyResult(DataQualityStatus.DEGRADED_OUT_OF_BOUNDS)
+        }
+        val habitatEvaluation = evidence?.let { MycoAlgorithms.evaluateHabitat(it, SpeciesCatalog.byId(rawInput.speciesId), rawInput.spunEcmRichness) }
+        val input = rawInput.copy(
+            days = usable, todayIndex = usable.indexOfFirst { it.dateIso == target.dateIso },
+            habitatScore = habitatEvaluation?.baseScore ?: rawInput.habitatScore,
+            habitatDescription = habitatEvaluation?.baseText ?: rawInput.habitatDescription,
+            canopyTypes = evidence?.confirmedHostGenera?.toList() ?: rawInput.canopyTypes,
+            canopyCover = evidence?.forestCoverFraction ?: rawInput.canopyCover,
+            forestProximityIndex = evidence?.forestProximityIndex ?: rawInput.forestProximityIndex,
+        )
         if (input.days.isEmpty() || input.todayIndex !in input.days.indices) {
             return emptyResult(DataQualityStatus.DEGRADED_OUT_OF_BOUNDS)
         }
         if (!input.habitatScore.isFinite() || input.habitatScore !in 0.0..1.0 ||
+            !input.forestProximityIndex.isFinite() || input.forestProximityIndex !in 0.0..1.0 || input.monthIndex !in 0..11 ||
             !input.canopyCover.isFinite() || input.canopyCover !in 0.0..1.0 ||
             input.elevationSamples.any { !it.isFinite() || it !in -500.0..9000.0 } ||
             (input.spunEcmRichness != null && (!input.spunEcmRichness.isFinite() || input.spunEcmRichness < 0.0)) ||
@@ -21,30 +53,8 @@ class MycoAnalysisEngine {
 
         // 1. Controllo preventivo di plausibilità e completezza dati (C05, D04, D05)
         var dataQuality = DataQualityStatus.OPTIMAL
-        for (day in input.days) {
-            if (!isValidIsoDate(day.dateIso) ||
-                !day.avgTemp.isFinite() || day.avgTemp !in -40.0..50.0 ||
-                !day.minTemp.isFinite() || day.minTemp !in -40.0..50.0 ||
-                !day.maxTemp.isFinite() || day.maxTemp !in -40.0..50.0 ||
-                day.minTemp > day.maxTemp ||
-                day.avgTemp < day.minTemp || day.avgTemp > day.maxTemp ||
-                !day.totalPrecipMm.isFinite() || day.totalPrecipMm < 0.0 || day.totalPrecipMm > 500.0 ||
-                !day.avgHumidityPercent.isFinite() || day.avgHumidityPercent !in 0.0..100.0) {
-                dataQuality = DataQualityStatus.DEGRADED_OUT_OF_BOUNDS
-                break
-            }
-            val s0 = day.soilMoisture0To7
-            if (s0 != null && (!s0.isFinite() || s0 !in 0.0..0.60)) {
-                dataQuality = DataQualityStatus.DEGRADED_OUT_OF_BOUNDS
-                break
-            }
-            val s7 = day.soilMoisture7To28
-            if (s7 != null && (!s7.isFinite() || s7 !in 0.0..0.60)) {
-                dataQuality = DataQualityStatus.DEGRADED_OUT_OF_BOUNDS
-                break
-            }
-            val et = day.evapotranspiration
-            if (et != null && (!et.isFinite() || et < 0.0)) {
+        for (day in input.days.filter { MycoAlgorithms.isoDateToEpochDay(it.dateIso)?.let { epoch -> epoch in (targetEpoch - 28)..targetEpoch } == true }) {
+            if (!validWeatherDay(day)) {
                 dataQuality = DataQualityStatus.DEGRADED_OUT_OF_BOUNDS
                 break
             }
@@ -55,7 +65,7 @@ class MycoAnalysisEngine {
         }
 
         val siteCanopyCover = input.canopyCover.coerceIn(0.0, 1.0)
-        val bufferedDays = if (siteCanopyCover > 0.001) {
+        val bufferedDays = if (siteCanopyCover > 0.0) {
             MycoAlgorithms.applyCanopyBuffering(input.days, siteCanopyCover)
         } else {
             input.days
@@ -72,11 +82,15 @@ class MycoAnalysisEngine {
         } else if (soilEval.availableDaysCount == 2 && dataQuality == DataQualityStatus.OPTIMAL) {
             dataQuality = DataQualityStatus.DEGRADED_PARTIAL_SOIL
         }
-        if (dataQuality == DataQualityStatus.OPTIMAL) {
-            val targetEpoch = MycoAlgorithms.isoDateToEpochDay(current.dateIso)
-            if (targetEpoch != null && (windows.temperatureAvailableDays < 3 || windows.rainAvailableDays < 4 || windows.humidityAvailableDays < 2)) {
-                dataQuality = DataQualityStatus.DEGRADED_INCOMPLETE_WEATHER
-            }
+        val qualityReasons = mutableListOf<String>()
+        if (windows.evapotranspiration.any { it.coverage?.et0Usable == false }) qualityReasons.add("ET0 incompleta")
+        if (soilEval.availableDaysCount < 2) qualityReasons.add("suolo")
+        else if (soilEval.availableDaysCount < 3) qualityReasons.add("suolo parziale")
+        val incompleteWeather = windows.temperatureAvailableDays < 5 || windows.rainAvailableDays < 8 ||
+            windows.humidityAvailableDays < 4 || relevant.any { it.coverage?.weatherUsable == false }
+        if (incompleteWeather) {
+            qualityReasons.add("meteo lacunoso")
+            if (dataQuality == DataQualityStatus.OPTIMAL) dataQuality = DataQualityStatus.DEGRADED_INCOMPLETE_WEATHER
         }
         val waterDiagnosis = soilEval.diagnosisText
 
@@ -90,28 +104,10 @@ class MycoAnalysisEngine {
 
         var probabilityHabitatScore = if (isWeatherOnly) 1.0 else input.habitatScore
         if (!isWeatherOnly) {
-            val hasMatchingHost = species.preferredCanopyTypes.any { pref ->
-                input.canopyTypes.any { it.equals(pref, ignoreCase = true) }
-            }
-            var bonusMult = 1.0
-            if (hasMatchingHost) {
-                bonusMult = maxOf(bonusMult, 1.15)
-            }
-            // D03: EcM richness applies exclusively to ECTOMYCORRHIZAL taxa, avoiding multi-compounding
-            if (species.category == EcologicalCategory.ECTOMYCORRHIZAL) {
-                input.spunEcmRichness?.let { richness ->
-                    when {
-                        richness >= 50.0 -> bonusMult = maxOf(bonusMult, 1.15)
-                        richness < 15.0 && bonusMult <= 1.0 -> bonusMult = 0.8
-                        else -> {}
-                    }
-                }
-            }
-            if (bonusMult > 1.0 && probabilityHabitatScore < 0.90) {
-                probabilityHabitatScore = MycoAlgorithms.applyHabitatBonusPenalty(probabilityHabitatScore, bonusMult)
-            } else if (bonusMult < 1.0) {
-                probabilityHabitatScore = MycoAlgorithms.applyHabitatBonusPenalty(probabilityHabitatScore, bonusMult)
-            }
+            probabilityHabitatScore = MycoAlgorithms.applyHabitatBonusPenalty(
+                probabilityHabitatScore,
+                MycoAlgorithms.habitatModifier(species, input.canopyTypes, input.spunEcmRichness),
+            )
         }
         val displayHabitatFactorScore = if (isWeatherOnly) {
             1.0
@@ -160,8 +156,21 @@ class MycoAnalysisEngine {
             effectiveRainMm = effectiveRain,
         )
 
-        val outlooks = bufferedDays.drop(todayIndex).take(7).mapIndexed { offset, day ->
-            val index = todayIndex + offset
+        val outlooks = rawInput.days.filter { day ->
+            MycoAlgorithms.isoDateToEpochDay(day.dateIso)?.let { it in targetEpoch..(targetEpoch + 6) } == true
+        }.distinctBy { it.dateIso }.sortedBy { it.dateIso }.map { rawDay ->
+            val index = bufferedDays.indexOfFirst { it.dateIso == rawDay.dateIso }
+            if (index < 0 || !validWeatherDay(rawDay) || rawInput.days.count { it.dateIso == rawDay.dateIso } != 1) {
+                return@map DailyOutlook(rawDay.dateIso, rawDay.weatherCode, 0.0, 0.0, 0.0, 0,
+                    ProbabilityTier.VERY_LOW, false, listOf("Copertura meteorologica insufficiente o dati non validi"))
+            }
+            val day = bufferedDays[index]
+            val dayWindows = EnvironmentalWindows.derive(bufferedDays, index)
+            val daySoil = MycoAlgorithms.calculateSoilMoistureFactor(bufferedDays, index)
+            val dayQuality = buildList {
+                if (dayWindows.temperatureAvailableDays < 5 || dayWindows.rainAvailableDays < 8 || dayWindows.humidityAvailableDays < 4) add("meteo lacunoso")
+                if (daySoil.availableDaysCount < 2) add("suolo") else if (daySoil.availableDaysCount < 3) add("suolo parziale")
+            }
             val dayWeather = MycoAlgorithms.weatherScore(
                 dayIndex = index,
                 days = bufferedDays,
@@ -197,9 +206,10 @@ class MycoAnalysisEngine {
                 avgHumidityPercent = day.avgHumidityPercent,
                 probability = dayProbability,
                 tier = ProbabilityTier.fromProbability(dayProbability),
+                qualityReasons = dayQuality,
             )
         }
-        val missing = input.missingSources.distinct()
+        val missing = (input.missingSources + qualityReasons).distinct()
         return AnalysisResult(
             probability = probability,
             tier = ProbabilityTier.fromProbability(probability),
@@ -225,6 +235,7 @@ class MycoAnalysisEngine {
             dataQuality = dataQuality,
             waterDiagnosis = waterDiagnosis,
             effectiveRainMm = effectiveRain,
+            qualityReasons = qualityReasons,
         )
     }
 
@@ -378,7 +389,7 @@ class MycoAnalysisEngine {
             }
             add(factor(FactorId.HABITAT, habLabel, habValue, habitat, finalHabDesc, favorable = 0.85, neutral = 0.5))
             val proxValue = (input.forestProximityIndex * 100).roundToIntText() + "/100"
-            add(factor(FactorId.FOREST_PROXIMITY, "Indice di prossimità forestale", proxValue, input.forestProximityIndex, "Copertura stazionale OSM (settori a 8 spicchi)", favorable = 0.70, neutral = 0.40))
+            add(factor(FactorId.FOREST_PROXIMITY, "Indice di prossimità forestale", proxValue, input.forestProximityIndex, "Prossimità alle superfici OSM; proxy geografico, non misura della chiusura della chioma", favorable = 0.70, neutral = 0.40))
             val altDesc = when {
                 altitude >= 0.85 -> "Fascia ottimale (${species.idealElevationMin}–${species.idealElevationMax} m s.l.m.)"
                 altitude >= 0.50 -> "Intervallo compatibile (${species.idealElevationMin}–${species.idealElevationMax} m s.l.m.)"
@@ -533,6 +544,7 @@ class MycoAnalysisEngine {
 
         val qualityWarning = when (dataQuality) {
             DataQualityStatus.DEGRADED_OUT_OF_BOUNDS -> "Dati ambientali anomali o fuori scala rilevati. "
+            DataQualityStatus.UNAVAILABLE_INCOMPLETE_WEATHER -> "Copertura meteorologica insufficiente. "
             DataQualityStatus.DEGRADED_MISSING_SOIL -> "Dati pedologici superficiali non disponibili. "
             DataQualityStatus.DEGRADED_PARTIAL_SOIL -> "Copertura pedologica parziale. "
             DataQualityStatus.DEGRADED_INCOMPLETE_WEATHER -> "Serie meteorologica lacunosa o incompleta. "
@@ -546,12 +558,13 @@ class MycoAnalysisEngine {
         if (dataQuality == DataQualityStatus.DEGRADED_INCOMPLETE_WEATHER && !allMissing.contains("meteo lacunoso")) {
             allMissing.add("meteo lacunoso")
         }
+        val supplementary = if ("meteo lacunoso" in missing && dataQuality != DataQualityStatus.DEGRADED_INCOMPLETE_WEATHER) "Serie meteorologica lacunosa o incompleta. " else ""
         val coverage = if (allMissing.isEmpty()) {
             "Tutte le fonti ambientali sono disponibili."
         } else {
             "Fonti non disponibili: ${allMissing.joinToString()}. Il risultato è parziale."
         }
-        return "${stressWarning}${qualityWarning}Indice di idoneità stimato $probability/100. Fattore più favorevole: $strongest; principale limite: $weakest. $coverage"
+        return "${stressWarning}${qualityWarning}${supplementary}Indice di idoneità stimato $probability/100. Fattore più favorevole: $strongest; principale limite: $weakest. $coverage"
     }
 
     private fun emptyDay() = ProcessedDay("", 0.0, 0.0, 0.0, null, null, null, null)
@@ -567,7 +580,7 @@ class MycoAnalysisEngine {
             terrain = TerrainAspect(0.0, 0.0, 0.0, "Non disponibile", 1.0),
             factors = emptyList(),
             dailyOutlooks = emptyList(),
-            deterministicFieldNote = "Analisi non calcolabile: dati ambientali non disponibili o non validi.",
+            deterministicFieldNote = if (dataQuality == DataQualityStatus.UNAVAILABLE_INCOMPLETE_WEATHER) "Indice non calcolabile: copertura oraria meteo insufficiente." else "Analisi non calcolabile: dati ambientali non disponibili o non validi.",
             missingSources = listOf("dati meteo"),
             growthPhase = null,
             dataQuality = dataQuality,
@@ -575,6 +588,15 @@ class MycoAnalysisEngine {
             effectiveRainMm = 0.0,
         )
     }
+
+    private fun validWeatherDay(day: ProcessedDay): Boolean = isValidIsoDate(day.dateIso) &&
+        day.avgTemp.isFinite() && day.avgTemp in -40.0..50.0 && day.minTemp.isFinite() && day.minTemp in -40.0..50.0 &&
+        day.maxTemp.isFinite() && day.maxTemp in -40.0..50.0 && day.minTemp <= day.avgTemp && day.avgTemp <= day.maxTemp &&
+        day.totalPrecipMm.isFinite() && day.totalPrecipMm in 0.0..500.0 &&
+        day.avgHumidityPercent.isFinite() && day.avgHumidityPercent in 0.0..100.0 &&
+        (day.soilMoisture0To7?.let { it.isFinite() && it in 0.0..0.60 } != false) &&
+        (day.soilMoisture7To28?.let { it.isFinite() && it in 0.0..0.60 } != false) &&
+        (day.evapotranspiration?.let { it.isFinite() && it >= 0.0 } != false)
 
     private fun isValidIsoDate(date: String): Boolean {
         if (date.length != 10 || date[4] != '-' || date[7] != '-') return false

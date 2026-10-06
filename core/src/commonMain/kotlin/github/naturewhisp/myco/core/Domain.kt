@@ -110,6 +110,8 @@ data class HabitatEvidence(
     val distanceToNearestForestMeters: Double,
     val confirmedHostGenera: Set<String>,
     val dominantLeafType: String? = null,
+    val forestProximityIndex: Double = forestCoverFraction,
+    val geometryComplete: Boolean = false,
 ) {
     constructor(
         status: HabitatStatus,
@@ -146,7 +148,11 @@ data class OsmHabitatElement(
     val isUrbanOrBuilt: Boolean,
     val genus: String?,
     val leafType: String? = null,
+    val elementKey: String? = null,
+    val surfaces: List<OsmSurface> = emptyList(),
 )
+
+data class OsmSurface(val vertices: List<GeoCoordinates>, val inner: Boolean)
 
 data class SpeciesHabitatEvaluation(
     val score: Double,
@@ -233,6 +239,7 @@ data class ProcessedDay(
     val evapotranspiration: Double? = null,
     val minTemp: Double = avgTemp,
     val maxTemp: Double = avgTemp,
+    val coverage: WeatherCoverage? = null,
 ) {
     val liquidPrecipMm: Double
         get() = if (isSnowDay(weatherCode, avgTemp)) 0.0 else totalPrecipMm
@@ -276,6 +283,8 @@ data class DailyOutlook(
     val avgHumidityPercent: Double,
     val probability: Int,
     val tier: ProbabilityTier,
+    val isCalculable: Boolean = true,
+    val qualityReasons: List<String> = emptyList(),
 ) {
     val suitabilityScore: Int get() = probability
 }
@@ -303,6 +312,8 @@ data class AnalysisInputs(
     val canopyCover: Double = 0.0,
     val forestProximityIndex: Double = canopyCover,
     val calculationMode: String = "ALL",
+    val targetDateIso: String? = null,
+    val habitatEvidence: HabitatEvidence? = null,
 ) {
     constructor(
         days: List<ProcessedDay>,
@@ -457,6 +468,7 @@ enum class DataQualityStatus {
     DEGRADED_MISSING_SOIL,
     DEGRADED_INCOMPLETE_WEATHER,
     DEGRADED_OUT_OF_BOUNDS,
+    UNAVAILABLE_INCOMPLETE_WEATHER,
 }
 
 enum class HeatmapLayerStatus {
@@ -481,9 +493,11 @@ data class AnalysisResult(
     val dataQuality: DataQualityStatus = DataQualityStatus.OPTIMAL,
     val waterDiagnosis: String? = null,
     val effectiveRainMm: Double = 0.0,
+    val qualityReasons: List<String> = emptyList(),
 ) {
     val suitabilityScore: Int get() = probability
-    val isCalculable: Boolean get() = dataQuality != DataQualityStatus.DEGRADED_OUT_OF_BOUNDS
+    val isCalculable: Boolean get() = dataQuality != DataQualityStatus.DEGRADED_OUT_OF_BOUNDS &&
+        dataQuality != DataQualityStatus.UNAVAILABLE_INCOMPLETE_WEATHER
 }
 
 data class SpunRegionHeader(

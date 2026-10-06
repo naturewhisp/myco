@@ -42,8 +42,8 @@ class MindinoHydrologyAndC1ContinuityTest {
         // Verifichiamo che il fattore di suolo (multiplier) sia identico a theta invariata
         assertEquals(
             "A theta invariata, Delta phi_soil deve essere esattamente 0 indipendentemente dalla pioggia",
-            evalBase.multiplier,
-            evalDrizzle.multiplier,
+            evalBase.phiSoil,
+            evalDrizzle.phiSoil,
             0.0001
         )
         assertEquals(GrowthStage.WANING, evalBase.stage)
@@ -57,8 +57,8 @@ class MindinoHydrologyAndC1ContinuityTest {
 
         assertEquals(
             "Su Core, Delta phi_soil deve essere 0 a theta costante",
-            coreEvalBase.multiplier,
-            coreEvalDrizzle.multiplier,
+            coreEvalBase.phiSoil,
+            coreEvalDrizzle.phiSoil,
             0.0001
         )
     }

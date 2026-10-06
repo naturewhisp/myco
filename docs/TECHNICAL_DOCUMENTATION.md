@@ -8,6 +8,26 @@
 
 ---
 
+## Inventario aggiornato — bonifica operativa 2026-10-06
+
+| Componente | Responsabilità e contratto attuale |
+|---|---|
+| `core/WeatherAggregation.kt` | Aggregazione oraria condivisa, deduplicazione, copertura per variabile, provenance e giorni incompleti conservati. |
+| `core/HabitatGeometry.kt` | Superfici OSM, assemblaggio anelli, buchi, unione tramite quadratura e distanza al bordo; non una misura fisica della chioma. |
+| `core/EnvironmentalWindows.kt` | Finestre basate su date locali; suolo superficiale su tre giorni retrospettivi. |
+| `core/MycoAnalysisEngine.kt` | Validazione separata corrente/outlook, motivi di qualità concomitanti, specie attiva e unico fattore habitat. |
+| `core/MycoAlgorithms.kt` / `ParameterRegistry.kt` | Raccordi C1 e ensemble eventi continuo; prior euristici espliciti, EcM limitato alla guild pertinente. |
+| Android `MushroomRepository` / `MushroomViewModel` | Cache di payload grezzi, geometrie `habitat_geom_v2`, delega scientifica al core; nessun fetch tardivo di bonus che muta le evidenze. |
+| Swift `OpenMeteoDomainMapper` / `OverpassClient` | Stessi mapper core, alias JSON storici, snapshot raw decodificabili anche senza i nuovi campi. |
+| Android/iOS forecast UI | Outlook non calcolabili espliciti; nessun punteggio/trend sostitutivo per giornate tronche. |
+| `testFixtures/` e nuove suite operative | JSON comuni nei mapper produttivi; prova cache → repository → mapper → ViewModel, DST, qualità, geometrie, derivate e AI dopo cancellazione. |
+
+Il rapporto [Bonifica operativa](revisioni/Bonifica_operativa_2026-10-06.md) registra hash, fonti e limiti. Le evidenze locali di dispositivo e replay sono in `build/audit/2026-10-06/`, escluse dal versionamento. La build/XCTest dell'app Swift su macOS resta richiesta: compilazione del core iOS e contratti statici non la sostituiscono.
+
+Follow-up revisione: `HabitatGeometry` conserva lo stato dell'assemblaggio ed esclude dall'integrazione le superfici con anelli irrisolti, senza perdere altri elementi validi. `OperationalRepairTest` verifica questo contratto; corretto anche il loader della fixture praticola Swift.
+
+Seconda revisione indipendente OK. Il collaudo conclusivo delle tre guild sul Pixel e le schermate del medesimo APK corretto sono in `build/audit/2026-10-06/device-post-review/`; preferiti e selezione originale sono conservati. Risultati locali: 236 test Android, 49 core, lint zero errori/warning.
+
 ## Indice Generale
 
 1. [Sintesi Esecutiva & Panoramica del Sistema](#1-sintesi-esecutiva--panoramica-del-sistema)
@@ -1228,4 +1248,3 @@ Il progetto adotta un processo di sincronizzazione e governance continua basato 
 1. **Linee Guida di Sviluppo & Zero Diagnostic Policy**: [`AGENTS.md`](file:///c:/Users/dendo/Documents/GitHub/myco/AGENTS.md).
 2. **Censimento Debito Tecnico e Roadmap Multilivello**: [`docs/FUTURE_DEVELOPMENTS_ANALYSIS.md`](file:///c:/Users/dendo/Documents/GitHub/myco/docs/FUTURE_DEVELOPMENTS_ANALYSIS.md), contenente la matrice di tracciabilità e riscontro con la revisione scientifica.
 3. **Revisione Scientifica e Numerica degli Algoritmi**: [`docs/Revisione_scientifica_algoritmi_Myco.md`](file:///c:/Users/dendo/Documents/GitHub/myco/docs/Revisione_scientifica_algoritmi_Myco.md), documento di audit forense e benchmark matematico per la Release v1.3 (Percorso A) e l'evoluzione opzionale a probabilità calibrata (Percorso B post-Citizen Science).
-

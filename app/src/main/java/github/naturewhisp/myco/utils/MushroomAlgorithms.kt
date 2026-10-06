@@ -98,64 +98,38 @@ object MushroomAlgorithms {
      * @return Lista ordinata cronologicamente di giorni elaborati con temperatura media, pioggia cumulata e umidità.
      */
     fun processWeatherData(data: WeatherResponse): List<ProcessedDay> {
-        val dailyMap = mutableMapOf<String, TempDailyAccumulator>()
-        val hourlyTimes = data.hourly.time
-        for (i in hourlyTimes.indices) {
-            val date = hourlyTimes[i].split("T")[0]
-            val acc = dailyMap.getOrPut(date) { TempDailyAccumulator() }
-            acc.totalHours++
-            data.hourly.temperature2m.getOrNull(i)?.let { acc.temps.add(it) }
-            data.hourly.precipitation.getOrNull(i)?.let { acc.precips.add(it) }
-            data.hourly.relativeHumidity2m.getOrNull(i)?.let { acc.humidities.add(it) }
-            data.hourly.soilMoisture0To7cm?.getOrNull(i)?.let { acc.soilMoisture0To7.add(it) }
-            data.hourly.soilMoisture7To28cm?.getOrNull(i)?.let { acc.soilMoisture7To28.add(it) }
-            data.hourly.evapotranspiration?.getOrNull(i)?.let { acc.evapotranspirations.add(it) }
+        val zone = try { java.time.ZoneId.of(data.timezone) } catch (_: Exception) { java.time.ZoneOffset.UTC }
+        val expected = data.hourly.time.map { it.take(10) }.distinct().mapNotNull { date ->
+            try {
+                val day = java.time.LocalDate.parse(date)
+                val hours = java.time.Duration.between(day.atStartOfDay(zone), day.plusDays(1).atStartOfDay(zone)).toHours().toInt()
+                github.naturewhisp.myco.core.ExpectedDayHours(date, hours)
+            } catch (_: Exception) { null }
         }
-
-        val dailyTimes = data.daily.time
-        for (i in dailyTimes.indices) {
-            val date = dailyTimes[i]
-            val acc = dailyMap[date]
-            if (acc != null) {
-                acc.weatherCode = data.daily.weatherCode.getOrNull(i)
-            }
-        }
-
-        return dailyMap.mapNotNull { (date, acc) ->
-            if (acc.temps.isEmpty() || acc.humidities.isEmpty() || acc.precips.isEmpty()) return@mapNotNull null
-            if (acc.totalHours >= 24 && (acc.temps.size < 18 || acc.precips.size < 18 || acc.humidities.size < 18)) return@mapNotNull null
-            val avgTemp = acc.temps.sum() / acc.temps.size
-            val minTemp = acc.temps.minOrNull() ?: avgTemp
-            val maxTemp = acc.temps.maxOrNull() ?: avgTemp
-            val totalPrecip = acc.precips.sum()
-            val avgHumidity = acc.humidities.sum() / acc.humidities.size
-            val avgSoil0To7 = if (acc.soilMoisture0To7.isNotEmpty()) acc.soilMoisture0To7.sum() / acc.soilMoisture0To7.size else null
-            val avgSoil7To28 = if (acc.soilMoisture7To28.isNotEmpty()) acc.soilMoisture7To28.sum() / acc.soilMoisture7To28.size else null
-            val totalET0 = if (acc.evapotranspirations.isNotEmpty()) acc.evapotranspirations.sum() else null
-            ProcessedDay(
-                date = date,
-                avgTemp = avgTemp,
-                totalPrecip = totalPrecip,
-                avgHumidity = avgHumidity,
-                weatherCode = acc.weatherCode,
-                avgSoilMoisture0To7cm = avgSoil0To7,
-                avgSoilMoisture7To28cm = avgSoil7To28,
-                totalEvapotranspiration = totalET0,
-                minTemp = minTemp,
-                maxTemp = maxTemp
+        val observations = data.hourly.time.mapIndexed { index, time ->
+            github.naturewhisp.myco.core.WeatherHour(
+                time,
+                data.hourly.temperature2m.getOrNull(index)?.toDouble(),
+                data.hourly.relativeHumidity2m.getOrNull(index)?.toDouble(),
+                data.hourly.precipitation.getOrNull(index)?.toDouble(),
+                data.hourly.soilMoisture0To7cm?.getOrNull(index)?.toDouble(),
+                data.hourly.soilMoisture7To28cm?.getOrNull(index)?.toDouble(),
+                data.hourly.evapotranspiration?.getOrNull(index)?.toDouble(),
             )
-        }.sortedBy { it.date }
-    }
-
-    private class TempDailyAccumulator {
-        var totalHours = 0
-        val temps = mutableListOf<Float>()
-        val precips = mutableListOf<Float>()
-        val humidities = mutableListOf<Float>()
-        val soilMoisture0To7 = mutableListOf<Float>()
-        val soilMoisture7To28 = mutableListOf<Float>()
-        val evapotranspirations = mutableListOf<Float>()
-        var weatherCode: Int? = null
+        }
+        val codes = data.daily.time.mapIndexed { index, date ->
+            github.naturewhisp.myco.core.DailyWeatherCode(date, data.daily.weatherCode.getOrNull(index))
+        }
+        return github.naturewhisp.myco.core.WeatherAggregation.aggregate(observations, expected, codes, "OPEN_METEO_MODEL_FORECAST").map { day ->
+            ProcessedDay(
+                date = day.dateIso, avgTemp = day.avgTemp.toFloat(), totalPrecip = day.totalPrecipMm.toFloat(),
+                avgHumidity = day.avgHumidityPercent.toFloat(), weatherCode = day.weatherCode,
+                avgSoilMoisture0To7cm = day.soilMoisture0To7?.toFloat(),
+                avgSoilMoisture7To28cm = day.soilMoisture7To28?.toFloat(),
+                totalEvapotranspiration = day.evapotranspiration?.toFloat(),
+                minTemp = day.minTemp.toFloat(), maxTemp = day.maxTemp.toFloat(), coverage = day.coverage,
+            )
+        }
     }
 
     /**
@@ -498,49 +472,15 @@ object MushroomAlgorithms {
         day: ProcessedDay,
         canopyCover: Double = 0.80
     ): ProcessedDay {
-        val c = canopyCover.coerceIn(0.0, 1.0)
-        if (c <= 0.001) return day
-
-        // 1. Attenuazione diurna massime (De Frenne offset estivo continuo C1 senza scalini a 18°C - F18, REG-18)
-        val baseCooling = 0.5 * kotlin.math.max(0.0, (day.maxTemp - 5.0) / 13.0)
-        val hotDayExtra = smoothstep(12.0, 24.0, day.maxTemp.toDouble()) * kotlin.math.min(3.5, 0.18 * kotlin.math.max(0.0, day.maxTemp - 12.0))
-        val maxOffset = c * kotlin.math.min(4.0, baseCooling + hotDayExtra)
-
-        // 2. Isolamento radiativo notturno (Effetto serra della volta forestale che blocca dispersioni a onde lunghe)
-        val rawMinOffset = c * (1.2 + 0.5 * smoothstep(0.0, 10.0, 10.0 - day.minTemp))
-
-        // 3. Rispetto naturale del gradiente termico diurno DTR senza inversione forzata né swap artificioso (F18)
-        val rawDtr = kotlin.math.max(0.0, (day.maxTemp - day.minTemp).toDouble())
-        val maxAllowedOffset = rawDtr * 0.45
-        val effectiveMaxOffset = kotlin.math.min(maxOffset, maxAllowedOffset)
-        val effectiveMinOffset = kotlin.math.min(rawMinOffset, maxAllowedOffset)
-
-        val subMaxTemp = (day.maxTemp - effectiveMaxOffset).toFloat()
-        val subMinTemp = (day.minTemp + effectiveMinOffset).toFloat()
-
-        val deltaAvg = (effectiveMinOffset - effectiveMaxOffset) / 2.0
-        val subAvgTemp = (day.avgTemp + deltaAvg).coerceIn(subMinTemp.toDouble(), subMaxTemp.toDouble()).toFloat()
-
-        // 4. Intercettazione idrica chiome e throughfall (Bonet et al. / CTFC)
-        val grossPrecip = day.liquidPrecip.toDouble()
-        val throughfall = if (grossPrecip > 0.0) {
-            val interceptionLossFraction = c * (0.15 + 0.20 * kotlin.math.exp(-grossPrecip / 8.0))
-            (grossPrecip * (1.0 - interceptionLossFraction)).coerceAtLeast(0.0)
-        } else {
-            0.0
-        }
-
-        // 5. Umidità relativa sub-canopy (minore ventilazione ed evapotraspirazione interna)
-        val humOffset = c * 6.0 * (1.0 - day.avgHumidity.toDouble() / 100.0)
-        val subHumidity = (day.avgHumidity + humOffset).coerceIn(0.0, 100.0).toFloat()
-
-        return day.copy(
-            avgTemp = subAvgTemp,
-            minTemp = subMinTemp,
-            maxTemp = subMaxTemp,
-            totalPrecip = throughfall.toFloat(),
-            avgHumidity = subHumidity
+        val coreDay = github.naturewhisp.myco.core.ProcessedDay(
+            dateIso = day.date, avgTemp = day.avgTemp.toDouble(), totalPrecipMm = day.totalPrecip.toDouble(),
+            avgHumidityPercent = day.avgHumidity.toDouble(), weatherCode = day.weatherCode,
+            soilMoisture0To7 = day.avgSoilMoisture0To7cm?.toDouble(), soilMoisture7To28 = day.avgSoilMoisture7To28cm?.toDouble(),
+            evapotranspiration = day.totalEvapotranspiration?.toDouble(), minTemp = day.minTemp.toDouble(), maxTemp = day.maxTemp.toDouble(), coverage = day.coverage,
         )
+        val buffered = github.naturewhisp.myco.core.MycoAlgorithms.applyCanopyBuffering(coreDay, canopyCover)
+        return day.copy(avgTemp = buffered.avgTemp.toFloat(), minTemp = buffered.minTemp.toFloat(), maxTemp = buffered.maxTemp.toFloat(),
+            totalPrecip = buffered.totalPrecipMm.toFloat(), avgHumidity = buffered.avgHumidityPercent.toFloat())
     }
 
     /**
@@ -550,7 +490,7 @@ object MushroomAlgorithms {
         days: List<ProcessedDay>,
         canopyCover: Double = 0.80
     ): List<ProcessedDay> {
-        if (canopyCover <= 0.001) return days
+        if (canopyCover <= 0.0) return days
         return days.map { applyCanopyBuffering(it, canopyCover) }
     }
 
@@ -596,6 +536,21 @@ object MushroomAlgorithms {
         config: EcologicalWeightsConfig = EcologicalWeightsConfig.DEFAULT,
         canopyCover: Double? = null
     ): Int {
+        if (config == EcologicalWeightsConfig.PHENOLOGICAL) {
+            val coreDays = allData.map { d ->
+            github.naturewhisp.myco.core.ProcessedDay(
+                dateIso = d.date, avgTemp = d.avgTemp.toDouble(), totalPrecipMm = d.totalPrecip.toDouble(),
+                avgHumidityPercent = d.avgHumidity.toDouble(), weatherCode = d.weatherCode,
+                soilMoisture0To7 = d.avgSoilMoisture0To7cm?.toDouble(), soilMoisture7To28 = d.avgSoilMoisture7To28cm?.toDouble(),
+                evapotranspiration = d.totalEvapotranspiration?.toDouble(), minTemp = d.minTemp.toDouble(), maxTemp = d.maxTemp.toDouble(), coverage = d.coverage,
+            )
+            }
+            return github.naturewhisp.myco.core.MycoAlgorithms.weatherScore(
+                dayIndex, coreDays, species.toCore(), spunHyphalDensity?.toDouble(),
+                applySpunHyphalBonus = config.applySpunHyphalBonus, usePhenologicalInertia = true, canopyCover = canopyCover ?: 0.0,
+            )
+        }
+
         if (dayIndex < 0 || dayIndex >= allData.size) return 0
 
         val effectiveCanopy = canopyCover?.coerceIn(0.0, 1.0) ?: 0.0
@@ -827,61 +782,15 @@ object MushroomAlgorithms {
         processedData: List<ProcessedDay>,
         effectiveToday: Int
     ): github.naturewhisp.myco.core.SoilHydrologyEvaluation {
-        if (effectiveToday < 0 || processedData.isEmpty()) {
-            return github.naturewhisp.myco.core.SoilHydrologyEvaluation(
-                phiSoil = 1.0,
-                averageSoil0To7 = null,
-                availableDaysCount = 0,
-                isTargetDayPresent = false,
-                diagnosisText = "Dati pedologici non disponibili."
+        val days = processedData.map { d ->
+            github.naturewhisp.myco.core.ProcessedDay(
+                dateIso = d.date, avgTemp = d.avgTemp.toDouble(), totalPrecipMm = d.totalPrecip.toDouble(),
+                avgHumidityPercent = d.avgHumidity.toDouble(), weatherCode = d.weatherCode,
+                soilMoisture0To7 = d.avgSoilMoisture0To7cm?.toDouble(), soilMoisture7To28 = d.avgSoilMoisture7To28cm?.toDouble(),
+                evapotranspiration = d.totalEvapotranspiration?.toDouble(), minTemp = d.minTemp.toDouble(), maxTemp = d.maxTemp.toDouble(), coverage = d.coverage,
             )
         }
-        val targetDay = processedData.getOrNull(effectiveToday)
-        val targetEpoch = targetDay?.let { github.naturewhisp.myco.core.MycoAlgorithms.isoDateToEpochDay(it.date) }
-        val retrospectiveWindow = if (targetEpoch != null) {
-            val dayByEpoch = processedData.mapNotNull { d -> github.naturewhisp.myco.core.MycoAlgorithms.isoDateToEpochDay(d.date)?.let { it to d } }.toMap()
-            listOfNotNull(dayByEpoch[targetEpoch - 2L], dayByEpoch[targetEpoch - 1L], dayByEpoch[targetEpoch])
-        } else {
-            val windowStart = max(0, effectiveToday - 2)
-            processedData.subList(windowStart, effectiveToday + 1)
-        }
-        val isTargetPresent = targetDay?.avgSoilMoisture0To7cm != null
-        val soilValues = retrospectiveWindow.mapNotNull { it.avgSoilMoisture0To7cm?.toDouble() }
-
-        if (soilValues.size < 2) {
-            val text = if (soilValues.isEmpty()) {
-                "Diagnosi idrica non determinabile per assenza di dati pedologici"
-            } else {
-                "Dati pedologici insufficienti (${soilValues.size}/3 giorni nell'orizzonte superficiale)"
-            }
-            return github.naturewhisp.myco.core.SoilHydrologyEvaluation(
-                phiSoil = 1.0,
-                averageSoil0To7 = soilValues.firstOrNull(),
-                availableDaysCount = soilValues.size,
-                isTargetDayPresent = isTargetPresent,
-                diagnosisText = text
-            )
-        }
-
-        val avgSoil0To7 = soilValues.average()
-        val thetaMin = github.naturewhisp.myco.core.ParameterRegistry.SOIL_DROUGHT_MIN_THRESHOLD.value
-        val thetaMax = github.naturewhisp.myco.core.ParameterRegistry.SOIL_DROUGHT_STRESS_THRESHOLD.value
-        val yMin = github.naturewhisp.myco.core.ParameterRegistry.SOIL_FLOOR_FACTOR.value
-        val u = ((avgSoil0To7 - thetaMin) / (thetaMax - thetaMin)).coerceIn(0.0, 1.0)
-        val sU = 3.0 * u * u - 2.0 * u * u * u
-        val phiSoil = yMin + (1.0 - yMin) * sU
-
-        val roundedAvg = (avgSoil0To7 * 100.0).roundToInt() / 100.0
-        val targetNote = if (!isTargetPresent) " (giorno target mancante)" else ""
-        val diagnosisText = "Umidità orizzonte 0–7 cm: ${roundedAvg} m³/m³ (media retrospettiva ${soilValues.size} gg$targetNote)"
-
-        return github.naturewhisp.myco.core.SoilHydrologyEvaluation(
-            phiSoil = phiSoil,
-            averageSoil0To7 = avgSoil0To7,
-            availableDaysCount = soilValues.size,
-            isTargetDayPresent = isTargetPresent,
-            diagnosisText = diagnosisText
-        )
+        return github.naturewhisp.myco.core.MycoAlgorithms.calculateSoilMoistureFactor(days, effectiveToday)
     }
 
     fun calculateDaysSince(days: List<ProcessedDay>, targetIndex: Int, referenceIndex: Int): Int {
@@ -928,113 +837,16 @@ object MushroomAlgorithms {
         species: MushroomSpecies = SPECIES_CATALOG[0],
         dayIndex: Int = 14
     ): GrowthPhaseEvaluation {
-        val effectiveToday = min(dayIndex, processedData.size - 1)
-        if (effectiveToday < 0 || processedData.isEmpty()) {
-            return GrowthPhaseEvaluation(
-                phaseText = "Fase: Dati insufficienti per il calcolo fenologico.",
-                multiplier = 0.25,
-                stage = GrowthStage.WAITING_FOR_RAIN,
-                phiBase = 0.25,
-                phiSoil = 1.0
+        val days = processedData.map { day ->
+            github.naturewhisp.myco.core.ProcessedDay(
+                dateIso = day.date, avgTemp = day.avgTemp.toDouble(), totalPrecipMm = day.totalPrecip.toDouble(),
+                avgHumidityPercent = day.avgHumidity.toDouble(), weatherCode = day.weatherCode,
+                soilMoisture0To7 = day.avgSoilMoisture0To7cm?.toDouble(), soilMoisture7To28 = day.avgSoilMoisture7To28cm?.toDouble(),
+                evapotranspiration = day.totalEvapotranspiration?.toDouble(), minTemp = day.minTemp.toDouble(), maxTemp = day.maxTemp.toDouble(),
+                coverage = day.coverage,
             )
         }
-
-        val soilEval = calculateSoilMoistureFactor(processedData, effectiveToday)
-
-        val tauPeak = species.phenologyLatencyPeakDays
-        val hydrationThreshold = max(2, (0.35 * tauPeak).roundToInt())
-        val incubationThreshold = max(hydrationThreshold + 1, (0.75 * tauPeak).roundToInt())
-        val fruitingThreshold = max(incubationThreshold + 1, (1.35 * tauPeak).roundToInt())
-        val maxLookback = max(0, effectiveToday - (2.5 * tauPeak).roundToInt())
-
-        val candidateEvents = extractCandidateRainEvents(processedData, effectiveToday, maxLookback)
-        if (candidateEvents.isEmpty()) {
-            val finalMultiplier = (0.25 * soilEval.phiSoil).coerceIn(0.05, 1.0)
-            return GrowthPhaseEvaluation(
-                phaseText = "Fase temporale potenziale: Crescita assente (in attesa di precipitazioni).",
-                multiplier = finalMultiplier,
-                daysSinceTrigger = 0,
-                stage = GrowthStage.WAITING_FOR_RAIN,
-                phiBase = 0.25,
-                phiSoil = soilEval.phiSoil
-            )
-        }
-
-        val distinctEvents = clusterRainEvents(candidateEvents, processedData)
-        val recentTrigger = distinctEvents.first()
-        val earlierCandidate = distinctEvents.drop(1).firstOrNull { earlier ->
-            val daysSinceEarlier = calculateDaysSince(processedData, effectiveToday, earlier.triggerIndex)
-            daysSinceEarlier in (hydrationThreshold + 1)..fruitingThreshold && earlier.rainAmount > 15.0f
-        }
-
-        val evalRecent = evaluateStageFromTrigger(
-            activeTrigger = recentTrigger,
-            effectiveToday = effectiveToday,
-            species = species,
-            hydrationThreshold = hydrationThreshold,
-            incubationThreshold = incubationThreshold,
-            fruitingThreshold = fruitingThreshold,
-            tauPeak = tauPeak,
-            processedData = processedData
-        )
-
-        val baseEval: GrowthPhaseEvaluation
-        val activeTriggerForDrought: RainTrigger
-
-        if (earlierCandidate == null) {
-            baseEval = evalRecent
-            activeTriggerForDrought = recentTrigger
-        } else {
-            val evalEarlier = evaluateStageFromTrigger(
-                activeTrigger = earlierCandidate,
-                effectiveToday = effectiveToday,
-                species = species,
-                hydrationThreshold = hydrationThreshold,
-                incubationThreshold = incubationThreshold,
-                fruitingThreshold = fruitingThreshold,
-                tauPeak = tauPeak,
-                processedData = processedData
-            )
-
-            // Raccordo continuo Lipschitziano (F04 / REG-03) e modulazione saturazione continua (C1)
-            val saturationFactor = smoothstep(15.0, 25.0, earlierCandidate.rainAmount.toDouble())
-            val ratio = (recentTrigger.rainAmount / earlierCandidate.rainAmount.coerceAtLeast(1.0f)).toDouble()
-            val transition = smoothstep(0.50, 0.90, ratio)
-            val weightEarlier = (1.0 - transition) * saturationFactor
-            val blendedMultiplier = weightEarlier * evalEarlier.multiplier + (1.0 - weightEarlier) * evalRecent.multiplier
-
-            baseEval = if (weightEarlier >= 0.5) {
-                evalEarlier.copy(multiplier = blendedMultiplier)
-            } else {
-                evalRecent.copy(multiplier = blendedMultiplier)
-            }
-            activeTriggerForDrought = if (weightEarlier >= 0.5) earlierCandidate else recentTrigger
-        }
-
-        // 5. Fattore Continuo di Disponibilità Idrica Pedologica Superficiale (RES-03 / C1 EXPERT_PRIOR)
-        val finalMultiplier = (baseEval.multiplier * soilEval.phiSoil).coerceIn(0.05, 1.0)
-        return if (soilEval.phiSoil <= 0.50) {
-            baseEval.copy(
-                phaseText = "Fase temporale potenziale: Stress idrico e disseccamento superficiale (sviluppo potenzialmente limitato).",
-                multiplier = finalMultiplier,
-                stage = GrowthStage.WANING,
-                phiBase = baseEval.multiplier,
-                phiSoil = soilEval.phiSoil
-            )
-        } else if (soilEval.phiSoil < 0.85) {
-            baseEval.copy(
-                phaseText = "${baseEval.phaseText} • Rallentamento per deficit idrico superficiale.",
-                multiplier = finalMultiplier,
-                phiBase = baseEval.multiplier,
-                phiSoil = soilEval.phiSoil
-            )
-        } else {
-            baseEval.copy(
-                multiplier = finalMultiplier,
-                phiBase = baseEval.multiplier,
-                phiSoil = soilEval.phiSoil
-            )
-        }
+        return github.naturewhisp.myco.core.MycoAlgorithms.evaluateGrowthPhase(days, species.toCore(), dayIndex)
     }
 
     internal fun extractCandidateRainEvents(
@@ -1625,21 +1437,7 @@ object MushroomAlgorithms {
      * @return Risposta termica cardinale normalizzata in [0.0, 1.0].
      */
     fun ctmi(temp: Double, tMin: Double, tOpt: Double, tMax: Double): Double {
-        if (tMin >= tOpt || tOpt >= tMax) return 0.0
-        if (temp <= tMin || temp >= tMax) return 0.0
-
-        val spanMin = tOpt - tMin
-        val spanMax = tMax - tOpt
-        val x = (temp - tMin) / spanMin
-        val y = (tMax - temp) / spanMax
-
-        return if (spanMin <= spanMax) {
-            val alpha = spanMax / spanMin
-            (x * Math.pow(y, alpha)).coerceIn(0.0, 1.0)
-        } else {
-            val beta = spanMin / spanMax
-            (Math.pow(x, beta) * y).coerceIn(0.0, 1.0)
-        }
+        return github.naturewhisp.myco.core.MycoAlgorithms.ctmi(temp, tMin, tOpt, tMax)
     }
 
     /**
@@ -1733,51 +1531,7 @@ object MushroomAlgorithms {
      * @return Punteggio continuo normalizzato [0.0, 1.0]. Se entrambi gli orizzonti sono nulli, restituisce 1.0 (neutro).
      */
     fun soilMoistureScoreSmooth(m0To7: Double?, m7To28: Double?, et0: Double? = null): Double {
-        if (m0To7 == null && m7To28 == null) return 1.0
-
-        // Calcolo continuo orizzonte superficiale 0-7 cm (induzione e idratazione primordiale)
-        // Capacità di campo ottimale 0.22..0.38 m³/m³; decadimento per asfissia oltre 0.38 m³/m³,
-        // raggiungendo 0.50 a 0.44 m³/m³ e il pavimento biologico 0.15 a 0.52 m³/m³.
-        val s0To7 = if (m0To7 != null) {
-            when {
-                m0To7 < 0.10 -> 0.10
-                m0To7 in 0.10..0.22 -> 0.10 + 0.90 * smoothstep(0.10, 0.22, m0To7)
-                m0To7 in 0.22..0.38 -> 1.0
-                m0To7 in 0.38..0.44 -> 1.0 - 0.50 * smoothstep(0.38, 0.44, m0To7)
-                m0To7 in 0.44..0.52 -> 0.50 - 0.35 * smoothstep(0.44, 0.52, m0To7)
-                else -> 0.15
-            }
-        } else null
-
-        // Calcolo continuo orizzonte profondo 7-28 cm (rete ifale perenne e assorbimento)
-        // Saturazione prolungata oltre 0.42 m³/m³ induce stasi respiratoria radicale e miceliare.
-        val s7To28 = if (m7To28 != null) {
-            when {
-                m7To28 < 0.12 -> 0.20
-                m7To28 in 0.12..0.20 -> 0.20 + 0.80 * smoothstep(0.12, 0.20, m7To28)
-                m7To28 in 0.20..0.35 -> 1.0
-                m7To28 in 0.35..0.42 -> 1.0 - 0.45 * smoothstep(0.35, 0.42, m7To28)
-                m7To28 in 0.42..0.50 -> 0.55 - 0.35 * smoothstep(0.42, 0.50, m7To28)
-                else -> 0.20
-            }
-        } else null
-
-        val baseSoilScore = when {
-            s0To7 != null && s7To28 != null -> 0.55 * s0To7 + 0.45 * s7To28
-            s0To7 != null -> s0To7
-            s7To28 != null -> s7To28
-            else -> 1.0
-        }
-
-        // Modulazione evapotraspirativa: vento secco e forte insolazione (ET0 > 3.0 mm/die) accentuano il disseccamento
-        val etMod = if (et0 != null && et0 > 3.0) {
-            val excess = (et0 - 3.0).coerceIn(0.0, 3.0) / 3.0
-            1.0 - (0.15 * excess)
-        } else {
-            1.0
-        }
-
-        return (baseSoilScore * etMod).coerceIn(0.0, 1.0)
+        return github.naturewhisp.myco.core.MycoAlgorithms.soilMoistureResponse(m0To7, m7To28, et0)
     }
 
     /**
@@ -1788,25 +1542,7 @@ object MushroomAlgorithms {
      * @return [ScoreResult] con punteggio continuo (0.4..1.0) e descrizione della fascia altimetrica.
      */
     fun calculateSpeciesAltitudeScore(elevation: Float, species: MushroomSpecies): ScoreResult {
-        val score = when {
-            elevation < species.minElevation -> {
-                val decay = smoothstep((species.minElevation - 100.0), species.minElevation.toDouble(), elevation.toDouble())
-                0.40 + 0.20 * decay
-            }
-            elevation > species.maxElevation -> {
-                val decay = 1.0 - smoothstep(species.maxElevation.toDouble(), (species.maxElevation + 100.0), elevation.toDouble())
-                0.40 + 0.20 * decay
-            }
-            elevation in species.idealElevationMin.toFloat()..species.idealElevationMax.toFloat() -> 1.0
-            elevation < species.idealElevationMin -> {
-                val span = species.idealElevationMin - species.minElevation
-                if (span > 0) 0.60 + 0.40 * ((elevation - species.minElevation).toDouble() / span) else 0.60
-            }
-            else -> {
-                val span = species.maxElevation - species.idealElevationMax
-                if (span > 0) 0.60 + 0.40 * ((species.maxElevation - elevation).toDouble() / span) else 0.60
-            }
-        }.coerceIn(0.0, 1.0)
+        val score = github.naturewhisp.myco.core.MycoAlgorithms.altitudeScore(elevation.toDouble(), species.toCore())
 
         val desc = when {
             score >= 0.95 -> "Fascia ottimale"
@@ -1879,19 +1615,7 @@ object MushroomAlgorithms {
         canopyCover: Double,
         species: MushroomSpecies = SPECIES_CATALOG[0]
     ): Double {
-        if (species.category == EcologicalCategory.SAPROTROPHIC) {
-            return 1.0
-        }
-        val g = canopyCoverToBasalArea(canopyCover)
-        val gOpt = species.optimalBasalAreaM2Ha.toDouble()
-        if (g <= 0.5 || gOpt <= 0.5) return 0.65
-
-        val u = kotlin.math.sqrt(g / gOpt)
-        val deltaPhi = 2.0 * (kotlin.math.ln(u) - u + 1.0)
-        val gamma = 0.75
-        val factor = 0.65 + 0.35 * kotlin.math.exp(gamma * deltaPhi)
-
-        return factor.coerceIn(0.65, 1.0)
+        return github.naturewhisp.myco.core.MycoAlgorithms.standDensityResponseUnimodal(canopyCover, species.toCore())
     }
 
     /**

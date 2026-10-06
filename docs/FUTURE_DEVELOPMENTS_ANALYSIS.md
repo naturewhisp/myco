@@ -8,6 +8,28 @@
 
 ---
 
+## Aggiornamento operativo — 6 ottobre 2026
+
+La matrice seguente aggiorna gli stati storici RES/C/REV e prevale sulle precedenti dichiarazioni di chiusura. Dettagli ed evidenze: [Bonifica operativa](revisioni/Bonifica_operativa_2026-10-06.md).
+
+| Ambito | Stato attuale | Criterio residuo di rilascio |
+|---|---|---|
+| Meteo/calendario e qualità | Implementato; test Android/core passati | XCTest degli stessi JSON su macOS |
+| Habitat/geometrie e cambio specie | Evidenze indipendenti, poligoni e fattore condiviso implementati | Verifica nativa Swift e confronto dei fattori |
+| Raccordi e trigger pluviometrici | Raccordi C1, monotonia e regressioni verificati localmente | Sensibilità/calibrazione di campo dei prior, distinta dalla correttezza matematica |
+| Cache/preferenze | Lettura legacy conservata; habitat v2 riacquisisce evidenze | Nessuna migrazione dai vecchi punteggi alle nuove geometrie |
+| Mindino (RES-03) | Payload originale recuperato con hash verificato; **ricostruzione aperta** | Traccia originale specie/modalità/habitat indisponibile; nessuna certificazione storica |
+| Android/core | Build, unit test, lint e contratti passati; seconda revisione **OK**, Pixel ricollaudato sulle tre guild | Ciclo di correzione e collaudo concluso; evidenze nell'audit post-review |
+| iOS | Adapter e fixture aggiornati; core iOS compila; contratti statici passati | **Build app e XCTest su macOS non ancora eseguiti** |
+
+Piano di rilascio: completare il controllo dispositivo e la revisione read-only, poi validare su macOS il medesimo snapshot prima di dichiarare chiusa la bonifica multipiattaforma. Il Percorso A resta un indice euristico; nessun nuovo modello di rugiada o bilancio idrico.
+
+Follow-up della revisione: corretti il payload inesistente nel test Swift e l'uso delle superfici con anelli irrisolti. La seconda verifica locale passa (236 test Android, 49 core); stato della chiusura: revisione ripetuta e nuovo collaudo dispositivo richiesti.
+
+Seconda revisione: **OK**, nessun ulteriore rilievo actionable. Nuovo collaudo sull'APK corretto registrato separatamente in `device-post-review`; la certificazione nativa iOS resta aperta su macOS.
+
+Collaudo conclusivo Pixel completato: stesso APK corretto, tre guild esercitate, preferito Mindino e specie originale ripristinati, logcat senza crash applicativi. Il fallback prospettive assenti rimane verificato automaticamente, non esercitato manualmente con i dati disponibili.
+
 ## 1. Executive Summary & Profilo di Salute del Codebase
 
 ### 1.1 Sintesi Esecutiva
@@ -1098,6 +1120,3 @@ In risposta alla revisione approfondita post-commit `67b5362` documentata in `do
 | **C09** | **P2** | Heatmap cartografica dipendente dalla quota puntuale; stato del layer non consumato dalla UI. | Decoupling completo del raster cartografico dalla quota del cursore (`altitudeScore = 1.0`), preservando la natura di mappa di potenziale biogeografico/simbiotico stazionario; esposto `HeatmapLayerStatus` e integrato banner informativo esplicito per gilde non supportate (`UNAVAILABLE_GUILD_NOT_SUPPORTED`). | **VERIFICATO & RISOLTO** |
 | **C10** | **P1** | Test sintetici presentati come parità end-to-end senza collaudo del codice di produzione. | Aggiornato `MindinoHydrologyAndC1ContinuityTest.kt` a invocare direttamente `MushroomAlgorithms.calculateSoilMoistureFactor` e la catena di produzione; verificati i confini a 5 giorni del chilling e la presenza di `effectiveRainMm` nel fattore `PRECIPITATION`. | **VERIFICATO & RISOLTO** |
 | **C11** | **P2** | Incoerenza tra chiusure documentali e ricostruzione storica Mindino. | Formalizzata la ricostruzione storica del caso Mindino (29 settembre 2026, 29/100) come **ricostruzione aperta** (*open reconstruction*), non potendosi escludere discrepanze nei payload originari non tracciati; tutti i parametri euristici esplicitamente catalogati come `EXPERT_PRIOR`. | **VERIFICATO & RISOLTO** |
-
-
-

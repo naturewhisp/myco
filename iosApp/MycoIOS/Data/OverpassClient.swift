@@ -220,7 +220,14 @@ struct OverpassClient: Sendable {
 
         // Shared core produces 0.95 for open habitats with meadowFraction >= 0.25 (saprotrophic scoring contract)
         let score = evaluation.baseScore
-        let description = evaluation.baseText
+        let cleanText = evaluation.baseText.replacingOccurrences(of: "Habitat: ", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let description: String
+        if let bonus = evaluation.bonusText, !bonus.isEmpty, !bonus.hasPrefix("Nessuna essenza") {
+            let cleanBonus = bonus.replacingOccurrences(of: "Bonus: ", with: "").replacingOccurrences(of: "Bonus SPUN: ", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+            description = "\(cleanText) • \(cleanBonus)"
+        } else {
+            description = cleanText
+        }
         let canopyCover = evidence.forestCoverFraction
         let proximityIndex = evidence.forestCoverFraction
 

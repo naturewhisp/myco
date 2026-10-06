@@ -355,7 +355,7 @@ class MycoAnalysisEngine {
             windows.averageEt0,
         )
         return buildList {
-            add(factor(FactorId.TEMPERATURE, "Temperatura media", oneDecimal(windows.averageTempWindowC) + " °C", MycoAlgorithms.temperatureResponse(windows.averageTempWindowC, species), "Intervallo specifico della specie"))
+            add(factor(FactorId.TEMPERATURE, "Temperatura media", oneDecimal(windows.averageTempWindowC) + " °C", MycoAlgorithms.temperatureResponse(windows.averageTempWindowC, species), "Ottimale ${species.idealTempMin.toInt()}–${species.idealTempMax.toInt()} °C (tollerata ${species.toleratedTempMin.toInt()}–${species.toleratedTempMax.toInt()} °C)"))
             // C03: Usare la reale convoluzione per latenza fenologica f(tau) over 26 gg
             add(factor(FactorId.PRECIPITATION, "Apporto ponderato per latenza", effectiveRainMm.roundToIntText() + " mm ponderati", MycoAlgorithms.rainResponse(effectiveRainMm, species), "Indicatore fenologico temporale; non misura la riserva idrica residua nel suolo"))
             add(factor(FactorId.HUMIDITY, "Umidità relativa", windows.averageHumidityWindowPercent.roundToIntText() + "%", MycoAlgorithms.humidityResponse(windows.averageHumidityWindowPercent), "Aria prossima alla lettiera", favorable = 0.7))
@@ -366,10 +366,25 @@ class MycoAnalysisEngine {
             // Mostrare separatamente prossimità forestale e idoneità ecologica (D03 / Issue 3)
             val habLabel = if (species.category == EcologicalCategory.SAPROTROPHIC) "Idoneità suolo/margine" else "Idoneità ecologica habitat"
             val habValue = (habitat * 100).roundToIntText() + "/100"
-            add(factor(FactorId.HABITAT, habLabel, habValue, habitat, input.habitatDescription, favorable = 0.85, neutral = 0.5))
+            val rawHabDesc = input.habitatDescription.removePrefix("Habitat: ").trim()
+            val finalHabDesc = if (rawHabDesc.isEmpty() || rawHabDesc == "KNOWN_SUITABLE" || rawHabDesc == "UNKNOWN" || rawHabDesc == "KNOWN_UNSUITABLE") {
+                when {
+                    habitat >= 0.85 -> "Condizioni forestali e vegetazionali favorevoli."
+                    habitat >= 0.50 -> "Copertura forestale mista o moderata."
+                    else -> "Copertura vegetazionale scarsa o non ideale."
+                }
+            } else {
+                rawHabDesc
+            }
+            add(factor(FactorId.HABITAT, habLabel, habValue, habitat, finalHabDesc, favorable = 0.85, neutral = 0.5))
             val proxValue = (input.forestProximityIndex * 100).roundToIntText() + "/100"
             add(factor(FactorId.FOREST_PROXIMITY, "Indice di prossimità forestale", proxValue, input.forestProximityIndex, "Copertura stazionale OSM (settori a 8 spicchi)", favorable = 0.70, neutral = 0.40))
-            add(factor(FactorId.ALTITUDE, "Fascia altimetrica", terrain.elevation.roundToIntText() + " m", altitude, species.fruitingPeriodDescription, favorable = 0.85, neutral = 0.6))
+            val altDesc = when {
+                altitude >= 0.85 -> "Fascia ottimale (${species.idealElevationMin}–${species.idealElevationMax} m s.l.m.)"
+                altitude >= 0.50 -> "Intervallo compatibile (${species.idealElevationMin}–${species.idealElevationMax} m s.l.m.)"
+                else -> "Fuori dalla fascia ideale (${species.idealElevationMin}–${species.idealElevationMax} m s.l.m.)"
+            }
+            add(factor(FactorId.ALTITUDE, "Fascia altimetrica", terrain.elevation.roundToIntText() + " m", altitude, altDesc, favorable = 0.85, neutral = 0.6))
             add(factor(FactorId.SEASONALITY, "Finestra fenologica", (seasonality * 100).roundToIntText() + "%", seasonality, species.fruitingPeriodDescription, favorable = 0.85, neutral = 0.5))
             add(
                 Factor(
@@ -441,14 +456,29 @@ class MycoAnalysisEngine {
             windows.averageEt0,
         )
         return buildList {
-            add(factor(FactorId.TEMPERATURE, "Temperatura media", oneDecimal(windows.averageTempWindowC) + " °C", MycoAlgorithms.temperatureResponse(windows.averageTempWindowC, species), "Intervallo specifico della specie"))
+            add(factor(FactorId.TEMPERATURE, "Temperatura media", oneDecimal(windows.averageTempWindowC) + " °C", MycoAlgorithms.temperatureResponse(windows.averageTempWindowC, species), "Ottimale ${species.idealTempMin.toInt()}–${species.idealTempMax.toInt()} °C (tollerata ${species.toleratedTempMin.toInt()}–${species.toleratedTempMax.toInt()} °C)"))
             // C03: In legacy il cumulato rettangolare è esplicitamente indicato
             add(factor(FactorId.PRECIPITATION, "Precipitazioni finestra recente (legacy)", windows.rainWindowTotalMm.roundToIntText() + " mm", MycoAlgorithms.rainResponse(windows.rainWindowTotalMm, species), "Finestra rettangolare [t-10, t-2)"))
             add(factor(FactorId.HUMIDITY, "Umidità relativa", windows.averageHumidityWindowPercent.roundToIntText() + "%", MycoAlgorithms.humidityResponse(windows.averageHumidityWindowPercent), "Aria prossima alla lettiera", favorable = 0.7))
             if (windows.averageSoil0To7 != null || windows.averageSoil7To28 != null) add(factor(FactorId.SOIL_MOISTURE, "Idratazione suolo", oneDecimal(windows.averageSoil0To7 ?: windows.averageSoil7To28 ?: 0.0) + " m³/m³", soil, "Orizzonti 0-7 e 7-28 cm", neutral = 0.45))
             val habLabel = if (species.category == EcologicalCategory.SAPROTROPHIC) "Idoneità suolo/margine" else "Copertura forestale"
-            add(factor(FactorId.HABITAT, habLabel, (habitat * 100).roundToIntText() + "%", habitat, input.habitatDescription, favorable = 0.85, neutral = 0.5))
-            add(factor(FactorId.ALTITUDE, "Fascia altimetrica", terrain.elevation.roundToIntText() + " m", altitude, species.fruitingPeriodDescription, favorable = 0.85, neutral = 0.6))
+            val rawHabDesc = input.habitatDescription.removePrefix("Habitat: ").trim()
+            val finalHabDesc = if (rawHabDesc.isEmpty() || rawHabDesc == "KNOWN_SUITABLE" || rawHabDesc == "UNKNOWN" || rawHabDesc == "KNOWN_UNSUITABLE") {
+                when {
+                    habitat >= 0.85 -> "Condizioni forestali e vegetazionali favorevoli."
+                    habitat >= 0.50 -> "Copertura forestale mista o moderata."
+                    else -> "Copertura vegetazionale scarsa o non ideale."
+                }
+            } else {
+                rawHabDesc
+            }
+            add(factor(FactorId.HABITAT, habLabel, (habitat * 100).roundToIntText() + "%", habitat, finalHabDesc, favorable = 0.85, neutral = 0.5))
+            val altDesc = when {
+                altitude >= 0.85 -> "Fascia ottimale (${species.idealElevationMin}–${species.idealElevationMax} m s.l.m.)"
+                altitude >= 0.50 -> "Intervallo compatibile (${species.idealElevationMin}–${species.idealElevationMax} m s.l.m.)"
+                else -> "Fuori dalla fascia ideale (${species.idealElevationMin}–${species.idealElevationMax} m s.l.m.)"
+            }
+            add(factor(FactorId.ALTITUDE, "Fascia altimetrica", terrain.elevation.roundToIntText() + " m", altitude, altDesc, favorable = 0.85, neutral = 0.6))
             add(factor(FactorId.SEASONALITY, "Finestra fenologica", (seasonality * 100).roundToIntText() + "%", seasonality, species.fruitingPeriodDescription, favorable = 0.85, neutral = 0.5))
         }
     }

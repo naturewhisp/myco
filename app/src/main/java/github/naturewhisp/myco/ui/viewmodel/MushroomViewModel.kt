@@ -489,6 +489,13 @@ class MushroomViewModel(
             spunEcmRichness = lastSpunData?.ecmRichness?.toDouble()
         )
         val baseHabitatScore = habEval.baseScore
+        val cleanHabText = habEval.baseText.removePrefix("Habitat: ").trim()
+        val detailedHabDesc = if (!habEval.bonusText.isNullOrBlank() && !habEval.bonusText.startsWith("Nessuna essenza")) {
+            val cleanBonus = habEval.bonusText.removePrefix("Bonus: ").removePrefix("Bonus SPUN: ").trim()
+            "$cleanHabText • $cleanBonus"
+        } else {
+            cleanHabText
+        }
 
         val coreDays = days.map { d ->
             github.naturewhisp.myco.core.ProcessedDay(
@@ -510,7 +517,7 @@ class MushroomViewModel(
             todayIndex = todayIndex,
             speciesId = species.id,
             habitatScore = baseHabitatScore,
-            habitatDescription = evidence.status.name,
+            habitatDescription = detailedHabDesc,
             canopyTypes = evidence.confirmedHostGenera.toList(),
             elevationSamples = lastTerrainData?.getOrSynthesizeRawElevations() ?: listOf(lastElevation.toDouble()),
             monthIndex = lastCurrentMonth,

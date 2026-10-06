@@ -187,12 +187,15 @@ def main() -> int:
         "AppleMapsNavigator.swift",
         "GeoCoordinates+CoreLocation.swift",
         "MapView.swift",
+        "HeatmapImageConverterTests.swift",
     }
     for swift_file in swift_files:
         if swift_file.name not in allowed_core_location_files:
             content = swift_file.read_text(encoding="utf-8")
             if re.search(r'^\s*(?:@\w+\s+)?import\s+CoreLocation\b', content, re.MULTILINE):
                 errors.append(f"{swift_file.name}: violates architectural isolation by importing CoreLocation outside allowed platform adapters")
+            if "CLLocationCoordinate2D" in content:
+                errors.append(f"{swift_file.name}: references CLLocationCoordinate2D outside allowed platform adapters, use GeoCoordinates instead")
 
     # 15. Verify Sendable conformance for KMP classes in Swift 6
     geo_bridge_file = ios_dir / "MycoIOS" / "Platform" / "GeoCoordinates+CoreLocation.swift"

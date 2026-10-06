@@ -171,7 +171,7 @@ final class MycoViewModel: ObservableObject {
     }
 
     func selectSavedPlace(_ place: SavedPlaceValue) {
-        select(coordinate: CLLocationCoordinate2D(latitude: place.latitude, longitude: place.longitude), name: place.name)
+        select(coordinate: GeoCoordinates(latitude: place.latitude, longitude: place.longitude), name: place.name)
     }
 
     func toggleFavorite() {

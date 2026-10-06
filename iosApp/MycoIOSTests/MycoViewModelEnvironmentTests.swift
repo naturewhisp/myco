@@ -1,4 +1,5 @@
 import CoreLocation
+import MycoCore
 import SwiftData
 import XCTest
 @testable import MycoIOS

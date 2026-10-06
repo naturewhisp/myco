@@ -143,6 +143,12 @@ def main() -> int:
         if wildcard_closure_pattern.search(content):
             errors.append(f"{swift_file.name}: contains invalid Swift syntax '{{ _ in ... $0 }}'")
 
+    # 10. Check that any Swift file referencing AnalysisResult imports MycoCore
+    for swift_file in swift_files:
+        content = swift_file.read_text(encoding="utf-8")
+        if re.search(r'\bAnalysisResult\b', content) and "import MycoCore" not in content:
+            errors.append(f"{swift_file.name}: references AnalysisResult but does not import MycoCore")
+
     if errors:
         print("\n[FAIL] Cross-platform contract parity check failed with errors:")
         for err in errors:

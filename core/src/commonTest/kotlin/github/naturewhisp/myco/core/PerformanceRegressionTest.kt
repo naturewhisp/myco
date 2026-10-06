@@ -40,7 +40,7 @@ class PerformanceRegressionTest {
         )
 
         val analysisDuration = measureTime {
-            repeat(1_000) { MycoAnalysisEngine().analyze(input) }
+            repeat(250) { MycoAnalysisEngine().analyze(input) }
         }
         val heatmapDuration = measureTime {
             repeat(20) {

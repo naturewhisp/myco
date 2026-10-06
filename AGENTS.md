@@ -220,6 +220,13 @@ docs/
 - **Hourly Weather Mock Fixture Completeness (24-Hour Coverage Invariance)**:
   - Tutte le fixture di test e i payload mock meteorologici (in `MycoIOSTests` e nelle suite KMP/JVM) devono generare serie orarie che coprono **tutte le 24 ore di ogni giorno del calendario gregoriano** nel fuso della località (`Europe/Rome`), inclusi gli offset corretti per transizioni di ora legale/solare (23/25 ore).
   - È severamente vietato fornire serie orarie sintetiche con timestamp singoli o parziali (es. `["T12:00"]`), poiché attivano la protezione di incompletezza (`ExpectedDayHours`), degradando il risultato a `isCalculable = false` e svuotando la lista dei fattori calcolati, causando falsi fallimenti nei test asincroni della UI o del ViewModel.
+- **Resilienza dei Benchmark di Performance in Ambienti Virtualizzati (No Wall-Clock Flakiness)**:
+  - Nelle suite di test automatizzate multipiattaforma (in particolare test eseguiti su simulatori/emulatori o in modalità Debug non ottimizzata, come `:core:iosSimulatorArm64Test`), i test di regressione delle prestazioni **non devono mai imporre soglie wall-clock fragili o al limite del millisecondo** (es. 1.000 iterazioni con tetto rigido a `< 5.0` secondi).
+  - Su runner cloud condivisi (GitHub Actions macOS/Linux VM), le fluttuazioni di scheduling delle vCPU provocano jitter fisiologici di 200–500 ms che fanno fallire falsamente test puramente matematici.
+  - I test di benchmark devono:
+    1. Dimensionare il numero di iterazioni a un carico rappresentativo per l'uso interattivo reale (es. 200–250 iterazioni per ricalcoli UI, anziché carichi stress da micro-benchmark sintetico);
+    2. Adottare margini di sicurezza temporali (headroom $\ge 2\times$ del tempo medio) per assorbire il rumore di fondo dei runner cloud;
+    3. Servire esclusivamente a intercettare vere regressioni asintotiche di complessità algoritmica ($O(N^2)$, ricorsioni infinite o loop non terminanti), non a misurare micro-ottimizzazioni di clock.
 
 ### 4.12 CI / GitHub Actions Configuration Standard
 - **Android SDK Setup Action (`setup-android@v3`)**: Whenever `android-actions/setup-android@v3` is referenced in `.github/workflows/*.yml`, agents must explicitly set `with: packages: ''` to prevent fatal failures caused by Google's permanent removal of the deprecated legacy `tools` package from `dl.google.com`. Required SDK components (`platforms`, `build-tools`, `cmdline-tools`) must be installed explicitly via subsequent `sdkmanager` steps.

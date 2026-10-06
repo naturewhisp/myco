@@ -37,6 +37,7 @@ enum class FactorId {
     SLOPE,
     SPUN_ECM,
     SPUN_HYPHAL,
+    FOREST_PROXIMITY,
 }
 
 enum class FactorLevel { FAVORABLE, NEUTRAL, ADVERSE, INFORMATIVE }
@@ -94,6 +95,16 @@ data class HabitatEvidence(
         )
     }
 }
+
+data class OsmHabitatElement(
+    val lat: Double?,
+    val lon: Double?,
+    val isWoodOrForest: Boolean,
+    val isMeadowOrGrass: Boolean,
+    val isUrbanOrBuilt: Boolean,
+    val genus: String?,
+    val leafType: String? = null,
+)
 
 data class SpeciesHabitatEvaluation(
     val score: Double,
@@ -402,6 +413,7 @@ enum class DataQualityStatus {
     OPTIMAL,
     DEGRADED_PARTIAL_SOIL,
     DEGRADED_MISSING_SOIL,
+    DEGRADED_INCOMPLETE_WEATHER,
     DEGRADED_OUT_OF_BOUNDS,
 }
 

@@ -97,6 +97,30 @@ class MindinoEmpiricalReplayTest {
     }
 
     @Test
+    fun replayCondition1b_unknownHabitatProducesNeutralScore() {
+        val days = buildMindinoEmpiricalDays()
+        val input = AnalysisInputs(
+            days = days,
+            todayIndex = 23,
+            speciesId = "boletus_edulis",
+            habitatScore = 0.50,
+            habitatDescription = "Dati geografici non disponibili",
+            canopyTypes = emptyList(),
+            elevationSamples = listOf(902.0, 915.0, 890.0, 905.0, 898.0),
+            monthIndex = 8,
+            spunEcmRichness = null,
+            spunHyphalDensity = null,
+            missingSources = listOf("SPUN"),
+            canopyCover = 0.0,
+            forestProximityIndex = 0.0,
+        )
+
+        val result = MycoAnalysisEngine().analyze(input)
+        assertTrue(result.isCalculable)
+        assertTrue(result.probability in 20..45, "UNKNOWN habitat must produce neutral/moderate suitability, got ${result.probability}")
+    }
+
+    @Test
     fun replayCondition2_counterfactualSevereDroughtAbortsFruiting() {
         // Same rain events and temperatures, but hypothetical severe superficial soil drought (0.14 m³/m³)
         val dryDays = buildMindinoEmpiricalDays().map { day ->

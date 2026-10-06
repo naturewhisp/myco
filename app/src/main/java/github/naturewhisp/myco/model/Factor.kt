@@ -27,7 +27,9 @@ enum class FactorId {
     /** Ricchezza tassonomica di funghi ectomicorrizici nel suolo (SPUN). */
     SPUN_ECM,
     /** Densità della biomassa ifale sotterranea in m/cm³ (SPUN). */
-    SPUN_HYPHAL
+    SPUN_HYPHAL,
+    /** Indice di prossimità forestale e copertura stazionale OpenStreetMap. */
+    FOREST_PROXIMITY
 }
 
 /**

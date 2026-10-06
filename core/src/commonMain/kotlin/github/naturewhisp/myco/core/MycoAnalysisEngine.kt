@@ -62,14 +62,21 @@ class MycoAnalysisEngine {
         }
         val current = bufferedDays.getOrNull(todayIndex) ?: emptyDay()
 
-        // 2. Diagnosi idrica pedologica condivisa C1 (C06)
+        // 2. Diagnosi idrica pedologica condivisa C1 (C06) e copertura finestre temporali
         val soilEval = MycoAlgorithms.calculateSoilMoistureFactor(bufferedDays, todayIndex)
+        val windows = EnvironmentalWindows.derive(bufferedDays, todayIndex)
         if (soilEval.availableDaysCount < 2) {
             if (dataQuality == DataQualityStatus.OPTIMAL) {
                 dataQuality = DataQualityStatus.DEGRADED_MISSING_SOIL
             }
         } else if (soilEval.availableDaysCount == 2 && dataQuality == DataQualityStatus.OPTIMAL) {
             dataQuality = DataQualityStatus.DEGRADED_PARTIAL_SOIL
+        }
+        if (dataQuality == DataQualityStatus.OPTIMAL) {
+            val targetEpoch = MycoAlgorithms.isoDateToEpochDay(current.dateIso)
+            if (targetEpoch != null && (windows.temperatureAvailableDays < 3 || windows.rainAvailableDays < 4 || windows.humidityAvailableDays < 2)) {
+                dataQuality = DataQualityStatus.DEGRADED_INCOMPLETE_WEATHER
+            }
         }
         val waterDiagnosis = soilEval.diagnosisText
 
@@ -101,9 +108,9 @@ class MycoAnalysisEngine {
                 }
             }
             if (bonusMult > 1.0 && probabilityHabitatScore < 0.90) {
-                probabilityHabitatScore = minOf(1.0, probabilityHabitatScore * bonusMult)
-            } else if (bonusMult < 1.0 && probabilityHabitatScore > 0.1) {
-                probabilityHabitatScore = maxOf(0.2, probabilityHabitatScore * bonusMult)
+                probabilityHabitatScore = MycoAlgorithms.applyHabitatBonusPenalty(probabilityHabitatScore, bonusMult)
+            } else if (bonusMult < 1.0) {
+                probabilityHabitatScore = MycoAlgorithms.applyHabitatBonusPenalty(probabilityHabitatScore, bonusMult)
             }
         }
         val displayHabitatFactorScore = if (isWeatherOnly) {
@@ -141,7 +148,6 @@ class MycoAnalysisEngine {
         )
 
         val effectiveRain = MycoAlgorithms.calculateEffectiveRainfall(todayIndex, bufferedDays, species)
-        val windows = EnvironmentalWindows.derive(bufferedDays, todayIndex)
         val factors = factors(
             input = input,
             windows = windows,
@@ -256,7 +262,7 @@ class MycoAnalysisEngine {
         input.spunEcmRichness?.let { richness ->
             probabilityHabitatScore = when {
                 richness >= 50.0 -> minOf(1.0, probabilityHabitatScore * 1.15)
-                richness < 15.0 && input.habitatScore > 0.1 -> max(0.2, probabilityHabitatScore * 0.8)
+                richness < 15.0 && input.habitatScore > 0.1 -> MycoAlgorithms.applyHabitatBonusPenalty(probabilityHabitatScore, 0.8)
                 else -> probabilityHabitatScore
             }
         }
@@ -357,10 +363,12 @@ class MycoAnalysisEngine {
                 val soilVal = windows.averageSoil0To7 ?: windows.averageSoil7To28 ?: 0.0
                 add(factor(FactorId.SOIL_MOISTURE, "Idratazione suolo", twoDecimals(soilVal) + " m³/m³", soil, "Orizzonti 0-7 e 7-28 cm", neutral = 0.45))
             }
-            // C04: Etichetta "Indice di prossimità forestale" e formato /100 invece di "% copertura"
-            val habLabel = if (species.category == EcologicalCategory.SAPROTROPHIC) "Idoneità suolo/margine" else "Indice di prossimità forestale"
+            // Mostrare separatamente prossimità forestale e idoneità ecologica (D03 / Issue 3)
+            val habLabel = if (species.category == EcologicalCategory.SAPROTROPHIC) "Idoneità suolo/margine" else "Idoneità ecologica habitat"
             val habValue = (habitat * 100).roundToIntText() + "/100"
             add(factor(FactorId.HABITAT, habLabel, habValue, habitat, input.habitatDescription, favorable = 0.85, neutral = 0.5))
+            val proxValue = (input.forestProximityIndex * 100).roundToIntText() + "/100"
+            add(factor(FactorId.FOREST_PROXIMITY, "Indice di prossimità forestale", proxValue, input.forestProximityIndex, "Copertura stazionale OSM (settori a 8 spicchi)", favorable = 0.70, neutral = 0.40))
             add(factor(FactorId.ALTITUDE, "Fascia altimetrica", terrain.elevation.roundToIntText() + " m", altitude, species.fruitingPeriodDescription, favorable = 0.85, neutral = 0.6))
             add(factor(FactorId.SEASONALITY, "Finestra fenologica", (seasonality * 100).roundToIntText() + "%", seasonality, species.fruitingPeriodDescription, favorable = 0.85, neutral = 0.5))
             add(
@@ -497,12 +505,16 @@ class MycoAnalysisEngine {
             DataQualityStatus.DEGRADED_OUT_OF_BOUNDS -> "Dati ambientali anomali o fuori scala rilevati. "
             DataQualityStatus.DEGRADED_MISSING_SOIL -> "Dati pedologici superficiali non disponibili. "
             DataQualityStatus.DEGRADED_PARTIAL_SOIL -> "Copertura pedologica parziale. "
+            DataQualityStatus.DEGRADED_INCOMPLETE_WEATHER -> "Serie meteorologica lacunosa o incompleta. "
             DataQualityStatus.OPTIMAL -> ""
         }
 
         val allMissing = missing.toMutableList()
         if (dataQuality == DataQualityStatus.DEGRADED_MISSING_SOIL && !allMissing.contains("suolo")) {
             allMissing.add("suolo")
+        }
+        if (dataQuality == DataQualityStatus.DEGRADED_INCOMPLETE_WEATHER && !allMissing.contains("meteo lacunoso")) {
+            allMissing.add("meteo lacunoso")
         }
         val coverage = if (allMissing.isEmpty()) {
             "Tutte le fonti ambientali sono disponibili."

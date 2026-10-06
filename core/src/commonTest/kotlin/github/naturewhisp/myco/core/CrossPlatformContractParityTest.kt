@@ -307,4 +307,165 @@ class CrossPlatformContractParityTest {
         assertTrue(result.isCalculable)
         assertEquals(28.5, result.effectiveRainMm)
     }
+
+    @Test
+    fun testApplyHabitatBonusPenaltyInvariants() {
+        // Invariant 1: Penalty (bonusMult < 1.0) must never increase score
+        val baseScore = 0.15
+        val penaltyMult = 0.80
+        val penalized = MycoAlgorithms.applyHabitatBonusPenalty(baseScore, penaltyMult)
+        assertTrue(penalized <= baseScore, "Penalty must never increase base score: $penalized > $baseScore")
+        assertEquals(0.12, penalized, 1e-4)
+
+        // Invariant 2: Bonus (bonusMult > 1.0) must never decrease score
+        val bonusMult = 1.15
+        val bonused = MycoAlgorithms.applyHabitatBonusPenalty(baseScore, bonusMult)
+        assertTrue(bonused >= baseScore, "Bonus must never decrease base score: $bonused < $baseScore")
+        assertEquals(0.1725, bonused, 1e-4)
+
+        // Invariant 3: Clamping at ceiling and floor
+        val highBonus = MycoAlgorithms.applyHabitatBonusPenalty(0.95, 1.20)
+        assertEquals(1.0, highBonus, 1e-4)
+
+        val lowPenalty = MycoAlgorithms.applyHabitatBonusPenalty(0.08, 0.50)
+        assertTrue(lowPenalty <= 0.08)
+    }
+
+    @Test
+    fun testCalculateSoilMoistureFactorWithTemporalGapDegradesQuality() {
+        val daysWithGap = listOf(
+            ProcessedDay("2026-09-27", 18.0, 0.0, 75.0, 1, soilMoisture0To7 = 0.30),
+            ProcessedDay("2026-09-28", 17.5, 5.0, 80.0, 2, soilMoisture0To7 = 0.30),
+            ProcessedDay("2026-10-06", 16.0, 0.0, 70.0, 1, soilMoisture0To7 = 0.18),
+        )
+        val todayIndex = 2 // 2026-10-06
+        val eval = MycoAlgorithms.calculateSoilMoistureFactor(daysWithGap, todayIndex)
+
+        assertEquals(1, eval.availableDaysCount)
+        assertEquals(1.0, eval.phiSoil)
+        assertTrue(eval.diagnosisText.contains("Dati pedologici insufficienti"))
+
+        val input = AnalysisInputs(
+            days = daysWithGap,
+            todayIndex = todayIndex,
+            speciesId = "boletus_edulis",
+            habitatScore = 0.8,
+            habitatDescription = "Bosco",
+            canopyTypes = emptyList(),
+            elevationSamples = listOf(500.0),
+            monthIndex = 9,
+            spunEcmRichness = null,
+            spunHyphalDensity = null,
+            missingSources = emptyList(),
+        )
+        val result = MycoAnalysisEngine().analyze(input)
+        assertEquals(DataQualityStatus.DEGRADED_MISSING_SOIL, result.dataQuality)
+    }
+
+    @Test
+    fun testSharedOsmHabitatEvidenceExtractionAndEvaluationParity() {
+        val targetLat = 44.2149
+        val targetLon = 7.9755
+
+        data class RawOsmItem(
+            val lat: Double,
+            val lon: Double,
+            val tags: Map<String, String>
+        )
+
+        val rawOsmResponse = listOf(
+            RawOsmItem(44.2150, 7.9756, mapOf("natural" to "wood", "genus" to "Fagus")),
+            RawOsmItem(44.2160, 7.9760, mapOf("landuse" to "forest", "genus" to "Quercus")),
+            RawOsmItem(44.2140, 7.9740, mapOf("landuse" to "meadow")),
+        )
+
+        // Android adapter extraction path
+        val androidOsmElements = rawOsmResponse.map { item ->
+            val natural = item.tags["natural"]
+            val landuse = item.tags["landuse"]
+            OsmHabitatElement(
+                lat = item.lat,
+                lon = item.lon,
+                isWoodOrForest = natural == "wood" || landuse == "forest",
+                isMeadowOrGrass = landuse in listOf("meadow", "grass", "pasture"),
+                isUrbanOrBuilt = landuse in listOf("residential", "commercial", "industrial"),
+                genus = item.tags["genus"]?.lowercase(),
+                leafType = item.tags["leaf_type"]
+            )
+        }
+        val androidEvidence = MycoAlgorithms.extractHabitatEvidence(
+            elements = androidOsmElements,
+            targetLat = targetLat,
+            targetLon = targetLon,
+            searchRadiusMeters = 1500
+        )
+
+        // iOS adapter extraction path
+        val iosOsmElements = rawOsmResponse.map { item ->
+            val natural = item.tags["natural"]
+            val landuse = item.tags["landuse"]
+            OsmHabitatElement(
+                lat = item.lat,
+                lon = item.lon,
+                isWoodOrForest = natural == "wood" || landuse == "forest",
+                isMeadowOrGrass = landuse == "meadow" || landuse == "grass" || landuse == "pasture",
+                isUrbanOrBuilt = landuse == "residential" || landuse == "commercial" || landuse == "industrial",
+                genus = item.tags["genus"]?.lowercase(),
+                leafType = item.tags["leaf_type"]
+            )
+        }
+        val iosEvidence = MycoAlgorithms.extractHabitatEvidence(
+            elements = iosOsmElements,
+            targetLat = targetLat,
+            targetLon = targetLon,
+            searchRadiusMeters = 1500
+        )
+
+        // Both adapters MUST produce identical evidence
+        assertEquals(androidEvidence.status, iosEvidence.status)
+        assertEquals(androidEvidence.forestCoverFraction, iosEvidence.forestCoverFraction, 1e-4)
+        assertEquals(androidEvidence.meadowFraction, iosEvidence.meadowFraction, 1e-4)
+        assertEquals(androidEvidence.confirmedHostGenera, iosEvidence.confirmedHostGenera)
+
+        // Evaluate habitat via single shared function for both ECTOMYCORRHIZAL and SAPROTROPHIC
+        val edulis = SpeciesCatalog.byId("boletus_edulis")
+        val edulisAndroidEval = MycoAlgorithms.evaluateHabitat(androidEvidence, edulis)
+        val edulisIosEval = MycoAlgorithms.evaluateHabitat(iosEvidence, edulis)
+        assertEquals(edulisAndroidEval.baseScore, edulisIosEval.baseScore, 1e-4)
+        assertEquals(edulisAndroidEval.score, edulisIosEval.score, 1e-4)
+        assertEquals(edulisAndroidEval.baseText, edulisIosEval.baseText)
+
+        val procera = SpeciesCatalog.byId("macrolepiota_procera")
+        val proceraAndroidEval = MycoAlgorithms.evaluateHabitat(androidEvidence, procera)
+        val proceraIosEval = MycoAlgorithms.evaluateHabitat(iosEvidence, procera)
+        assertEquals(proceraAndroidEval.baseScore, proceraIosEval.baseScore, 1e-4)
+        assertEquals(proceraAndroidEval.score, proceraIosEval.score, 1e-4)
+        assertEquals(proceraAndroidEval.baseText, proceraIosEval.baseText)
+    }
+
+    @Test
+    fun testIncompleteWeatherSeriesDegradesDataQuality() {
+        val gappedDays = listOf(
+            ProcessedDay("2026-10-04", 15.0, 0.0, 70.0, 1, soilMoisture0To7 = 0.25),
+            ProcessedDay("2026-10-05", 15.0, 0.0, 70.0, 1, soilMoisture0To7 = 0.25),
+            ProcessedDay("2026-10-06", 14.0, 0.0, 68.0, 1, soilMoisture0To7 = 0.24),
+        )
+        val input = AnalysisInputs(
+            days = gappedDays,
+            todayIndex = 2,
+            speciesId = "boletus_edulis",
+            habitatScore = 0.8,
+            habitatDescription = "Bosco",
+            canopyTypes = emptyList(),
+            elevationSamples = listOf(500.0),
+            monthIndex = 9,
+            spunEcmRichness = null,
+            spunHyphalDensity = null,
+            missingSources = emptyList(),
+        )
+        val result = MycoAnalysisEngine().analyze(input)
+        assertEquals(DataQualityStatus.DEGRADED_INCOMPLETE_WEATHER, result.dataQuality)
+        assertTrue(result.deterministicFieldNote.contains("Serie meteorologica lacunosa o incompleta."))
+        assertTrue(result.deterministicFieldNote.contains("meteo lacunoso"))
+    }
 }

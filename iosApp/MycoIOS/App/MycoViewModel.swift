@@ -329,7 +329,7 @@ final class MycoViewModel: ObservableObject {
             spunHyphalDensity: spunSample.map { KotlinDouble(double: $0.hyphalDensity) },
             missingSources: spunSample == nil ? missingSources + ["SPUN"] : missingSources,
             canopyCover: habitat.canopyCover,
-            forestProximityIndex: habitat.canopyCover,
+            forestProximityIndex: habitat.forestProximityIndex,
             calculationMode: "ALL"
         )
         guard isCurrentEnvironment(generation) else { return }

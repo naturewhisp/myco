@@ -22,6 +22,9 @@ data class EnvironmentalWindows(
     val averageSoil7To28: Double?,
     val averageEt0: Double?,
     val temperatureDropC: Double?,
+    val temperatureAvailableDays: Int = temperature.size,
+    val rainAvailableDays: Int = rain.size,
+    val humidityAvailableDays: Int = humidity.size,
 ) {
     val rainTotalMm: Double get() = rainWindowTotalMm
 
@@ -44,13 +47,34 @@ data class EnvironmentalWindows(
         fun derive(days: List<ProcessedDay>, todayIndex: Int): EnvironmentalWindows {
             if (todayIndex !in days.indices) return empty()
 
-            val temperature = days.slice(max(0, todayIndex - 5), todayIndex)
-            val rain = days.slice(max(0, todayIndex - 10), max(0, todayIndex - 2))
-            val humidity = days.slice(max(0, todayIndex - 3), min(days.size, todayIndex + 1))
+            val targetDay = days[todayIndex]
+            val targetEpoch = MycoAlgorithms.isoDateToEpochDay(targetDay.dateIso)
+
+            val (temperature, rain, humidity) = if (targetEpoch != null) {
+                val dayByEpoch = days.mapNotNull { d -> MycoAlgorithms.isoDateToEpochDay(d.dateIso)?.let { it to d } }.toMap()
+                val tempDays = (5 downTo 1).mapNotNull { dayByEpoch[targetEpoch - it] }
+                val rainDays = (10 downTo 3).mapNotNull { dayByEpoch[targetEpoch - it] }
+                val humDays = (3 downTo 0).mapNotNull { dayByEpoch[targetEpoch - it] }
+                Triple(tempDays, rainDays, humDays)
+            } else {
+                Triple(
+                    days.slice(max(0, todayIndex - 5), todayIndex),
+                    days.slice(max(0, todayIndex - 10), max(0, todayIndex - 2)),
+                    days.slice(max(0, todayIndex - 3), min(days.size, todayIndex + 1))
+                )
+            }
+
             val shallow = humidity.mapNotNull { it.soilMoisture0To7 }
             val deep = humidity.mapNotNull { it.soilMoisture7To28 }
             val et0 = humidity.mapNotNull { it.evapotranspiration }
-            val drop = if (todayIndex > 4) {
+            val drop = if (targetEpoch != null) {
+                val dayByEpoch = days.mapNotNull { d -> MycoAlgorithms.isoDateToEpochDay(d.dateIso)?.let { it to d } }.toMap()
+                val dayMinus4 = dayByEpoch[targetEpoch - 4]
+                val dayMinus1 = dayByEpoch[targetEpoch - 1]
+                if (dayMinus4 != null && dayMinus1 != null) {
+                    dayMinus4.avgTemp - dayMinus1.avgTemp
+                } else null
+            } else if (todayIndex > 4) {
                 days[todayIndex - 4].avgTemp - days[todayIndex - 1].avgTemp
             } else {
                 null

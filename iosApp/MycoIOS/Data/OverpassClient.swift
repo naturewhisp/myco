@@ -1,5 +1,6 @@
 import CoreLocation
 import Foundation
+import MycoCore
 
 enum OverpassClientError: LocalizedError, Sendable {
     case allEndpointsFailed([String])
@@ -136,7 +137,45 @@ struct OverpassClient: Sendable {
         return try await self.query(query)
     }
 
-    /// Mirrors the Android forest-count thresholds and preferred-canopy bonus query.
+    /// Extracts structured habitat evidence from Overpass elements in lockstep with Android and :core.
+    func extractHabitatEvidence(
+        from elements: [OverpassResponse.Element],
+        around coordinate: CLLocationCoordinate2D,
+        radiusMeters: Int = Self.defaultHabitatRadiusMeters
+    ) -> HabitatEvidence {
+        let osmElements: [OsmHabitatElement] = elements.map { el in
+            let lat = el.latitude ?? el.center?.latitude
+            let lon = el.longitude ?? el.center?.longitude
+            let genus = el.tags?["genus"] ?? el.tags?["species"]?.split(separator: " ").first.map(String.init)
+            let leafType = el.tags?["leaf_type"]
+            let natural = el.tags?["natural"]
+            let landuse = el.tags?["landuse"]
+            let isWood = natural == "wood" || landuse == "forest"
+            let isMeadow = ["meadow", "grass", "pasture"].contains(landuse ?? "") || ["grassland", "heath"].contains(natural ?? "")
+            let isUrban = ["residential", "commercial", "industrial", "retail", "construction"].contains(landuse ?? "") || el.tags?["building"] != nil
+
+            return OsmHabitatElement(
+                lat: lat.map { KotlinDouble(double: $0) },
+                lon: lon.map { KotlinDouble(double: $0) },
+                isWoodOrForest: isWood,
+                isMeadowOrGrass: isMeadow,
+                isUrbanOrBuilt: isUrban,
+                genus: genus,
+                leafType: leafType
+            )
+        }
+
+        return MycoAlgorithms.shared.extractHabitatEvidence(
+            elements: osmElements,
+            targetLat: coordinate.latitude,
+            targetLon: coordinate.longitude,
+            searchRadiusMeters: Int32(radiusMeters)
+        )
+    }
+
+    /// Queries Overpass for forest and specific habitat elements, extracts shared evidence,
+    /// and evaluates the final habitat factor via MycoAlgorithms.shared.evaluateHabitat.
+    /// Supports 0.95 score branch for saprotrophic open habitats in lockstep with shared core.
     func habitat(
         around coordinate: CLLocationCoordinate2D,
         radiusMeters: Int = Self.defaultHabitatRadiusMeters,
@@ -145,7 +184,6 @@ struct OverpassClient: Sendable {
     ) async throws -> HabitatSnapshot {
         let radius = min(max(radiusMeters, 1), 50_000)
         let forest = try await query(Self.forestQuery(around: coordinate, radiusMeters: radius))
-        let forestCount = forest.elements.count
         let specificHabitat = try await query(
             Self.specificHabitatQuery(
                 around: coordinate,
@@ -155,73 +193,41 @@ struct OverpassClient: Sendable {
             )
         )
 
-        let score: Double
-        let description: String
-        let canopyCover: Double
-        let proximityIndex: Double
-        let detected: Set<String>
+        let combinedElements = forest.elements + specificHabitat.elements
+        let evidence = extractHabitatEvidence(from: combinedElements, around: coordinate, radiusMeters: radius)
 
+        let species: MushroomSpecies
+        if ecologicalCategory == .saprotrophic {
+            species = SpeciesCatalog.shared.all.first { $0.category == .saprotrophic }
+                ?? SpeciesCatalog.shared.byId(id: "macrolepiota_procera")
+        } else {
+            species = SpeciesCatalog.shared.all.first { $0.category == .ectomycorrhizal }
+                ?? SpeciesCatalog.shared.byId(id: "boletus_edulis")
+        }
+
+        let evaluation = MycoAlgorithms.shared.evaluateHabitat(
+            evidence: evidence,
+            species: species,
+            spunEcmRichness: nil
+        )
+
+        let detected: Set<String>
         if ecologicalCategory == .saprotrophic {
             detected = specificHabitat.elements.isEmpty ? [] : ["saprotrophic_habitat"]
-            switch forestCount {
-            case 16...:
-                score = 1.0
-                proximityIndex = 1.0
-                canopyCover = 0.85
-                description = "Habitat ideale: punto immerso in area boschiva."
-            case 5...:
-                score = 0.95
-                proximityIndex = 0.70
-                canopyCover = 0.70
-                description = "Habitat promettente: vicinanza a boschi e foreste."
-            case 1...:
-                score = 0.60
-                proximityIndex = 0.45
-                canopyCover = 0.45
-                description = "Habitat misto: presenza di aree verdi sparse."
-            default:
-                if !specificHabitat.elements.isEmpty {
-                    score = 0.95
-                    proximityIndex = 0.0
-                    canopyCover = 0.0
-                    description = "Habitat praticolo e pascoli aperti: ideale per specie umicola."
-                } else {
-                    score = 0.10
-                    proximityIndex = 0.0
-                    canopyCover = 0.0
-                    description = "Habitat non ideale: nessun bosco o radura rilevata nelle vicinanze."
-                }
-            }
         } else {
             detected = Set(specificHabitat.elements.compactMap { $0.tags?["genus"]?.lowercased() })
-            switch forestCount {
-            case 16...:
-                score = 1.0
-                proximityIndex = 1.0
-                canopyCover = 0.85
-                description = "Habitat ideale: punto immerso in area boschiva."
-            case 5...:
-                score = 0.95
-                proximityIndex = 0.70
-                canopyCover = 0.70
-                description = "Habitat promettente: vicinanza a boschi e foreste."
-            case 1...:
-                score = 0.60
-                proximityIndex = 0.45
-                canopyCover = 0.45
-                description = "Habitat misto: presenza di aree verdi sparse."
-            default:
-                score = 0.10
-                proximityIndex = 0.0
-                canopyCover = 0.0
-                description = "Habitat non ideale: nessun bosco rilevato nelle vicinanze."
-            }
         }
+
+        // Shared core produces 0.95 for open habitats with meadowFraction >= 0.25 (saprotrophic scoring contract)
+        let score = evaluation.baseScore
+        let description = evaluation.baseText
+        let canopyCover = evidence.forestCoverFraction
+        let proximityIndex = evidence.forestCoverFraction
 
         return HabitatSnapshot(
             score: score,
             description: description,
-            canopyTypes: detected.sorted(),
+            canopyTypes: detected.isEmpty ? Array(evidence.confirmedHostGenera).sorted() : detected.sorted(),
             canopyCover: canopyCover,
             forestProximityIndex: proximityIndex
         )

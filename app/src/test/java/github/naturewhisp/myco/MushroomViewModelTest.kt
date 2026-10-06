@@ -1,13 +1,18 @@
 package github.naturewhisp.myco
 
+import github.naturewhisp.myco.core.HabitatEvidence
+import github.naturewhisp.myco.core.HabitatStatus
 import github.naturewhisp.myco.model.DailyData
 import github.naturewhisp.myco.model.FactorId
 import github.naturewhisp.myco.model.HourlyData
+import github.naturewhisp.myco.model.OverpassResponse
 import github.naturewhisp.myco.model.SPECIES_CATALOG
+import github.naturewhisp.myco.model.SavedLocation
+import github.naturewhisp.myco.model.SpunData
+import github.naturewhisp.myco.model.TerrainAspectData
 import github.naturewhisp.myco.model.WeatherResponse
 import github.naturewhisp.myco.platform.AiEngineStatus
 import github.naturewhisp.myco.platform.AssetProvider
-import github.naturewhisp.myco.model.SavedLocation
 import github.naturewhisp.myco.platform.InMemoryCacheStore
 import github.naturewhisp.myco.platform.KeyValueStorage
 import github.naturewhisp.myco.platform.PlatformAiEngine
@@ -119,6 +124,33 @@ class MushroomViewModelTest {
         coEvery { repository.fetchSpunData(any(), any(), any()) } returns null
         coEvery { repository.fetchTerrainAspect(any(), any()) } returns null
         coEvery { repository.reverseGeocode(any(), any()) } returns null
+        every { repository.extractHabitatEvidence(any(), any(), any(), any()) } answers {
+            val resp = firstArg<OverpassResponse?>()
+            val lat = secondArg<Double>()
+            val lon = thirdArg<Double>()
+            val radius = runCatching { arg<Int>(3) }.getOrDefault(1500)
+            if (resp == null) {
+                HabitatEvidence.UNKNOWN_HABITAT
+            } else {
+                val rawElements = resp.elements.map { el ->
+                    github.naturewhisp.myco.core.OsmHabitatElement(
+                        lat = el.coordinate?.first,
+                        lon = el.coordinate?.second,
+                        isWoodOrForest = el.isWoodOrForest,
+                        isMeadowOrGrass = el.isMeadowOrGrass,
+                        isUrbanOrBuilt = el.isUrbanOrBuilt,
+                        genus = el.genus,
+                        leafType = el.leafType,
+                    )
+                }
+                github.naturewhisp.myco.core.MycoAlgorithms.extractHabitatEvidence(
+                    elements = rawElements,
+                    targetLat = lat,
+                    targetLon = lon,
+                    searchRadiusMeters = radius
+                )
+            }
+        }
 
         viewModel = MushroomViewModel(
             repository = repository,
@@ -302,5 +334,382 @@ class MushroomViewModelTest {
         assertTrue("Dato da fallback offline deve impostare isFromCache = true", viewModel.isFromCache)
         assertTrue("Cache > 1h deve attivare la modalità campo isOfflineFieldMode = true", viewModel.isOfflineFieldMode)
         assertEquals("2h fa", viewModel.cacheAgeText)
+    }
+
+    @Test
+    fun testClockCrossingMidnightAndMonthRolloverUpdatesTargetDate() = runTest(testDispatcher) {
+        val zone = java.time.ZoneId.of("Europe/Rome")
+        val instantOct31 = java.time.ZonedDateTime.of(2026, 10, 31, 23, 59, 0, 0, zone).toInstant()
+        val mutableClock = object : java.time.Clock() {
+            var currentInstant: java.time.Instant = instantOct31
+            override fun getZone(): java.time.ZoneId = zone
+            override fun withZone(z: java.time.ZoneId): java.time.Clock = this
+            override fun instant(): java.time.Instant = currentInstant
+        }
+
+        // Custom weather series spanning Oct 20 to Nov 8
+        val hourlyTimes = mutableListOf<String>()
+        val dailyTimes = mutableListOf<String>()
+        val codes = mutableListOf<Int?>()
+        val temps = mutableListOf<Float>()
+        val hums = mutableListOf<Float>()
+        val precips = mutableListOf<Float>()
+        val startCal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Rome")).apply {
+            set(2026, java.util.Calendar.OCTOBER, 20, 0, 0, 0)
+        }
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("Europe/Rome")
+        }
+        for (i in 0 until 20) {
+            val dStr = sdf.format(startCal.time)
+            dailyTimes.add(dStr)
+            codes.add(1)
+            for (h in 0..23) {
+                hourlyTimes.add(String.format(Locale.US, "%sT%02d:00", dStr, h))
+                temps.add(15.0f)
+                hums.add(80.0f)
+                precips.add(1.0f)
+            }
+            startCal.add(java.util.Calendar.DAY_OF_YEAR, 1)
+        }
+        val multiDayWeather = WeatherResponse(
+            elevation = 500f,
+            timezone = "Europe/Rome",
+            hourly = HourlyData(hourlyTimes, temps, hums, precips),
+            daily = DailyData(dailyTimes, codes)
+        )
+        coEvery { repository.fetchWeather(any(), any()) } returns multiDayWeather
+
+        val vm = MushroomViewModel(
+            repository = repository,
+            cacheManager = cacheManager,
+            localAiService = localAiService,
+            spunDataManager = spunDataManager,
+            clock = mutableClock
+        )
+
+        vm.selectLocation(44.2, 7.9, "Garessio")
+        vm.dataFetchJob?.join()
+        advanceUntilIdle()
+
+        assertEquals("2026-10-31", vm.targetAnalysisDate)
+
+        // Advance clock across midnight to 2026-11-01 00:01
+        mutableClock.currentInstant = java.time.ZonedDateTime.of(2026, 11, 1, 0, 1, 0, 0, zone).toInstant()
+
+        // Trigger midnight check
+        vm.checkDayChangeAndRefresh()
+        vm.dataFetchJob?.join()
+        advanceUntilIdle()
+
+        assertEquals("2026-11-01", vm.targetAnalysisDate)
+
+        // Calling it again on the same day should NOT trigger another refresh
+        val jobBefore = vm.dataFetchJob
+        vm.checkDayChangeAndRefresh()
+        assertEquals(jobBefore, vm.dataFetchJob)
+    }
+
+    @Test
+    fun testSpeciesChangeCancelsPendingAiJobAndPreventsLateNoteOverwrite() = runTest(testDispatcher) {
+        val delayedAi = mockk<PlatformAiEngine>(relaxed = true)
+        val aiStatusFlow = MutableStateFlow(AiEngineStatus.READY)
+        every { delayedAi.status } returns aiStatusFlow
+        every { delayedAi.isAvailable() } returns true
+
+        // Simulate a slow AI call
+        val aiDeferred = kotlinx.coroutines.CompletableDeferred<String?>()
+        coEvery { delayedAi.generateAdvancedSummary(any()) } coAnswers {
+            aiDeferred.await()
+        }
+
+        val vm = MushroomViewModel(
+            repository = repository,
+            cacheManager = cacheManager,
+            localAiService = delayedAi,
+            spunDataManager = spunDataManager
+        )
+
+        // Enable AI in settings
+        vm.saveSettings(vm.mapStyle, vm.searchRadius, vm.highlightThreshold, true, true)
+
+        vm.selectLocation(44.2, 7.9, "Garessio")
+        vm.dataFetchJob?.join()
+
+        // First species
+        val initialNote = vm.summaryText
+        assertTrue(vm.isAiLoading)
+
+        // User switches species before AI completes
+        val species2 = SPECIES_CATALOG[1] // Boletus edulis
+        vm.selectSpecies(species2)
+
+        val edulisNote = vm.summaryText
+        // Complete the old AI deferred now with a style token
+        aiDeferred.complete("taccuino")
+        advanceUntilIdle()
+
+        // The summaryText must NOT be overwritten by the old job
+        assertFalse("Old AI response must not overwrite new species note", vm.summaryText.contains(initialNote) && initialNote != edulisNote)
+    }
+
+    @Test
+    fun testMindinoReplayEndToEndThroughViewModel() = runTest(testDispatcher) {
+        val lat = 44.2149
+        val lon = 7.9755
+
+        data class EmpiricalMindinoDay(
+            val date: String,
+            val avgTemp: Float,
+            val rain: Float,
+            val hum: Float,
+            val code: Int,
+            val soil07: Float,
+            val soil728: Float,
+            val et0: Float,
+            val minTemp: Float,
+            val maxTemp: Float
+        )
+
+        val empiricalDays = listOf(
+            EmpiricalMindinoDay("2026-09-06", 22.9f, 0.0f, 64.4f, 1, 0.102f, 0.145f, 4.31f, 20.3f, 26.7f),
+            EmpiricalMindinoDay("2026-09-07", 21.6f, 8.8f, 77.8f, 61, 0.108f, 0.145f, 3.37f, 18.2f, 26.7f),
+            EmpiricalMindinoDay("2026-09-08", 20.9f, 2.8f, 70.5f, 61, 0.122f, 0.145f, 3.81f, 16.9f, 26.8f),
+            EmpiricalMindinoDay("2026-09-09", 18.7f, 0.8f, 83.9f, 3, 0.178f, 0.145f, 2.13f, 14.5f, 22.6f),
+            EmpiricalMindinoDay("2026-09-10", 15.9f, 22.3f, 83.5f, 61, 0.253f, 0.149f, 2.60f, 13.1f, 19.7f),
+            EmpiricalMindinoDay("2026-09-11", 15.1f, 0.0f, 81.1f, 1, 0.277f, 0.148f, 2.49f, 10.8f, 19.8f),
+            EmpiricalMindinoDay("2026-09-12", 17.1f, 0.0f, 68.4f, 1, 0.258f, 0.150f, 3.47f, 14.0f, 21.1f),
+            EmpiricalMindinoDay("2026-09-13", 17.1f, 0.0f, 77.5f, 1, 0.245f, 0.151f, 2.63f, 13.8f, 21.9f),
+            EmpiricalMindinoDay("2026-09-14", 19.2f, 0.0f, 69.8f, 1, 0.232f, 0.160f, 3.74f, 14.9f, 24.9f),
+            EmpiricalMindinoDay("2026-09-15", 19.0f, 0.0f, 69.9f, 1, 0.215f, 0.165f, 2.90f, 16.4f, 22.5f),
+            EmpiricalMindinoDay("2026-09-16", 18.3f, 0.2f, 82.5f, 2, 0.219f, 0.169f, 2.15f, 15.6f, 21.8f),
+            EmpiricalMindinoDay("2026-09-17", 17.0f, 25.3f, 86.7f, 61, 0.236f, 0.169f, 1.50f, 15.0f, 19.6f),
+            EmpiricalMindinoDay("2026-09-18", 16.0f, 0.0f, 85.3f, 1, 0.283f, 0.171f, 1.71f, 13.5f, 19.1f),
+            EmpiricalMindinoDay("2026-09-19", 16.3f, 0.0f, 73.4f, 1, 0.288f, 0.184f, 2.92f, 12.2f, 20.6f),
+            EmpiricalMindinoDay("2026-09-20", 17.4f, 0.0f, 71.8f, 1, 0.260f, 0.189f, 3.23f, 13.9f, 22.6f),
+            EmpiricalMindinoDay("2026-09-21", 19.4f, 0.0f, 58.1f, 1, 0.236f, 0.189f, 3.67f, 16.6f, 24.1f),
+            EmpiricalMindinoDay("2026-09-22", 18.3f, 0.0f, 64.5f, 1, 0.221f, 0.192f, 3.48f, 14.9f, 22.0f),
+            EmpiricalMindinoDay("2026-09-23", 15.0f, 0.0f, 79.3f, 2, 0.199f, 0.179f, 1.40f, 13.3f, 16.8f),
+            EmpiricalMindinoDay("2026-09-24", 16.0f, 0.0f, 79.1f, 1, 0.207f, 0.194f, 2.62f, 12.9f, 20.6f),
+            EmpiricalMindinoDay("2026-09-25", 14.8f, 0.0f, 77.6f, 1, 0.220f, 0.206f, 2.44f, 11.6f, 18.3f),
+            EmpiricalMindinoDay("2026-09-26", 14.4f, 0.0f, 81.8f, 1, 0.203f, 0.199f, 2.15f, 10.9f, 18.5f),
+            EmpiricalMindinoDay("2026-09-27", 15.7f, 0.0f, 75.7f, 1, 0.198f, 0.201f, 2.76f, 12.0f, 20.2f),
+            EmpiricalMindinoDay("2026-09-28", 16.5f, 0.0f, 75.5f, 1, 0.197f, 0.206f, 2.75f, 12.9f, 21.3f),
+            EmpiricalMindinoDay("2026-09-29", 16.5f, 0.0f, 73.2f, 1, 0.191f, 0.206f, 2.61f, 14.0f, 21.0f)
+        )
+
+        val hourlyTimes = mutableListOf<String>()
+        val dailyTimes = mutableListOf<String>()
+        val codes = mutableListOf<Int?>()
+        val temps = mutableListOf<Float>()
+        val hums = mutableListOf<Float>()
+        val precips = mutableListOf<Float>()
+        val soil07 = mutableListOf<Float>()
+        val soil728 = mutableListOf<Float>()
+        val et0 = mutableListOf<Float>()
+
+        for (d in empiricalDays) {
+            dailyTimes.add(d.date)
+            codes.add(d.code)
+            val intermediateTemp = (d.avgTemp * 24f - d.minTemp - d.maxTemp) / 22f
+            for (h in 0..23) {
+                hourlyTimes.add(String.format(Locale.US, "%sT%02d:00", d.date, h))
+                val hourTemp = when (h) {
+                    0 -> d.minTemp
+                    13 -> d.maxTemp
+                    else -> intermediateTemp
+                }
+                temps.add(hourTemp)
+                hums.add(d.hum)
+                precips.add(d.rain / 24f)
+                soil07.add(d.soil07)
+                soil728.add(d.soil728)
+                et0.add(d.et0 / 24f)
+            }
+        }
+        val mindinoWeather = WeatherResponse(
+            elevation = 902f,
+            timezone = "Europe/Rome",
+            hourly = HourlyData(hourlyTimes, temps, hums, precips, soil07, soil728, et0),
+            daily = DailyData(dailyTimes, codes)
+        )
+        coEvery { repository.fetchWeather(lat, lon) } returns mindinoWeather
+        every { repository.extractHabitatEvidence(any(), any(), any(), any()) } returns HabitatEvidence(
+            status = HabitatStatus.KNOWN_SUITABLE,
+            forestCoverFraction = 0.85,
+            meadowFraction = 0.05,
+            distanceToNearestForestMeters = 0.0,
+            confirmedHostGenera = setOf("fagus", "castanea")
+        )
+        coEvery { repository.fetchTerrainAspect(lat, lon) } returns TerrainAspectData(
+            centerElevation = 902f,
+            slopeDegrees = 12f,
+            slopePercent = 21.2f,
+            aspectDegrees = 180f,
+            cardinalDirection = "Sud",
+            cardinalAbbreviation = "S",
+            isFlat = false,
+            rawElevations = listOf(902f, 915f, 890f, 905f, 898f)
+        )
+        coEvery { repository.fetchSpunData(lat, lon, any()) } returns SpunData(
+            ecmRichness = 45f,
+            hyphalDensity = 3.8f,
+            ecmScore = 0.9,
+            hyphalScore = 0.85,
+            ecmText = "45 specie EcM",
+            hyphalText = "3.8 m/cm³",
+            regionCode = "ALP",
+            regionName = "Alpi Liguri"
+        )
+
+        val zone = java.time.ZoneId.of("Europe/Rome")
+        val fixedClock = java.time.Clock.fixed(
+            java.time.ZonedDateTime.of(2026, 9, 29, 12, 0, 0, 0, zone).toInstant(),
+            zone
+        )
+
+        val vm = MushroomViewModel(
+            repository = repository,
+            cacheManager = cacheManager,
+            localAiService = localAiService,
+            spunDataManager = spunDataManager,
+            clock = fixedClock
+        )
+
+        val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+        vm.selectSpecies(edulis)
+        vm.selectLocation(lat, lon, "Monte Mindino")
+        vm.dataFetchJob?.join()
+        advanceUntilIdle()
+
+        assertTrue(vm.isCalculable)
+        assertEquals("2026-09-29", vm.targetAnalysisDate)
+        assertEquals(60, vm.todayProbability)
+        assertTrue("Suitability score must be positive: ${vm.todaySuitabilityScore}", vm.todaySuitabilityScore > 50.0)
+
+        // Verify both FOREST_PROXIMITY and HABITAT factors exist
+        val hasForestProx = vm.factors.any { it.id == FactorId.FOREST_PROXIMITY }
+        val hasHabitat = vm.factors.any { it.id == FactorId.HABITAT }
+        assertTrue("Must include FOREST_PROXIMITY factor", hasForestProx)
+        assertTrue("Must include HABITAT factor", hasHabitat)
+    }
+
+    @Test
+    fun testMindinoReplayUnknownHabitatEndToEndThroughViewModel() = runTest(testDispatcher) {
+        val lat = 44.2149
+        val lon = 7.9755
+
+        data class EmpiricalMindinoDay(
+            val date: String,
+            val avgTemp: Float,
+            val rain: Float,
+            val hum: Float,
+            val code: Int,
+            val soil07: Float,
+            val soil728: Float,
+            val et0: Float,
+            val minTemp: Float,
+            val maxTemp: Float
+        )
+
+        val empiricalDays = listOf(
+            EmpiricalMindinoDay("2026-09-06", 22.9f, 0.0f, 64.4f, 1, 0.102f, 0.145f, 4.31f, 20.3f, 26.7f),
+            EmpiricalMindinoDay("2026-09-07", 21.6f, 8.8f, 77.8f, 61, 0.108f, 0.145f, 3.37f, 18.2f, 26.7f),
+            EmpiricalMindinoDay("2026-09-08", 20.9f, 2.8f, 70.5f, 61, 0.122f, 0.145f, 3.81f, 16.9f, 26.8f),
+            EmpiricalMindinoDay("2026-09-09", 18.7f, 0.8f, 83.9f, 3, 0.178f, 0.145f, 2.13f, 14.5f, 22.6f),
+            EmpiricalMindinoDay("2026-09-10", 15.9f, 22.3f, 83.5f, 61, 0.253f, 0.149f, 2.60f, 13.1f, 19.7f),
+            EmpiricalMindinoDay("2026-09-11", 15.1f, 0.0f, 81.1f, 1, 0.277f, 0.148f, 2.49f, 10.8f, 19.8f),
+            EmpiricalMindinoDay("2026-09-12", 17.1f, 0.0f, 68.4f, 1, 0.258f, 0.150f, 3.47f, 14.0f, 21.1f),
+            EmpiricalMindinoDay("2026-09-13", 17.1f, 0.0f, 77.5f, 1, 0.245f, 0.151f, 2.63f, 13.8f, 21.9f),
+            EmpiricalMindinoDay("2026-09-14", 19.2f, 0.0f, 69.8f, 1, 0.232f, 0.160f, 3.74f, 14.9f, 24.9f),
+            EmpiricalMindinoDay("2026-09-15", 19.0f, 0.0f, 69.9f, 1, 0.215f, 0.165f, 2.90f, 16.4f, 22.5f),
+            EmpiricalMindinoDay("2026-09-16", 18.3f, 0.2f, 82.5f, 2, 0.219f, 0.169f, 2.15f, 15.6f, 21.8f),
+            EmpiricalMindinoDay("2026-09-17", 17.0f, 25.3f, 86.7f, 61, 0.236f, 0.169f, 1.50f, 15.0f, 19.6f),
+            EmpiricalMindinoDay("2026-09-18", 16.0f, 0.0f, 85.3f, 1, 0.283f, 0.171f, 1.71f, 13.5f, 19.1f),
+            EmpiricalMindinoDay("2026-09-19", 16.3f, 0.0f, 73.4f, 1, 0.288f, 0.184f, 2.92f, 12.2f, 20.6f),
+            EmpiricalMindinoDay("2026-09-20", 17.4f, 0.0f, 71.8f, 1, 0.260f, 0.189f, 3.23f, 13.9f, 22.6f),
+            EmpiricalMindinoDay("2026-09-21", 19.4f, 0.0f, 58.1f, 1, 0.236f, 0.189f, 3.67f, 16.6f, 24.1f),
+            EmpiricalMindinoDay("2026-09-22", 18.3f, 0.0f, 64.5f, 1, 0.221f, 0.192f, 3.48f, 14.9f, 22.0f),
+            EmpiricalMindinoDay("2026-09-23", 15.0f, 0.0f, 79.3f, 2, 0.199f, 0.179f, 1.40f, 13.3f, 16.8f),
+            EmpiricalMindinoDay("2026-09-24", 16.0f, 0.0f, 79.1f, 1, 0.207f, 0.194f, 2.62f, 12.9f, 20.6f),
+            EmpiricalMindinoDay("2026-09-25", 14.8f, 0.0f, 77.6f, 1, 0.220f, 0.206f, 2.44f, 11.6f, 18.3f),
+            EmpiricalMindinoDay("2026-09-26", 14.4f, 0.0f, 81.8f, 1, 0.203f, 0.199f, 2.15f, 10.9f, 18.5f),
+            EmpiricalMindinoDay("2026-09-27", 15.7f, 0.0f, 75.7f, 1, 0.198f, 0.201f, 2.76f, 12.0f, 20.2f),
+            EmpiricalMindinoDay("2026-09-28", 16.5f, 0.0f, 75.5f, 1, 0.197f, 0.206f, 2.75f, 12.9f, 21.3f),
+            EmpiricalMindinoDay("2026-09-29", 16.5f, 0.0f, 73.2f, 1, 0.191f, 0.206f, 2.61f, 14.0f, 21.0f)
+        )
+
+        val hourlyTimes = mutableListOf<String>()
+        val dailyTimes = mutableListOf<String>()
+        val codes = mutableListOf<Int?>()
+        val temps = mutableListOf<Float>()
+        val hums = mutableListOf<Float>()
+        val precips = mutableListOf<Float>()
+        val soil07 = mutableListOf<Float>()
+        val soil728 = mutableListOf<Float>()
+        val et0 = mutableListOf<Float>()
+
+        for (d in empiricalDays) {
+            dailyTimes.add(d.date)
+            codes.add(d.code)
+            val intermediateTemp = (d.avgTemp * 24f - d.minTemp - d.maxTemp) / 22f
+            for (h in 0..23) {
+                hourlyTimes.add(String.format(Locale.US, "%sT%02d:00", d.date, h))
+                val hourTemp = when (h) {
+                    0 -> d.minTemp
+                    13 -> d.maxTemp
+                    else -> intermediateTemp
+                }
+                temps.add(hourTemp)
+                hums.add(d.hum)
+                precips.add(d.rain / 24f)
+                soil07.add(d.soil07)
+                soil728.add(d.soil728)
+                et0.add(d.et0 / 24f)
+            }
+        }
+        val mindinoWeather = WeatherResponse(
+            elevation = 902f,
+            timezone = "Europe/Rome",
+            hourly = HourlyData(hourlyTimes, temps, hums, precips, soil07, soil728, et0),
+            daily = DailyData(dailyTimes, codes)
+        )
+        coEvery { repository.fetchWeather(lat, lon) } returns mindinoWeather
+        every { repository.extractHabitatEvidence(any(), any(), any(), any()) } returns HabitatEvidence.UNKNOWN_HABITAT
+        coEvery { repository.fetchTerrainAspect(lat, lon) } returns TerrainAspectData(
+            centerElevation = 902f,
+            slopeDegrees = 12f,
+            slopePercent = 21.2f,
+            aspectDegrees = 180f,
+            cardinalDirection = "Sud",
+            cardinalAbbreviation = "S",
+            isFlat = false,
+            rawElevations = listOf(902f, 915f, 890f, 905f, 898f)
+        )
+        coEvery { repository.fetchSpunData(lat, lon, any()) } returns null
+
+        val zone = java.time.ZoneId.of("Europe/Rome")
+        val fixedClock = java.time.Clock.fixed(
+            java.time.ZonedDateTime.of(2026, 9, 29, 12, 0, 0, 0, zone).toInstant(),
+            zone
+        )
+
+        val vm = MushroomViewModel(
+            repository = repository,
+            cacheManager = cacheManager,
+            localAiService = localAiService,
+            spunDataManager = spunDataManager,
+            clock = fixedClock
+        )
+
+        val edulis = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+        vm.selectSpecies(edulis)
+        vm.selectLocation(lat, lon, "Monte Mindino")
+        vm.dataFetchJob?.join()
+        advanceUntilIdle()
+
+        assertTrue(vm.isCalculable)
+        assertEquals("2026-09-29", vm.targetAnalysisDate)
+        assertTrue("Unknown habitat must yield neutral suitability (20-45), got ${vm.todayProbability}", vm.todayProbability in 20..45)
     }
 }

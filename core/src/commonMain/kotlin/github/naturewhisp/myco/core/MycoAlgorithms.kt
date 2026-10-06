@@ -217,9 +217,16 @@ object MycoAlgorithms {
                 diagnosisText = "Dati pedologici non disponibili.",
             )
         }
-        val windowStart = max(0, effectiveToday - 2)
-        val retrospectiveWindow = processedData.subList(windowStart, effectiveToday + 1)
-        val isTargetPresent = processedData.getOrNull(effectiveToday)?.soilMoisture0To7 != null
+        val targetDay = processedData.getOrNull(effectiveToday)
+        val targetEpoch = targetDay?.let { isoDateToEpochDay(it.dateIso) }
+        val retrospectiveWindow = if (targetEpoch != null) {
+            val dayByEpoch = processedData.mapNotNull { d -> isoDateToEpochDay(d.dateIso)?.let { it to d } }.toMap()
+            listOfNotNull(dayByEpoch[targetEpoch - 2L], dayByEpoch[targetEpoch - 1L], dayByEpoch[targetEpoch])
+        } else {
+            val windowStart = max(0, effectiveToday - 2)
+            processedData.subList(windowStart, effectiveToday + 1)
+        }
+        val isTargetPresent = targetDay?.soilMoisture0To7 != null
         val soilValues = retrospectiveWindow.mapNotNull { it.soilMoisture0To7 }
 
         if (soilValues.size < 2) {
@@ -528,11 +535,21 @@ object MycoAlgorithms {
             rainScore = max(0.0, rainScore - 4.0)
         }
 
-        val tempStart = max(0, dayIndex - 5)
-        val tempWindow = if (tempStart < dayIndex && dayIndex <= effectiveData.size) {
-            effectiveData.slice(tempStart until dayIndex)
+        val targetDay = effectiveData.getOrNull(dayIndex)
+        val targetEpoch = targetDay?.let { isoDateToEpochDay(it.dateIso) }
+        val dayByEpoch = if (targetEpoch != null) {
+            effectiveData.mapNotNull { d -> isoDateToEpochDay(d.dateIso)?.let { it to d } }.toMap()
+        } else null
+
+        val tempWindow = if (dayByEpoch != null && targetEpoch != null) {
+            (5 downTo 1).mapNotNull { dayByEpoch[targetEpoch - it] }
         } else {
-            emptyList()
+            val tempStart = max(0, dayIndex - 5)
+            if (tempStart < dayIndex && dayIndex <= effectiveData.size) {
+                effectiveData.slice(tempStart until dayIndex)
+            } else {
+                emptyList()
+            }
         }
         val avgTempLast5Days = if (tempWindow.isNotEmpty()) tempWindow.sumOf { it.avgTemp } / tempWindow.size else 0.0
         val minTempRecent = if (tempWindow.isNotEmpty()) tempWindow.minOf { it.minTemp } else avgTempLast5Days
@@ -543,13 +560,17 @@ object MycoAlgorithms {
         val dtrPenalty = calculateDtrPenalty(dtr, usePhenologicalInertia)
 
         val effectiveTempScore: Double
-        if (usePhenologicalInertia && dayIndex >= 10) {
-            val mediumStart = max(0, dayIndex - 20)
-            val mediumEnd = max(0, dayIndex - 5)
-            val mediumWindow = if (mediumStart < mediumEnd && mediumEnd <= effectiveData.size) {
-                effectiveData.slice(mediumStart until mediumEnd)
+        if (usePhenologicalInertia && ((dayByEpoch != null && targetEpoch != null) || dayIndex >= 10)) {
+            val mediumWindow = if (dayByEpoch != null && targetEpoch != null) {
+                (20 downTo 5).mapNotNull { dayByEpoch[targetEpoch - it] }
             } else {
-                emptyList()
+                val mediumStart = max(0, dayIndex - 20)
+                val mediumEnd = max(0, dayIndex - 5)
+                if (mediumStart < mediumEnd && mediumEnd <= effectiveData.size) {
+                    effectiveData.slice(mediumStart until mediumEnd)
+                } else {
+                    emptyList()
+                }
             }
             val avgTempMedium = if (mediumWindow.isNotEmpty()) mediumWindow.sumOf { it.avgTemp } / mediumWindow.size else avgTempLast5Days
             val mediumScore = ctmi(
@@ -566,9 +587,13 @@ object MycoAlgorithms {
 
         val tempScore = effectiveTempScore * 30.0 * nocturnalInhibition * dtrPenalty
 
-        val humStart = max(0, dayIndex - 3)
-        val humEnd = min(effectiveData.size, dayIndex + 1)
-        val humWindow = if (humStart < humEnd) effectiveData.slice(humStart until humEnd) else emptyList()
+        val humWindow = if (dayByEpoch != null && targetEpoch != null) {
+            (3 downTo 0).mapNotNull { dayByEpoch[targetEpoch - it] }
+        } else {
+            val humStart = max(0, dayIndex - 3)
+            val humEnd = min(effectiveData.size, dayIndex + 1)
+            if (humStart < humEnd) effectiveData.slice(humStart until humEnd) else emptyList()
+        }
         val avgHum = if (humWindow.isNotEmpty()) humWindow.sumOf { it.avgHumidityPercent } / humWindow.size else 0.0
 
         val soil0To7Vals = humWindow.mapNotNull { it.soilMoisture0To7 }
@@ -592,11 +617,17 @@ object MycoAlgorithms {
             if (dayIndex >= 2 && effectiveRain >= 12.0) {
                 var bestShock = 0.0
                 for (j in 2 until dayIndex) {
-                    val tempBefore = effectiveData[max(0, j - 3)].avgTemp
-                    val tempAfter = effectiveData[j].avgTemp
-                    val drop = tempBefore - tempAfter
+                    val candidateDay = effectiveData[j]
+                    val candidateEpoch = isoDateToEpochDay(candidateDay.dateIso)
+                    val drop = if (dayByEpoch != null && candidateEpoch != null) {
+                        val priorDay = dayByEpoch[candidateEpoch - 3L]
+                        if (priorDay != null) priorDay.avgTemp - candidateDay.avgTemp else null
+                    } else {
+                        val priorDay = effectiveData[max(0, j - 3)]
+                        priorDay.avgTemp - candidateDay.avgTemp
+                    }
                     val minDrop = if (effectiveSpunBonus && spunHyphalDensity != null && spunHyphalDensity >= 5.0) 2.0 else 3.0
-                    if (drop > minDrop) {
+                    if (drop != null && drop > minDrop) {
                         val tau = calculateDaysSince(effectiveData, dayIndex, j).toDouble()
                         val phenoWeight = phenologyKernel(
                             tauDays = tau,
@@ -615,9 +646,15 @@ object MycoAlgorithms {
             }
         } else {
             if (dayIndex > 4 && effectiveRain >= 12.0) {
-                val drop = effectiveData[dayIndex - 4].avgTemp - effectiveData[dayIndex - 1].avgTemp
+                val drop = if (dayByEpoch != null && targetEpoch != null) {
+                    val d4 = dayByEpoch[targetEpoch - 4L]
+                    val d1 = dayByEpoch[targetEpoch - 1L]
+                    if (d4 != null && d1 != null) d4.avgTemp - d1.avgTemp else null
+                } else {
+                    effectiveData[dayIndex - 4].avgTemp - effectiveData[dayIndex - 1].avgTemp
+                }
                 val minimumDrop = if (effectiveSpunBonus && spunHyphalDensity != null && spunHyphalDensity >= 5.0) 2.0 else 3.0
-                if (drop > minimumDrop) {
+                if (drop != null && drop > minimumDrop) {
                     shockScore = 15.0 * ((drop - minimumDrop) / 3.0).coerceIn(0.0, 1.0) *
                         (effectiveRain / 25.0).coerceIn(0.0, 1.0)
                 }
@@ -885,7 +922,7 @@ object MycoAlgorithms {
         }
 
         val baseScore = (rawScore * standScore).coerceIn(0.10, 1.0)
-        val finalScore = (rawScore * bonusMult * standScore).coerceIn(0.10, 1.0)
+        val finalScore = applyHabitatBonusPenalty(baseScore, bonusMult, floor = 0.10, ceiling = 1.0)
         return SpeciesHabitatEvaluation(
             score = finalScore,
             baseText = baseText,
@@ -893,6 +930,147 @@ object MycoAlgorithms {
             basalAreaM2Ha = basalArea,
             standDensityScore = standScore,
             baseScore = baseScore,
+        )
+    }
+
+    /**
+     * Applica bonus o penalità all'idoneità dell'habitat garantendo gli invarianti:
+     * 1. Una penalità (bonusMult <= 1.0) non deve MAI aumentare il fattore (result <= baseScore).
+     * 2. Un bonus (bonusMult >= 1.0) non deve MAI diminuire il fattore (result >= baseScore).
+     * 3. Continuità rispetto al pavimento biologico [floor], evitando salti discontinui.
+     */
+    fun applyHabitatBonusPenalty(
+        baseScore: Double,
+        bonusMult: Double,
+        floor: Double = 0.10,
+        ceiling: Double = 1.0,
+    ): Double {
+        return if (bonusMult >= 1.0) {
+            val scaled = baseScore * bonusMult
+            minOf(ceiling, maxOf(baseScore, scaled))
+        } else {
+            val effectiveFloor = minOf(floor, baseScore)
+            val scaled = baseScore * bonusMult
+            minOf(baseScore, maxOf(effectiveFloor, scaled))
+        }
+    }
+
+    fun haversineDistanceKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val r = 6371.0
+        val dLat = (lat2 - lat1) * (kotlin.math.PI / 180.0)
+        val dLon = (lon2 - lon1) * (kotlin.math.PI / 180.0)
+        val a = kotlin.math.sin(dLat / 2.0) * kotlin.math.sin(dLat / 2.0) +
+            kotlin.math.cos(lat1 * (kotlin.math.PI / 180.0)) * kotlin.math.cos(lat2 * (kotlin.math.PI / 180.0)) *
+            kotlin.math.sin(dLon / 2.0) * kotlin.math.sin(dLon / 2.0)
+        val c = 2.0 * kotlin.math.atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1.0 - a))
+        return r * c
+    }
+
+    fun extractHabitatEvidence(
+        elements: List<OsmHabitatElement>?,
+        targetLat: Double,
+        targetLon: Double,
+        searchRadiusMeters: Int = 1500,
+    ): HabitatEvidence {
+        if (elements == null || elements.isEmpty()) {
+            return HabitatEvidence.UNKNOWN_HABITAT
+        }
+
+        val forestElements = elements.filter { it.isWoodOrForest }
+        val meadowElements = elements.filter { it.isMeadowOrGrass }
+        val urbanElements = elements.filter { it.isUrbanOrBuilt }
+
+        val confirmedGenera = elements.mapNotNull { it.genus }.toSet()
+        val leafTypes = elements.mapNotNull { it.leafType }
+        val dominantLeafType = when {
+            leafTypes.contains("mixed") || (leafTypes.contains("broadleaved") && leafTypes.contains("needleleaved")) -> "mixed"
+            leafTypes.contains("broadleaved") -> "broadleaved"
+            leafTypes.contains("needleleaved") -> "needleleaved"
+            else -> null
+        }
+
+        val forestDistances = forestElements.mapNotNull { el ->
+            if (el.lat != null && el.lon != null) {
+                haversineDistanceKm(targetLat, targetLon, el.lat, el.lon) * 1000.0
+            } else null
+        }
+        val minForestDist = forestDistances.minOrNull() ?: searchRadiusMeters.toDouble()
+
+        val forestSectors = BooleanArray(8)
+        val cosLat = kotlin.math.cos(targetLat * (kotlin.math.PI / 180.0))
+        for (el in forestElements) {
+            val elLat = el.lat ?: continue
+            val elLon = el.lon ?: continue
+            val dist = haversineDistanceKm(targetLat, targetLon, elLat, elLon) * 1000.0
+            if (dist <= searchRadiusMeters) {
+                val dLat = elLat - targetLat
+                val dLon = (elLon - targetLon) * cosLat
+                var angle = kotlin.math.atan2(dLon, dLat) * (180.0 / kotlin.math.PI)
+                if (angle < 0.0) angle += 360.0
+                val sector = (angle / 45.0).toInt().coerceIn(0, 7)
+                forestSectors[sector] = true
+            }
+        }
+        val coveredForestSectors = forestSectors.count { it }
+        val effectiveCoveredForest = if (coveredForestSectors == 0 && forestElements.isNotEmpty()) {
+            minOf(8, forestElements.size)
+        } else {
+            coveredForestSectors
+        }
+        val baseForestCover = effectiveCoveredForest / 8.0
+
+        val effectiveMinForestDist = if (forestDistances.isNotEmpty()) {
+            minForestDist
+        } else if (forestElements.isNotEmpty()) {
+            50.0
+        } else {
+            searchRadiusMeters.toDouble()
+        }
+
+        val forestCoverFraction = when {
+            effectiveMinForestDist <= 50.0 -> maxOf(baseForestCover, 0.75)
+            effectiveMinForestDist <= 150.0 -> maxOf(baseForestCover, 0.50)
+            else -> baseForestCover
+        }.coerceIn(0.0, 1.0)
+
+        val meadowSectors = BooleanArray(8)
+        for (el in meadowElements) {
+            val elLat = el.lat ?: continue
+            val elLon = el.lon ?: continue
+            val dist = haversineDistanceKm(targetLat, targetLon, elLat, elLon) * 1000.0
+            if (dist <= searchRadiusMeters) {
+                val dLat = elLat - targetLat
+                val dLon = (elLon - targetLon) * cosLat
+                var angle = kotlin.math.atan2(dLon, dLat) * (180.0 / kotlin.math.PI)
+                if (angle < 0.0) angle += 360.0
+                val sector = (angle / 45.0).toInt().coerceIn(0, 7)
+                meadowSectors[sector] = true
+            }
+        }
+        val coveredMeadowSectors = meadowSectors.count { it }
+        val effectiveCoveredMeadow = if (coveredMeadowSectors == 0 && meadowElements.isNotEmpty()) {
+            minOf(8, meadowElements.size)
+        } else {
+            coveredMeadowSectors
+        }
+        val meadowFraction = (effectiveCoveredMeadow / 8.0).coerceIn(0.0, 1.0)
+
+        val isUrbanDominant = urbanElements.isNotEmpty() && urbanElements.size > (forestElements.size + meadowElements.size) && forestCoverFraction < 0.20
+        val status = when {
+            isUrbanDominant -> HabitatStatus.KNOWN_UNSUITABLE
+            forestCoverFraction > 0.10 || meadowFraction > 0.10 -> HabitatStatus.KNOWN_SUITABLE
+            urbanElements.isNotEmpty() -> HabitatStatus.KNOWN_UNSUITABLE
+            forestElements.isNotEmpty() || meadowElements.isNotEmpty() -> HabitatStatus.KNOWN_SUITABLE
+            else -> HabitatStatus.UNKNOWN
+        }
+
+        return HabitatEvidence(
+            status = status,
+            forestCoverFraction = forestCoverFraction,
+            meadowFraction = meadowFraction,
+            distanceToNearestForestMeters = effectiveMinForestDist,
+            confirmedHostGenera = confirmedGenera,
+            dominantLeafType = dominantLeafType,
         )
     }
 

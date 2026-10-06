@@ -49,9 +49,9 @@ final class OverpassClientTests: XCTestCase {
             ecologicalCategory: .saprotrophic
         )
 
-        XCTAssertEqual(snapshot.score, 0.6)
-        XCTAssertEqual(snapshot.canopyCover, 0.45)
-        XCTAssertEqual(snapshot.forestProximityIndex, 0.45)
+        XCTAssertEqual(snapshot.score, 0.95)
+        XCTAssertEqual(snapshot.canopyCover, 0.0)
+        XCTAssertEqual(snapshot.forestProximityIndex, 0.0)
         XCTAssertEqual(snapshot.canopyTypes, ["saprotrophic_habitat"])
         XCTAssertEqual(loader.requests.count, 2)
     }

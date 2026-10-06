@@ -78,8 +78,44 @@ class MushroomViewModel(
     val spunDataManager: SpunDataManager,
     val themePreference: ThemePreference? = null,
     val locationProvider: PlatformLocationProvider? = null,
-    val orientationProvider: PlatformOrientationProvider? = null
+    val orientationProvider: PlatformOrientationProvider? = null,
+    val clock: java.time.Clock = java.time.Clock.systemDefaultZone()
 ) : ViewModel() {
+
+    // Historical Target Date State
+    var userSelectedHistoricalDate by mutableStateOf<String?>(null)
+        private set
+
+    data class AnalysisIdentity(
+        val generation: Long,
+        val speciesId: String,
+        val lat: Double,
+        val lon: Double,
+        val targetDate: String?,
+        val calculationMode: String
+    )
+    private var activeAnalysisIdentity: AnalysisIdentity? = null
+
+    fun getRequestedAnalysisDate(timezone: String?): String {
+        return userSelectedHistoricalDate ?: run {
+            val zoneId = try {
+                timezone?.let { java.time.ZoneId.of(it) } ?: clock.zone
+            } catch (_: Exception) {
+                clock.zone
+            }
+            java.time.LocalDate.now(clock.withZone(zoneId)).toString()
+        }
+    }
+
+    fun setHistoricalAnalysisDate(dateIso: String?) {
+        analysisGeneration++
+        aiJob?.cancel()
+        aiJob = null
+        isAiLoading = false
+        activeAnalysisIdentity = null
+        userSelectedHistoricalDate = dateIso
+        recalculateForSpecies()
+    }
 
     // Settings State
     var mapStyle by mutableStateOf(cacheManager.mapStyle)
@@ -359,6 +395,11 @@ class MushroomViewModel(
     }
 
     fun selectSpecies(species: MushroomSpecies) {
+        analysisGeneration++
+        aiJob?.cancel()
+        aiJob = null
+        isAiLoading = false
+        activeAnalysisIdentity = null
         selectedSpecies = species
         recalculateForSpecies()
 
@@ -385,6 +426,11 @@ class MushroomViewModel(
     }
 
     fun updateCalculationMode(mode: String) {
+        analysisGeneration++
+        aiJob?.cancel()
+        aiJob = null
+        isAiLoading = false
+        activeAnalysisIdentity = null
         calculationMode = mode
         recalculateForSpecies()
     }
@@ -392,19 +438,32 @@ class MushroomViewModel(
     fun recalculateForSpecies() {
         val days = lastProcessedDays ?: return
         val species = selectedSpecies
-        val todayIndex = MushroomAlgorithms.deriveTodayIndex(days, lastWeatherTimezone, targetAnalysisDate)
+        val requestedDate = getRequestedAnalysisDate(lastWeatherTimezone)
+        val todayIndex = MushroomAlgorithms.deriveTodayIndex(days, lastWeatherTimezone, requestedDate, clock)
         if (days.size <= todayIndex || todayIndex < 0) {
             isCalculable = false
             todaySuitabilityScore = 0.0
             todayProbability = 0
             dataQualityStatus = github.naturewhisp.myco.core.DataQualityStatus.DEGRADED_OUT_OF_BOUNDS.name
             summaryText = "Analisi non calcolabile: data richiesta non presente nella serie temporale disponibile."
+            activeAnalysisIdentity = null
+            aiJob?.cancel()
+            aiJob = null
+            isAiLoading = false
             return
         }
 
         val targetDay = days.getOrNull(todayIndex)
         targetAnalysisDate = targetDay?.date
-        analysisAsOfTimestamp = System.currentTimeMillis()
+        analysisAsOfTimestamp = clock.millis()
+
+        val parsedMonth = try {
+            java.time.LocalDate.parse(requestedDate).monthValue - 1
+        } catch (_: Exception) {
+            val zId = try { lastWeatherTimezone?.let { java.time.ZoneId.of(it) } ?: clock.zone } catch (_: Exception) { clock.zone }
+            java.time.LocalDate.now(clock.withZone(zId)).monthValue - 1
+        }
+        lastCurrentMonth = parsedMonth
 
         val altScore = MushroomAlgorithms.calculateSpeciesAltitudeScore(lastElevation, species)
         val seasonScore = MushroomAlgorithms.calculateSpeciesSeasonalityScore(lastCurrentMonth, species)
@@ -567,6 +626,59 @@ class MushroomViewModel(
             )
             if (h != null) {
                 heatmapData = h
+            }
+        }
+
+        val currentIdentity = AnalysisIdentity(
+            generation = ++analysisGeneration,
+            speciesId = species.id,
+            lat = lastLat,
+            lon = lastLon,
+            targetDate = targetAnalysisDate,
+            calculationMode = calculationMode
+        )
+        activeAnalysisIdentity = currentIdentity
+        launchAiEnrichment(currentIdentity)
+    }
+
+    private fun launchAiEnrichment(identity: AnalysisIdentity) {
+        aiJob?.cancel()
+        if (!useLocalAi || !localAiService.isAvailable() || !isCalculable) {
+            isAiLoading = false
+            aiJob = null
+            return
+        }
+
+        isAiLoading = true
+        aiJob = viewModelScope.launch {
+            try {
+                val deterministicNote = summaryText
+                val prompt = """
+                    Seleziona esclusivamente uno stile per una nota ambientale. Rispondi con una sola parola tra: essenziale, taccuino, osservazione. Non riscrivere la nota e non aggiungere altri contenuti.
+                    Scegli lo stile per questa nota: $deterministicNote
+                """.trimIndent()
+
+                val localAiResponse = localAiService.generateAdvancedSummary(prompt)
+                if (localAiResponse != null && activeAnalysisIdentity == identity) {
+                    val token = cleanAiResponse(localAiResponse).trim().lowercase(Locale.ITALIAN)
+                    val prefix = when (token) {
+                        "taccuino" -> "Nota dal taccuino: "
+                        "osservazione" -> "Osservazione ambientale: "
+                        else -> ""
+                    }
+                    val safetyNotice = "Myco non identifica funghi e non conferma la commestibilità."
+                    summaryText = if (prefix.isNotEmpty()) {
+                        "$prefix$deterministicNote $safetyNotice"
+                    } else {
+                        deterministicNote
+                    }
+                }
+            } catch (_: Exception) {
+                // Silently keep deterministic note
+            } finally {
+                if (activeAnalysisIdentity == identity) {
+                    isAiLoading = false
+                }
             }
         }
     }
@@ -955,7 +1067,11 @@ class MushroomViewModel(
     }
 
     fun selectLocation(lat: Double, lon: Double, displayName: String = "Punto selezionato", isGps: Boolean = false) {
+        analysisGeneration++
         aiJob?.cancel()
+        aiJob = null
+        isAiLoading = false
+        activeAnalysisIdentity = null
         dataFetchJob?.cancel()
         if (!isGps) {
             isMapCenteredOnUser = false
@@ -1101,7 +1217,8 @@ class MushroomViewModel(
                 // Process weather
                 lastWeatherTimezone = weather.timezone
                 val processedDays = MushroomAlgorithms.processWeatherData(weather)
-                val todayIndex = MushroomAlgorithms.deriveTodayIndex(processedDays, weather.timezone)
+                val requestedDate = getRequestedAnalysisDate(weather.timezone)
+                val todayIndex = MushroomAlgorithms.deriveTodayIndex(processedDays, weather.timezone, requestedDate, clock)
                 
                 // Forecast grid: next 5 days starting today (todayIndex to todayIndex+4)
                 forecastDays = if (todayIndex in processedDays.indices) {
@@ -1112,8 +1229,12 @@ class MushroomViewModel(
 
                 val elevation = weather.elevation
                 val altitudeScore = MushroomAlgorithms.calculateSpeciesAltitudeScore(elevation, selectedSpecies)
-                val calendar = Calendar.getInstance()
-                val currentMonth = calendar.get(Calendar.MONTH) // 0-indexed
+                val currentMonth = try {
+                    java.time.LocalDate.parse(requestedDate).monthValue - 1
+                } catch (_: Exception) {
+                    val zId = try { java.time.ZoneId.of(weather.timezone) } catch (_: Exception) { clock.zone }
+                    java.time.LocalDate.now(clock.withZone(zId)).monthValue - 1
+                }
                 val seasonalityScore = MushroomAlgorithms.calculateSpeciesSeasonalityScore(currentMonth, selectedSpecies)
                 val bufferedDays = if (siteCanopyCover > 0.001) MushroomAlgorithms.applyCanopyBuffering(processedDays, siteCanopyCover) else processedDays
                 val growthPhaseEval = MushroomAlgorithms.evaluateGrowthPhase(bufferedDays, selectedSpecies, todayIndex)
@@ -1223,43 +1344,6 @@ class MushroomViewModel(
                 // Dismiss main full-screen loader immediately
                 isLoading = false
 
-                // Process AI style enrichment in background coroutine if available (D07)
-                if (useLocalAi && localAiService.isAvailable()) {
-                    val currentGeneration = ++analysisGeneration
-                    isAiLoading = true
-                    aiJob = viewModelScope.launch {
-                        try {
-                            val deterministicNote = summaryText
-                            val prompt = """
-                                Seleziona esclusivamente uno stile per una nota ambientale. Rispondi con una sola parola tra: essenziale, taccuino, osservazione. Non riscrivere la nota e non aggiungere altri contenuti.
-                                Scegli lo stile per questa nota: $deterministicNote
-                            """.trimIndent()
-
-                            val localAiResponse = localAiService.generateAdvancedSummary(prompt)
-                            if (localAiResponse != null && currentGeneration == analysisGeneration) {
-                                val token = cleanAiResponse(localAiResponse).trim().lowercase(Locale.ITALIAN)
-                                val prefix = when (token) {
-                                    "taccuino" -> "Nota dal taccuino: "
-                                    "osservazione" -> "Osservazione ambientale: "
-                                    else -> ""
-                                }
-                                val safetyNotice = "Myco non identifica funghi e non conferma la commestibilità."
-                                summaryText = if (prefix.isNotEmpty()) {
-                                    "$prefix$deterministicNote $safetyNotice"
-                                } else {
-                                    deterministicNote
-                                }
-                            }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        } finally {
-                            isAiLoading = false
-                        }
-                    }
-                } else {
-                    isAiLoading = false
-                }
-
                 updateCacheSize()
 
             } catch (e: Exception) {
@@ -1340,13 +1424,13 @@ class MushroomViewModel(
         if (lat == 0.0 && lon == 0.0) return
 
         val zoneId = try {
-            lastWeatherTimezone?.let { java.time.ZoneId.of(it) } ?: java.time.ZoneId.systemDefault()
+            lastWeatherTimezone?.let { java.time.ZoneId.of(it) } ?: clock.zone
         } catch (_: Exception) {
-            java.time.ZoneId.systemDefault()
+            clock.zone
         }
 
-        val todayDate = java.time.LocalDate.now(zoneId).toString()
-        val isDayChanged = targetAnalysisDate != null && targetAnalysisDate != todayDate
+        val todayDate = java.time.LocalDate.now(clock.withZone(zoneId)).toString()
+        val isDayChanged = userSelectedHistoricalDate == null && targetAnalysisDate != null && targetAnalysisDate != todayDate
         val cacheAgeMs = cacheManager.getWeatherCacheAge(lat, lon)
         val isCacheExpired = cacheAgeMs != null && cacheAgeMs > 60 * 60 * 1000L // 1 hour TTL
 
@@ -1358,9 +1442,9 @@ class MushroomViewModel(
     fun formatTimestampInLocationTz(timestampMs: Long?): String {
         if (timestampMs == null) return "Non disponibile"
         val zoneId = try {
-            lastWeatherTimezone?.let { java.time.ZoneId.of(it) } ?: java.time.ZoneId.systemDefault()
+            lastWeatherTimezone?.let { java.time.ZoneId.of(it) } ?: clock.zone
         } catch (_: Exception) {
-            java.time.ZoneId.systemDefault()
+            clock.zone
         }
         val instant = java.time.Instant.ofEpochMilli(timestampMs)
         val zonedDateTime = instant.atZone(zoneId)

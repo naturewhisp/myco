@@ -103,9 +103,10 @@ object MushroomAlgorithms {
         for (i in hourlyTimes.indices) {
             val date = hourlyTimes[i].split("T")[0]
             val acc = dailyMap.getOrPut(date) { TempDailyAccumulator() }
-            acc.temps.add(data.hourly.temperature2m.getOrElse(i) { 0.0f })
-            acc.precips.add(data.hourly.precipitation.getOrElse(i) { 0.0f })
-            acc.humidities.add(data.hourly.relativeHumidity2m.getOrElse(i) { 0.0f })
+            acc.totalHours++
+            data.hourly.temperature2m.getOrNull(i)?.let { acc.temps.add(it) }
+            data.hourly.precipitation.getOrNull(i)?.let { acc.precips.add(it) }
+            data.hourly.relativeHumidity2m.getOrNull(i)?.let { acc.humidities.add(it) }
             data.hourly.soilMoisture0To7cm?.getOrNull(i)?.let { acc.soilMoisture0To7.add(it) }
             data.hourly.soilMoisture7To28cm?.getOrNull(i)?.let { acc.soilMoisture7To28.add(it) }
             data.hourly.evapotranspiration?.getOrNull(i)?.let { acc.evapotranspirations.add(it) }
@@ -120,12 +121,14 @@ object MushroomAlgorithms {
             }
         }
 
-        return dailyMap.map { (date, acc) ->
-            val avgTemp = if (acc.temps.isNotEmpty()) acc.temps.sum() / acc.temps.size else 0.0f
+        return dailyMap.mapNotNull { (date, acc) ->
+            if (acc.temps.isEmpty() || acc.humidities.isEmpty() || acc.precips.isEmpty()) return@mapNotNull null
+            if (acc.totalHours >= 24 && (acc.temps.size < 18 || acc.precips.size < 18 || acc.humidities.size < 18)) return@mapNotNull null
+            val avgTemp = acc.temps.sum() / acc.temps.size
             val minTemp = acc.temps.minOrNull() ?: avgTemp
             val maxTemp = acc.temps.maxOrNull() ?: avgTemp
             val totalPrecip = acc.precips.sum()
-            val avgHumidity = if (acc.humidities.isNotEmpty()) acc.humidities.sum() / acc.humidities.size else 0.0f
+            val avgHumidity = acc.humidities.sum() / acc.humidities.size
             val avgSoil0To7 = if (acc.soilMoisture0To7.isNotEmpty()) acc.soilMoisture0To7.sum() / acc.soilMoisture0To7.size else null
             val avgSoil7To28 = if (acc.soilMoisture7To28.isNotEmpty()) acc.soilMoisture7To28.sum() / acc.soilMoisture7To28.size else null
             val totalET0 = if (acc.evapotranspirations.isNotEmpty()) acc.evapotranspirations.sum() else null
@@ -145,6 +148,7 @@ object MushroomAlgorithms {
     }
 
     private class TempDailyAccumulator {
+        var totalHours = 0
         val temps = mutableListOf<Float>()
         val precips = mutableListOf<Float>()
         val humidities = mutableListOf<Float>()
@@ -622,12 +626,22 @@ object MushroomAlgorithms {
             rainScore = max(0.0, rainScore - 4.0)
         }
 
+        val targetDay = effectiveData.getOrNull(dayIndex)
+        val targetEpoch = targetDay?.let { github.naturewhisp.myco.core.MycoAlgorithms.isoDateToEpochDay(it.date) }
+        val dayByEpoch = if (targetEpoch != null) {
+            effectiveData.mapNotNull { d -> github.naturewhisp.myco.core.MycoAlgorithms.isoDateToEpochDay(d.date)?.let { it to d } }.toMap()
+        } else null
+
         // Calcolo continuo della temperatura media (finestra ultimi tempWindowDays giorni)
-        val tempStart = max(0, dayIndex - config.tempWindowDays)
-        val tempWindow = if (tempStart < dayIndex && dayIndex <= effectiveData.size) {
-            effectiveData.subList(tempStart, dayIndex)
+        val tempWindow = if (dayByEpoch != null && targetEpoch != null) {
+            (config.tempWindowDays downTo 1).mapNotNull { dayByEpoch[targetEpoch - it] }
         } else {
-            emptyList()
+            val tempStart = max(0, dayIndex - config.tempWindowDays)
+            if (tempStart < dayIndex && dayIndex <= effectiveData.size) {
+                effectiveData.subList(tempStart, dayIndex)
+            } else {
+                emptyList()
+            }
         }
         val avgTempLast5Days = if (tempWindow.isNotEmpty()) {
             tempWindow.sumOf { it.avgTemp.toDouble() } / tempWindow.size
@@ -642,14 +656,18 @@ object MushroomAlgorithms {
         val dtrPenalty = calculateDtrPenalty(dtr, config.usePhenologicalInertia)
 
         val effectiveTempScore: Double
-        if (config.usePhenologicalInertia && dayIndex >= 10) {
+        if (config.usePhenologicalInertia && ((dayByEpoch != null && targetEpoch != null) || dayIndex >= 10)) {
             // Condizionamento termico di medio termine a 20 giorni (Brejon Lamartinière & Hoffman, 2025/2026)
-            val mediumStart = max(0, dayIndex - 20)
-            val mediumEnd = max(0, dayIndex - config.tempWindowDays)
-            val mediumWindow = if (mediumStart < mediumEnd && mediumEnd <= effectiveData.size) {
-                effectiveData.subList(mediumStart, mediumEnd)
+            val mediumWindow = if (dayByEpoch != null && targetEpoch != null) {
+                (20 downTo config.tempWindowDays).mapNotNull { dayByEpoch[targetEpoch - it] }
             } else {
-                emptyList()
+                val mediumStart = max(0, dayIndex - 20)
+                val mediumEnd = max(0, dayIndex - config.tempWindowDays)
+                if (mediumStart < mediumEnd && mediumEnd <= effectiveData.size) {
+                    effectiveData.subList(mediumStart, mediumEnd)
+                } else {
+                    emptyList()
+                }
             }
             val avgTempMediumTerm = if (mediumWindow.isNotEmpty()) {
                 mediumWindow.sumOf { it.avgTemp.toDouble() } / mediumWindow.size
@@ -671,12 +689,16 @@ object MushroomAlgorithms {
         val tempScore = effectiveTempScore * config.tempWeight * nocturnalInhibition * dtrPenalty
 
         // Calcolo continuo dell'umidità relativa e idratazione suolo (finestra humidityWindowDays giorni fino a oggi)
-        val humStart = max(0, dayIndex - config.humidityWindowDays)
-        val humEnd = min(effectiveData.size, dayIndex + 1)
-        val humWindow = if (humStart < humEnd) {
-            effectiveData.subList(humStart, humEnd)
+        val humWindow = if (dayByEpoch != null && targetEpoch != null) {
+            (config.humidityWindowDays downTo 0).mapNotNull { dayByEpoch[targetEpoch - it] }
         } else {
-            emptyList()
+            val humStart = max(0, dayIndex - config.humidityWindowDays)
+            val humEnd = min(effectiveData.size, dayIndex + 1)
+            if (humStart < humEnd) {
+                effectiveData.subList(humStart, humEnd)
+            } else {
+                emptyList()
+            }
         }
         val avgHumidityRecent = if (humWindow.isNotEmpty()) {
             humWindow.sumOf { it.avgHumidity.toDouble() } / humWindow.size
@@ -713,11 +735,17 @@ object MushroomAlgorithms {
             if (dayIndex >= 2 && effectiveRain >= config.minRainForShockMm) {
                 var bestShock = 0.0
                 for (j in 2 until dayIndex) {
-                    val tempBefore = effectiveData[max(0, j - 3)].avgTemp
-                    val tempAfter = effectiveData[j].avgTemp
-                    val drop = (tempBefore - tempAfter).toDouble()
-                    if (drop > minDrop) {
-                        val tau = (dayIndex - j).toDouble()
+                    val candidateDay = effectiveData[j]
+                    val candidateEpoch = github.naturewhisp.myco.core.MycoAlgorithms.isoDateToEpochDay(candidateDay.date)
+                    val drop = if (dayByEpoch != null && candidateEpoch != null) {
+                        val priorDay = dayByEpoch[candidateEpoch - 3L]
+                        if (priorDay != null) (priorDay.avgTemp - candidateDay.avgTemp).toDouble() else null
+                    } else {
+                        val priorDay = effectiveData[max(0, j - 3)]
+                        (priorDay.avgTemp - candidateDay.avgTemp).toDouble()
+                    }
+                    if (drop != null && drop > minDrop) {
+                        val tau = calculateDaysSince(effectiveData, dayIndex, j).toDouble()
                         val phenoWeight = phenologyKernel(
                             tauDays = tau,
                             tauPeak = species.phenologyLatencyPeakDays,
@@ -808,9 +836,16 @@ object MushroomAlgorithms {
                 diagnosisText = "Dati pedologici non disponibili."
             )
         }
-        val windowStart = max(0, effectiveToday - 2)
-        val retrospectiveWindow = processedData.subList(windowStart, effectiveToday + 1)
-        val isTargetPresent = processedData.getOrNull(effectiveToday)?.avgSoilMoisture0To7cm != null
+        val targetDay = processedData.getOrNull(effectiveToday)
+        val targetEpoch = targetDay?.let { github.naturewhisp.myco.core.MycoAlgorithms.isoDateToEpochDay(it.date) }
+        val retrospectiveWindow = if (targetEpoch != null) {
+            val dayByEpoch = processedData.mapNotNull { d -> github.naturewhisp.myco.core.MycoAlgorithms.isoDateToEpochDay(d.date)?.let { it to d } }.toMap()
+            listOfNotNull(dayByEpoch[targetEpoch - 2L], dayByEpoch[targetEpoch - 1L], dayByEpoch[targetEpoch])
+        } else {
+            val windowStart = max(0, effectiveToday - 2)
+            processedData.subList(windowStart, effectiveToday + 1)
+        }
+        val isTargetPresent = targetDay?.avgSoilMoisture0To7cm != null
         val soilValues = retrospectiveWindow.mapNotNull { it.avgSoilMoisture0To7cm?.toDouble() }
 
         if (soilValues.size < 2) {
@@ -847,6 +882,28 @@ object MushroomAlgorithms {
             isTargetDayPresent = isTargetPresent,
             diagnosisText = diagnosisText
         )
+    }
+
+    fun calculateDaysSince(days: List<ProcessedDay>, targetIndex: Int, referenceIndex: Int): Int {
+        if (targetIndex !in days.indices || referenceIndex !in days.indices) {
+            return targetIndex - referenceIndex
+        }
+        val targetEpoch = github.naturewhisp.myco.core.MycoAlgorithms.isoDateToEpochDay(days[targetIndex].date)
+        val refEpoch = github.naturewhisp.myco.core.MycoAlgorithms.isoDateToEpochDay(days[referenceIndex].date)
+        return if (targetEpoch != null && refEpoch != null) {
+            (targetEpoch - refEpoch).toInt()
+        } else {
+            targetIndex - referenceIndex
+        }
+    }
+
+    fun applyHabitatBonusPenalty(
+        baseScore: Double,
+        bonusMult: Double,
+        floor: Double = 0.10,
+        ceiling: Double = 1.0,
+    ): Double {
+        return github.naturewhisp.myco.core.MycoAlgorithms.applyHabitatBonusPenalty(baseScore, bonusMult, floor, ceiling)
     }
 
     /**
@@ -903,10 +960,10 @@ object MushroomAlgorithms {
             )
         }
 
-        val distinctEvents = clusterRainEvents(candidateEvents)
+        val distinctEvents = clusterRainEvents(candidateEvents, processedData)
         val recentTrigger = distinctEvents.first()
         val earlierCandidate = distinctEvents.drop(1).firstOrNull { earlier ->
-            val daysSinceEarlier = effectiveToday - earlier.triggerIndex
+            val daysSinceEarlier = calculateDaysSince(processedData, effectiveToday, earlier.triggerIndex)
             daysSinceEarlier in (hydrationThreshold + 1)..fruitingThreshold && earlier.rainAmount > 15.0f
         }
 
@@ -917,7 +974,8 @@ object MushroomAlgorithms {
             hydrationThreshold = hydrationThreshold,
             incubationThreshold = incubationThreshold,
             fruitingThreshold = fruitingThreshold,
-            tauPeak = tauPeak
+            tauPeak = tauPeak,
+            processedData = processedData
         )
 
         val baseEval: GrowthPhaseEvaluation
@@ -934,7 +992,8 @@ object MushroomAlgorithms {
                 hydrationThreshold = hydrationThreshold,
                 incubationThreshold = incubationThreshold,
                 fruitingThreshold = fruitingThreshold,
-                tauPeak = tauPeak
+                tauPeak = tauPeak,
+                processedData = processedData
             )
 
             // Raccordo continuo Lipschitziano (F04 / REG-03) e modulazione saturazione continua (C1)
@@ -990,14 +1049,14 @@ object MushroomAlgorithms {
             if (precip >= 10.0f) {
                 candidateEvents.add(RainTrigger(i, precip))
                 i--
-            } else if (precip >= 0.5f && i >= 2) {
+            } else if (precip >= 0.5f && i >= 2 && calculateDaysSince(processedData, i, i - 2) <= 2) {
                 val threeDayRain = processedData[i].liquidPrecip +
                         processedData[i - 1].liquidPrecip +
                         processedData[i - 2].liquidPrecip
                 if (threeDayRain >= 17.5f) {
                     candidateEvents.add(RainTrigger(i - 2, threeDayRain))
                     i -= 3
-                } else if (i >= 4) {
+                } else if (i >= 4 && calculateDaysSince(processedData, i, i - 4) <= 4) {
                     val fiveDayRain = threeDayRain +
                             processedData[i - 3].liquidPrecip +
                             processedData[i - 4].liquidPrecip
@@ -1017,10 +1076,20 @@ object MushroomAlgorithms {
         return candidateEvents
     }
 
-    internal fun clusterRainEvents(candidateEvents: List<RainTrigger>): List<RainTrigger> {
+    internal fun clusterRainEvents(
+        candidateEvents: List<RainTrigger>,
+        processedData: List<ProcessedDay>? = null
+    ): List<RainTrigger> {
         val distinctEvents = mutableListOf<RainTrigger>()
         candidateEvents.sortedByDescending { it.triggerIndex }.forEach { ev ->
-            val existing = distinctEvents.firstOrNull { abs(it.triggerIndex - ev.triggerIndex) <= 2 }
+            val existing = distinctEvents.firstOrNull {
+                val dist = if (processedData != null) {
+                    abs(calculateDaysSince(processedData, it.triggerIndex, ev.triggerIndex))
+                } else {
+                    abs(it.triggerIndex - ev.triggerIndex)
+                }
+                dist <= 2
+            }
             if (existing == null) {
                 distinctEvents.add(ev.copy())
             } else {
@@ -1038,12 +1107,17 @@ object MushroomAlgorithms {
         effectiveToday: Int,
         species: MushroomSpecies,
         hydrationThreshold: Int,
-        fruitingThreshold: Int
+        fruitingThreshold: Int,
+        processedData: List<ProcessedDay>? = null
     ): RainTrigger {
         val recentTrigger = distinctEvents.first()
         val targetRain = species.minRainAccumulation
         val earlierActiveFlush = distinctEvents.drop(1).firstOrNull { earlier ->
-            val daysSinceEarlier = effectiveToday - earlier.triggerIndex
+            val daysSinceEarlier = if (processedData != null) {
+                calculateDaysSince(processedData, effectiveToday, earlier.triggerIndex)
+            } else {
+                effectiveToday - earlier.triggerIndex
+            }
             val inFruitingWindow = daysSinceEarlier in (hydrationThreshold + 1)..fruitingThreshold
             val isSaturatingRain = earlier.rainAmount >= max(25.0f, targetRain * 0.70f)
             val isRecentOnlySecondaryShower = recentTrigger.rainAmount < earlier.rainAmount * 0.70f
@@ -1059,9 +1133,14 @@ object MushroomAlgorithms {
         hydrationThreshold: Int,
         incubationThreshold: Int,
         fruitingThreshold: Int,
-        tauPeak: Double
+        tauPeak: Double,
+        processedData: List<ProcessedDay>? = null
     ): GrowthPhaseEvaluation {
-        val daysSinceTrigger = max(0, effectiveToday - activeTrigger.triggerIndex)
+        val daysSinceTrigger = if (processedData != null) {
+            max(0, calculateDaysSince(processedData, effectiveToday, activeTrigger.triggerIndex))
+        } else {
+            max(0, effectiveToday - activeTrigger.triggerIndex)
+        }
         val k = phenologyKernel(
             tauDays = daysSinceTrigger.toDouble(),
             tauPeak = tauPeak,
@@ -1405,21 +1484,20 @@ object MushroomAlgorithms {
     fun deriveTodayIndex(
         processedData: List<ProcessedDay>,
         timezone: String? = null,
-        targetDateIso: String? = null
+        targetDateIso: String? = null,
+        clock: java.time.Clock? = null
     ): Int {
         if (processedData.isEmpty()) return -1
         val targetIso = if (!targetDateIso.isNullOrBlank()) {
             targetDateIso
         } else {
-            val tz = if (!timezone.isNullOrBlank()) {
-                try { java.util.TimeZone.getTimeZone(timezone) } catch (_: Exception) { java.util.TimeZone.getDefault() }
+            val zoneId = if (!timezone.isNullOrBlank()) {
+                try { java.time.ZoneId.of(timezone) } catch (_: Exception) { clock?.zone ?: java.time.ZoneId.systemDefault() }
             } else {
-                java.util.TimeZone.getDefault()
+                clock?.zone ?: java.time.ZoneId.systemDefault()
             }
-            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).apply {
-                timeZone = tz
-            }
-            sdf.format(java.util.Date())
+            val clk = clock?.withZone(zoneId) ?: java.time.Clock.system(zoneId)
+            java.time.LocalDate.now(clk).toString()
         }
         return processedData.indexOfFirst { it.date == targetIso }
     }
@@ -2283,10 +2361,21 @@ object MushroomAlgorithms {
         factors.add(
             Factor(
                 id = FactorId.HABITAT,
-                label = if (isSaprotrophic) "Idoneità suolo/margine" else "Indice di prossimità forestale",
+                label = if (isSaprotrophic) "Idoneità suolo/margine" else "Idoneità ecologica habitat",
                 formattedValue = String.format(Locale.ITALIAN, "%.0f/100", effectiveHabScore * 100),
                 level = habLevel,
-                detail = "$baseHabDetail • Indice di prossimità forestale (settori a 8 spicchi)"
+                detail = baseHabDetail
+            )
+        )
+        val siteCover = canopyCover ?: 0.0
+        val proxValue = String.format(Locale.ITALIAN, "%.0f/100", siteCover * 100)
+        factors.add(
+            Factor(
+                id = FactorId.FOREST_PROXIMITY,
+                label = "Indice di prossimità forestale",
+                formattedValue = proxValue,
+                level = if (siteCover >= 0.70) FactorLevel.FAVORABLE else if (siteCover >= 0.40) FactorLevel.NEUTRAL else FactorLevel.ADVERSE,
+                detail = "Copertura stazionale OSM (settori a 8 spicchi)"
             )
         )
 

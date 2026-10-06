@@ -255,84 +255,22 @@ class MushroomRepository(
         if (response == null) {
             return HabitatEvidence.UNKNOWN_HABITAT
         }
-        val elements = response.elements
-        if (elements.isEmpty()) {
-            return HabitatEvidence.UNKNOWN_HABITAT
+        val rawElements = response.elements.map { el ->
+            github.naturewhisp.myco.core.OsmHabitatElement(
+                lat = el.coordinate?.first,
+                lon = el.coordinate?.second,
+                isWoodOrForest = el.isWoodOrForest,
+                isMeadowOrGrass = el.isMeadowOrGrass,
+                isUrbanOrBuilt = el.isUrbanOrBuilt,
+                genus = el.genus,
+                leafType = el.leafType,
+            )
         }
-
-        val forestElements = elements.filter { it.isWoodOrForest }
-        val meadowElements = elements.filter { it.isMeadowOrGrass }
-        val urbanElements = elements.filter { it.isUrbanOrBuilt }
-
-        val confirmedGenera = elements.mapNotNull { it.genus }.toSet()
-        val leafTypes = elements.mapNotNull { it.leafType }
-        val dominantLeafType = when {
-            leafTypes.contains("mixed") || (leafTypes.contains("broadleaved") && leafTypes.contains("needleleaved")) -> "mixed"
-            leafTypes.contains("broadleaved") -> "broadleaved"
-            leafTypes.contains("needleleaved") -> "needleleaved"
-            else -> null
-        }
-
-        val forestDistances = forestElements.mapNotNull { el ->
-            el.coordinate?.let { (lat, lon) ->
-                MushroomAlgorithms.haversineDistanceKm(targetLat, targetLon, lat, lon) * 1000.0
-            }
-        }
-        val minForestDist = forestDistances.minOrNull() ?: searchRadiusMeters.toDouble()
-
-        // Calcolo della copertura forestale con invarianza rispetto alla segmentazione poligonale (F08, REG-11)
-        val forestSectors = BooleanArray(8)
-        for (el in forestElements) {
-            val coord = el.coordinate ?: continue
-            val dist = MushroomAlgorithms.haversineDistanceKm(targetLat, targetLon, coord.first, coord.second) * 1000.0
-            if (dist <= searchRadiusMeters) {
-                val dLat = coord.first - targetLat
-                val dLon = (coord.second - targetLon) * cos(Math.toRadians(targetLat))
-                var angle = Math.toDegrees(kotlin.math.atan2(dLon, dLat))
-                if (angle < 0) angle += 360.0
-                val sector = (angle / 45.0).toInt().coerceIn(0, 7)
-                forestSectors[sector] = true
-            }
-        }
-        val coveredForestSectors = forestSectors.count { it }
-        val baseForestCover = coveredForestSectors / 8.0
-
-        val forestCoverFraction = when {
-            minForestDist <= 50.0 -> max(baseForestCover, 0.75)
-            minForestDist <= 150.0 -> max(baseForestCover, 0.50)
-            else -> baseForestCover
-        }.coerceIn(0.0, 1.0)
-
-        val meadowSectors = BooleanArray(8)
-        for (el in meadowElements) {
-            val coord = el.coordinate ?: continue
-            val dist = MushroomAlgorithms.haversineDistanceKm(targetLat, targetLon, coord.first, coord.second) * 1000.0
-            if (dist <= searchRadiusMeters) {
-                val dLat = coord.first - targetLat
-                val dLon = (coord.second - targetLon) * cos(Math.toRadians(targetLat))
-                var angle = Math.toDegrees(kotlin.math.atan2(dLon, dLat))
-                if (angle < 0) angle += 360.0
-                val sector = (angle / 45.0).toInt().coerceIn(0, 7)
-                meadowSectors[sector] = true
-            }
-        }
-        val meadowFraction = (meadowSectors.count { it } / 8.0).coerceIn(0.0, 1.0)
-
-        val isUrbanDominant = urbanElements.isNotEmpty() && urbanElements.size > (forestElements.size + meadowElements.size) && forestCoverFraction < 0.20
-        val status = when {
-            isUrbanDominant -> HabitatStatus.KNOWN_UNSUITABLE
-            forestCoverFraction > 0.10 || meadowFraction > 0.10 -> HabitatStatus.KNOWN_SUITABLE
-            urbanElements.isNotEmpty() -> HabitatStatus.KNOWN_UNSUITABLE
-            else -> HabitatStatus.UNKNOWN
-        }
-
-        return HabitatEvidence(
-            status = status,
-            forestCoverFraction = forestCoverFraction,
-            meadowFraction = meadowFraction,
-            distanceToNearestForestMeters = minForestDist,
-            confirmedHostGenera = confirmedGenera,
-            dominantLeafType = dominantLeafType
+        return github.naturewhisp.myco.core.MycoAlgorithms.extractHabitatEvidence(
+            elements = rawElements,
+            targetLat = targetLat,
+            targetLon = targetLon,
+            searchRadiusMeters = searchRadiusMeters,
         )
     }
 

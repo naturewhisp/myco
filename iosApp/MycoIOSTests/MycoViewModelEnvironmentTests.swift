@@ -127,7 +127,7 @@ final class MycoViewModelEnvironmentTests: XCTestCase {
         let forecastPayload = Data("""
         {"latitude":42.0,"longitude":12.0,"elevation":450.0,"timezone":"Europe/Rome","hourly":{"time":["\(fixedDateIso)T12:00"],"temperature_2m":[16.0],"relative_humidity_2m":[80.0],"precipitation":[3.0],"soil_moisture_0_to_7cm":[0.35],"soil_moisture_7_to_28cm":[0.42],"et0_fao_evapotranspiration":[0.2]},"daily":{"time":["\(fixedDateIso)"],"weather_code":[3],"precipitation_sum":[3.0],"temperature_2m_max":[18.0],"temperature_2m_min":[14.0]}}
         """.utf8)
-        let weatherLoader = TestHTTPDataLoader { _ in (forecastPayload, httpResponse(for: $0)) }
+        let weatherLoader = TestHTTPDataLoader { request in (forecastPayload, httpResponse(for: request)) }
         let unavailable = TestHTTPDataLoader { _ in throw URLError(.notConnectedToInternet) }
 
         let viewModel = MycoViewModel(
@@ -139,7 +139,7 @@ final class MycoViewModelEnvironmentTests: XCTestCase {
         viewModel.select(coordinate: CLLocationCoordinate2D(latitude: 42, longitude: 12), name: "Fixed Clock Test")
         try await waitUntil { viewModel.analysis != nil }
 
-        let analysis = try XCTUnwrap(viewModel.analysis)
+        let analysis: AnalysisResult = try XCTUnwrap(viewModel.analysis)
         XCTAssertTrue(analysis.isCalculable)
         XCTAssertEqual(viewModel.environmentalDays.first?.date, fixedDate)
     }

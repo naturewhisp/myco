@@ -136,6 +136,13 @@ def main() -> int:
         if "0.95" not in op_content:
             errors.append("OverpassClient.swift missing 0.95 score branch for saprotrophic open habitats")
 
+    # 9. Check for illegal wildcard closure referencing $0 ({ _ in ... $0 })
+    wildcard_closure_pattern = re.compile(r'\{\s*_\s+in[^}]*\$0')
+    for swift_file in swift_files:
+        content = swift_file.read_text(encoding="utf-8")
+        if wildcard_closure_pattern.search(content):
+            errors.append(f"{swift_file.name}: contains invalid Swift syntax '{{ _ in ... $0 }}'")
+
     if errors:
         print("\n[FAIL] Cross-platform contract parity check failed with errors:")
         for err in errors:

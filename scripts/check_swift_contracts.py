@@ -9,6 +9,84 @@ import sys
 import re
 from pathlib import Path
 
+def mask_comments_and_strings(source: str) -> str:
+    """Keep offsets/newlines, hiding tokens inside comments and quoted literals."""
+    pattern = re.compile(r'//[^\n]*|/\*.*?\*/|""".*?"""|"(?:\\.|[^"\\])*"', re.DOTALL)
+    return pattern.sub(lambda match: ''.join('\n' if c == '\n' else ' ' for c in match.group()), source)
+
+
+def parameter_body(source: str, opening: int) -> str:
+    depth = 1
+    for index in range(opening + 1, len(source)):
+        if source[index] == '(':
+            depth += 1
+        elif source[index] == ')':
+            depth -= 1
+            if depth == 0:
+                return source[opening + 1:index]
+    raise ValueError("Unclosed argument list")
+
+
+def argument_labels(body: str, kotlin: bool = False) -> list[str]:
+    pieces, start, stack = [], 0, []
+    pairs = {')': '(', ']': '[', '}': '{'}
+    if kotlin:
+        pairs['>'] = '<'
+    for index, char in enumerate(body):
+        if char in '([{' or kotlin and char == '<':
+            stack.append(char)
+        elif char in pairs and stack and stack[-1] == pairs[char]:
+            stack.pop()
+        elif char == ',' and not stack:
+            pieces.append(body[start:index])
+            start = index + 1
+    pieces.append(body[start:])
+    labels = []
+    for piece in pieces:
+        if not piece.strip():
+            continue
+        match = re.match(r'\s*(?:(?:val|var|vararg)\s+)?(\w+)\s*:', piece)
+        labels.append(match.group(1) if match else '_')
+    return labels
+
+
+def check_exported_labels(core_dir: Path, swift_sources: dict[Path, str]) -> list[str]:
+    """Check explicitly scoped KMP entrypoints; this is not a Swift type checker."""
+    methods = [
+        ('MycoAnalysisEngine.kt', 'analyze', r'\banalysisEngine\s*\.\s*analyze'),
+        ('MycoAlgorithms.kt', 'evaluateHabitat', r'\bMycoAlgorithms\s*\.\s*shared\s*\.\s*evaluateHabitat'),
+        ('MycoAlgorithms.kt', 'extractHabitatEvidence', r'\bMycoAlgorithms\s*\.\s*shared\s*\.\s*extractHabitatEvidence'),
+        ('WeatherAggregation.kt', 'aggregate', r'\bWeatherAggregation\s*\.\s*shared\s*\.\s*aggregate'),
+    ]
+    constructors = [
+        ('WeatherAggregation.kt', name, rf'\b{name}')
+        for name in ('WeatherHour', 'ExpectedDayHours', 'DailyWeatherCode')
+    ] + [('Domain.kt', name, rf'\b{name}') for name in ('AnalysisInputs', 'OsmHabitatElement', 'OsmSurface')]
+    errors = []
+    for filename, name, call_pattern in methods + constructors:
+        content = mask_comments_and_strings((core_dir / filename).read_text(encoding='utf-8'))
+        declaration = (rf'^\s*(?:public\s+)?fun\s+{name}\s*\('
+                       if (filename, name, call_pattern) in methods
+                       else rf'^\s*(?:data\s+)?class\s+{name}\s*\(')
+        signatures = [argument_labels(parameter_body(content, match.end() - 1), kotlin=True)
+                      for match in re.finditer(declaration, content, re.MULTILINE)]
+        if not signatures:
+            errors.append(f'{filename}: monitored public declaration {name} missing')
+            continue
+        for path, source in swift_sources.items():
+            source = mask_comments_and_strings(source)
+            for match in re.finditer(call_pattern + r'\s*\(', source):
+                try:
+                    labels = argument_labels(parameter_body(source, match.end() - 1))
+                except ValueError as error:
+                    errors.append(f'{path.name}: {name}: {error}')
+                    continue
+                if labels not in signatures:
+                    line = source.count('\n', 0, match.start()) + 1
+                    errors.append(f'{path}:{line}: {name} labels {labels} differ from exported Kotlin {signatures}')
+    return errors
+
+
 def main() -> int:
     root_dir = Path(__file__).resolve().parent.parent
     ios_dir = root_dir / "iosApp"
@@ -52,6 +130,7 @@ def main() -> int:
     # 4. Scan Swift files for AnalysisInputs constructor usage
     swift_files = list(ios_dir.rglob("*.swift"))
     print(f"Found {len(swift_files)} Swift source files to scan.")
+    errors.extend(check_exported_labels(core_dir, {path: path.read_text(encoding='utf-8') for path in swift_files}))
 
     def extract_calls(content: str, func_name: str) -> list:
         calls = []
@@ -219,7 +298,9 @@ def main() -> int:
             print(f"  - {err}")
         return 1
 
-    print("\n[SUCCESS] All Swift-Kotlin contracts verified successfully!")
+    print("\n[SUCCESS] Monitored Swift-Kotlin static contracts verified successfully!")
+    print("  - Verified argument labels/order for 4 entrypoints and 6 constructors")
+    print("  - Native Swift compilation and XCTest remain required on macOS")
     print(f"  - Verified {len(expected_raster_props)} HeatmapRaster properties")
     print(f"  - Verified {len(expected_result_props)} AnalysisResult properties")
     print("  - Verified AnalysisInputs builders & constructors")

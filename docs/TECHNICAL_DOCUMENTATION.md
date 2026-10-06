@@ -1250,3 +1250,7 @@ Il progetto adotta un processo di sincronizzazione e governance continua basato 
 3. **Revisione Scientifica e Numerica degli Algoritmi**: [`docs/Revisione_scientifica_algoritmi_Myco.md`](file:///c:/Users/dendo/Documents/GitHub/myco/docs/Revisione_scientifica_algoritmi_Myco.md), documento di audit forense e benchmark matematico per la Release v1.3 (Percorso A) e l'evoluzione opzionale a probabilità calibrata (Percorso B post-Citizen Science).
 
 Verifica CI 2026-10-06: MycoAnalysisEngine conserva analyze(input: AnalysisInputs) come contratto pubblico Swift; la preparazione opera in analyzePrepared privato. check_swift_contracts.py protegge il nome del parametro esportato. Prima CI Android e core Apple/Android passate; app iOS in nuova verifica dopo correzione firma.
+
+Controllo Swift locale ampliato: confronto dinamico etichette/ordine per 4 metodi KMP e 6 costruttori, 6 regressioni Python (scripts/test_check_swift_contracts.py), pre-commit obbligatorio con Python e gate Ubuntu prima del job iOS macOS. SWIFT_ARCHITECTURE_AND_LOCAL_VERIFICATION.md distingue implementazione attuale, package MycoDataKit proposto e limiti statici.
+
+La fixture concorrente MycoViewModelSearchTests produce ore locali complete con offset e verifica isCalculable prima dei fattori della specie finale; una sola ora non soddisfa più il contratto produttivo di copertura.

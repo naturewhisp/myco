@@ -46,6 +46,7 @@ final class MycoViewModelSearchTests: XCTestCase {
         try await waitUntil { !viewModel.isLoadingEnvironment }
 
         XCTAssertEqual(viewModel.selectedSpecies.id, speciesB.id)
+        XCTAssertTrue(viewModel.analysis?.isCalculable == true, "The species race requires usable weather coverage.")
         XCTAssertTrue(
             viewModel.analysis?.factors.contains { $0.label == "Idoneità suolo/margine" } == true,
             "The final factor set must belong to the saprotrophic species B, not stale species A."
@@ -127,19 +128,36 @@ final class MycoViewModelSearchTests: XCTestCase {
     }
 }
 
-private func todayIsoString() -> String {
+private func todayIsoString(now: Date) -> String {
     let formatter = DateFormatter()
     formatter.calendar = Calendar(identifier: .iso8601)
     formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.timeZone = TimeZone(identifier: "Europe/Rome") ?? TimeZone(secondsFromGMT: 0)
     formatter.dateFormat = "yyyy-MM-dd"
-    return formatter.string(from: Date())
+    return formatter.string(from: now)
 }
 
 private func forecastPayload(latitude: Double) -> Data {
-    let today = todayIsoString()
+    let now = Date()
+    let today = todayIsoString(now: now)
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Europe/Rome") ?? TimeZone(secondsFromGMT: 0)!
+    let start = calendar.startOfDay(for: now)
+    let end = calendar.date(byAdding: .day, value: 1, to: start)!
+    let count = Int(end.timeIntervalSince(start) / 3600)
+    let formatter = DateFormatter()
+    formatter.calendar = calendar
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = calendar.timeZone
+    formatter.dateFormat = "yyyy-MM-dd'T'HH:mmXXX"
+    let times = (0..<count).map { index in
+        "\"\(formatter.string(from: start.addingTimeInterval(Double(index) * 3600)))\""
+    }.joined(separator: ",")
+    func values(_ value: Double) -> String {
+        Array(repeating: String(value), count: count).joined(separator: ",")
+    }
     return Data("""
-    {"latitude":\(latitude),"longitude":12.0,"elevation":500.0,"timezone":"Europe/Rome","hourly":{"time":["\(today)T12:00"],"temperature_2m":[16.0],"relative_humidity_2m":[80.0],"precipitation":[3.0],"soil_moisture_0_to_7cm":[0.35],"soil_moisture_7_to_28cm":[0.42],"et0_fao_evapotranspiration":[0.2]},"daily":{"time":["\(today)"],"weather_code":[3],"precipitation_sum":[3.0],"temperature_2m_max":[18.0],"temperature_2m_min":[14.0]}}
+    {"latitude":\(latitude),"longitude":12.0,"elevation":500.0,"timezone":"Europe/Rome","hourly":{"time":[\(times)],"temperature_2m":[\(values(16))],"relative_humidity_2m":[\(values(80))],"precipitation":[\(values(0.125))],"soil_moisture_0_to_7cm":[\(values(0.35))],"soil_moisture_7_to_28cm":[\(values(0.42))],"et0_fao_evapotranspiration":[\(values(0.2))]},"daily":{"time":["\(today)"],"weather_code":[3],"precipitation_sum":[\(Double(count) * 0.125)],"temperature_2m_max":[18.0],"temperature_2m_min":[14.0]}}
     """.utf8)
 }
 

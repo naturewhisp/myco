@@ -51,3 +51,7 @@ Collaudo conclusivo completato sul Pixel `56271FDCH00BHR`: installazione stream,
 ## Prima verifica GitHub
 
 Commit c67525f: Android e KMP Core passati, inclusi framework e test core Apple. La build dell'app iOS ha rilevato una deriva del nome parametro esportato: analyze(rawInput:) rispetto al contratto Swift analyze(input:). Ripristinata la firma pubblica input, separando la normalizzazione in un metodo privato. Il controllo contratti ora verifica anche questa firma; build e XCTest nativi saranno ripetuti sul commit corretto. Run iOS iniziale: https://github.com/naturewhisp/myco/actions/runs/37496618216.
+
+Robustezza verifica Swift: confronto dichiarazioni Kotlin/chiamate Swift per etichette e ordine di 4 metodi e 6 costruttori; 6 regressioni Python, eseguite anche dal pre-commit. Hook fallisce senza Python. Aggiunto gate Ubuntu nella CI iOS prima del job macOS. Rivista SWIFT_ARCHITECTURE_AND_LOCAL_VERIFICATION.md: MycoDataKit e adapter non implementati, dipendenze reali e limiti del controllo espliciti. Verifiche locali Gradle e Python passate.
+
+CI caca881: build iOS passata; XCTest 60 test con 1 fallimento nella gara cambio specie. Il mock MycoViewModelSearchTests forniva una sola ora, ora correttamente esclusa dalla qualità meteo. Fixture aggiornata con tutte le ore attese in Europe/Rome, inclusi offset distinti nei giorni 23/25 ore; aggiunta asserzione analisi calcolabile, preservata verifica fattori specie B. Test nativi da ripetere.

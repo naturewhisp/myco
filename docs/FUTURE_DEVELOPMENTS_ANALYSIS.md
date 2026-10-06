@@ -1122,3 +1122,7 @@ In risposta alla revisione approfondita post-commit `67b5362` documentata in `do
 | **C11** | **P2** | Incoerenza tra chiusure documentali e ricostruzione storica Mindino. | Formalizzata la ricostruzione storica del caso Mindino (29 settembre 2026, 29/100) come **ricostruzione aperta** (*open reconstruction*), non potendosi escludere discrepanze nei payload originari non tracciati; tutti i parametri euristici esplicitamente catalogati come `EXPERT_PRIOR`. | **VERIFICATO & RISOLTO** |
 
 Aggiornamento CI 2026-10-06: Android e KMP Core verificati su GitHub. Corretta la firma pubblica analyze(input:) per Swift e aggiunta protezione nel controllo contratti; chiusura build/XCTest app iOS ancora in verifica sul commit correttivo.
+
+Verifica Swift locale: contratti selezionati e gate CI implementati con regressioni; MycoDataKit e adapter unico restano proposti, non compilati. L'estrazione deve isolare MycoCore/SwiftData/Compression e mantenere la verifica nativa Apple. Dettagli in SWIFT_ARCHITECTURE_AND_LOCAL_VERIFICATION.md.
+
+CI app iOS: compilazione passata su caca881; test cambio specie corretto per usare copertura giornaliera completa. Resta richiesta nuova esecuzione XCTest sul commit finale.

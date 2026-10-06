@@ -61,3 +61,6 @@ keystores/
 # Multi-agent teamwork artifacts
 .agents/
 ORIGINAL_REQUEST.md
+
+# Python local contract-check regression tests
+__pycache__/

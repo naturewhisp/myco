@@ -57,6 +57,32 @@ struct HabitatSnapshot: Codable, Sendable {
         self.canopyCover = canopyCover
         self.forestProximityIndex = forestProximityIndex
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case score
+        case description
+        case canopyTypes
+        case canopyCover
+        case forestProximityIndex
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.score = try container.decode(Double.self, forKey: .score)
+        self.description = try container.decode(String.self, forKey: .description)
+        self.canopyTypes = try container.decode([String].self, forKey: .canopyTypes)
+        self.canopyCover = try container.decodeIfPresent(Double.self, forKey: .canopyCover) ?? 0.0
+        self.forestProximityIndex = try container.decodeIfPresent(Double.self, forKey: .forestProximityIndex) ?? 0.0
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(score, forKey: .score)
+        try container.encode(description, forKey: .description)
+        try container.encode(canopyTypes, forKey: .canopyTypes)
+        try container.encode(canopyCover, forKey: .canopyCover)
+        try container.encode(forestProximityIndex, forKey: .forestProximityIndex)
+    }
 }
 
 /// The two habitat acquisition strategies used by the shared ecological model.

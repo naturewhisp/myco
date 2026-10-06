@@ -1,7 +1,7 @@
 import CoreLocation
 @preconcurrency import MycoCore
 
-extension GeoCoordinates: @unchecked Sendable {}
+extension GeoCoordinates: @retroactive @unchecked Sendable {}
 
 extension GeoCoordinates {
     var clCoordinate: CLLocationCoordinate2D {

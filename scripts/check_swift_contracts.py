@@ -196,8 +196,8 @@ def main() -> int:
 
     # 15. Verify Sendable conformance for KMP classes in Swift 6
     geo_bridge_file = ios_dir / "MycoIOS" / "Platform" / "GeoCoordinates+CoreLocation.swift"
-    if not geo_bridge_file.exists() or "@unchecked Sendable" not in geo_bridge_file.read_text(encoding="utf-8"):
-        errors.append("GeoCoordinates+CoreLocation.swift must declare 'extension GeoCoordinates: @unchecked Sendable'")
+    if not geo_bridge_file.exists() or "@retroactive @unchecked Sendable" not in geo_bridge_file.read_text(encoding="utf-8"):
+        errors.append("GeoCoordinates+CoreLocation.swift must declare 'extension GeoCoordinates: @retroactive @unchecked Sendable'")
 
     for swift_file in swift_files:
         content = swift_file.read_text(encoding="utf-8")

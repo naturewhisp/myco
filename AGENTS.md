@@ -13,7 +13,7 @@ This document defines the architectural guidelines, development workflows, and c
   2. `./gradlew compileDebugKotlin` (Kotlin compiler must report clean build).
   3. `./gradlew testDebugUnitTest` (All unit tests, invariants and benchmarks must pass 100%).
   4. `./gradlew assembleDebug` (Debug APK packaging must succeed).
-  5. `python scripts/check_swift_contracts.py` (Cross-platform Swift-Kotlin contract and syntax analysis must report `0 errors`).
+  5. `python -m unittest discover -s scripts -p test_check_swift_contracts.py && python scripts/check_swift_contracts.py` (Cross-platform Swift-Kotlin contract checker test suite and static contract analysis must report `0 errors`).
   6. If an Android device or emulator is connected (`adb devices`), stream-install the APK (`adb install -r`), launch the app, check logcat for zero runtime crashes, and capture screenshot proof.
 
 ---
@@ -69,6 +69,7 @@ docs/
 - **Unused Exception Syntax**: Catch blocks with intentionally unused exceptions must use `catch (_: Exception)`.
 - **Pure Compose Activity**: `MainActivity` inherits from `ComponentActivity`. Do not introduce legacy Fragment dependencies or FragmentActivity workarounds.
 - **KMP `:core` & Android Algorithmic Lockstep**: Any update to the mycological algorithm, response curves (e.g. nocturnal chilling, DTR, hurdle model), asymptotic calibrations (`growthProbability`), or taxonomic catalogs (`SPECIES_CATALOG`) must be co-evolved immediately in `core/src/commonMain/kotlin/github/naturewhisp/myco/core/`. Parity tests (`ScientificParityTest`, `FullAnalysisResultParityTest`, `CrossPlatformScientificParityTest`) must remain 100% synchronized with zero tolerance for drift.
+- **KMP Exported Signature & Argument Label Stability**: I nomi dei parametri dei metodi e dei costruttori pubblici in `:core` esportati verso Objective-C/Swift determinano le etichette esterne obbligatorie degli argomenti in Swift (es. `fun analyze(input: AnalysisInputs)` diventa `analyze(input:)`). È severamente vietato rinominare arbitrariamente i parametri delle API pubbliche esportate (es. rinominare `input` in `rawInput`). Se è necessario preparare o normalizzare internamente gli argomenti con nomi differenti, mantenere inalterata la facciata pubblica esportata e delegare a un metodo privato (es. `fun analyze(input: AnalysisInputs): AnalysisResult = analyzePrepared(input)`).
 
 ### 4.2 Formatting & Style (`.editorconfig`)
 - Indentation: 4 spaces for Kotlin/Java/XML/Gradle; 2 spaces for JSON/YAML.
@@ -216,6 +217,9 @@ docs/
   - Quando una struttura Swift persistita o memorizzata nella cache locale (`HabitatSnapshot`, `TerrainAspectData`) viene estesa con nuovi campi, deve implementare esplicitamente `init(from decoder: Decoder)` utilizzando `decodeIfPresent(..., forKey: ...)` con valori di fallback sicuri (es. `0.0`, `[]`, `nil`). È severamente vietato affidarsi a decodificatori rigidi che scartano la cache se mancano i campi aggiunti di recente.
 - **Isolamento Determinismo Temporale nei Test di Mock Clock**:
   - I test che verificano l'allineamento della data corrente (`testDeterministicClockInjectionControlsTodayAlignment`) devono configurare i generatori di mock e i `DateFormatter` in UTC (`TimeZone(secondsFromGMT: 0)`). Questo impedisce derive di calendario spurie causate dalle differenze tra il fuso locale dell'esecutore CI e il fuso della località meteo.
+- **Hourly Weather Mock Fixture Completeness (24-Hour Coverage Invariance)**:
+  - Tutte le fixture di test e i payload mock meteorologici (in `MycoIOSTests` e nelle suite KMP/JVM) devono generare serie orarie che coprono **tutte le 24 ore di ogni giorno del calendario gregoriano** nel fuso della località (`Europe/Rome`), inclusi gli offset corretti per transizioni di ora legale/solare (23/25 ore).
+  - È severamente vietato fornire serie orarie sintetiche con timestamp singoli o parziali (es. `["T12:00"]`), poiché attivano la protezione di incompletezza (`ExpectedDayHours`), degradando il risultato a `isCalculable = false` e svuotando la lista dei fattori calcolati, causando falsi fallimenti nei test asincroni della UI o del ViewModel.
 
 ### 4.12 CI / GitHub Actions Configuration Standard
 - **Android SDK Setup Action (`setup-android@v3`)**: Whenever `android-actions/setup-android@v3` is referenced in `.github/workflows/*.yml`, agents must explicitly set `with: packages: ''` to prevent fatal failures caused by Google's permanent removal of the deprecated legacy `tools` package from `dl.google.com`. Required SDK components (`platforms`, `build-tools`, `cmdline-tools`) must be installed explicitly via subsequent `sdkmanager` steps.
@@ -223,6 +227,9 @@ docs/
   - Nei workflow CI per iOS che separano compilazione ed esecuzione dei test, il comando di compilazione iniziale deve essere `xcodebuild ... build-for-testing CODE_SIGNING_ALLOWED=NO` (non il semplice `build`). Il comando `build` crea unicamente l'eseguibile `.app`, causando il fallimento o il blocco di `test-without-building` che non trova il bundle `MycoIOSTests.xctest`.
 - **Monitoraggio Esecuzioni CI con `gh run watch`**:
   - Per monitorare lo stato di un workflow remoto senza cicli di polling manuali o controlli a intervalli ripetuti, avviare il monitoraggio tramite `gh run watch <RUN_ID>` lasciando che il runtime notifichi automaticamente il completamento.
+- **Cross-Platform Static Contract Fast-Fail Gate**:
+  - Nei workflow CI per iOS (`.github/workflows/ios.yml`), far sempre precedere il job macOS da un job leggero su runner Ubuntu Linux (`static-contract-check`, ~15s) che esegua i test di integrità Python (`test_check_swift_contracts.py`) e il controllo contratti statico (`check_swift_contracts.py`).
+  - Questo garantisce il fail-fast immediato per disallineamenti di firme esportate, etichette o proprietà senza attendere l'avvio e la coda del runner macOS (8+ minuti).
 
 ---
 
@@ -244,7 +251,7 @@ Run these commands after making changes:
 .\gradlew.bat assembleDebug
 
 # 5. Check cross-platform Swift-Kotlin contracts and Swift 6 concurrency
-python scripts/check_swift_contracts.py
+python -m unittest discover -s scripts -p test_check_swift_contracts.py && python scripts/check_swift_contracts.py
 
 # 6. On-Device Verification (MANDATORY whenever an ADB device is connected):
 # Check connected device: adb devices

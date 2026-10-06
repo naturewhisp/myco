@@ -42,14 +42,16 @@ final class CoreLocationService: NSObject, ObservableObject {
         case tracking
     }
 
+    private let notificationCenter: NotificationCenter
     private var mode = Mode.stopped
     private var isApplicationActive = true
     override convenience init() {
-        self.init(manager: CLLocationManager())
+        self.init(manager: CLLocationManager(), notificationCenter: .default)
     }
 
     init(
         manager: CLLocationManager,
+        notificationCenter: NotificationCenter = .default,
         locationServicesEnabledProvider: @escaping @Sendable () -> Bool = {
             CLLocationManager.locationServicesEnabled()
         },
@@ -58,6 +60,7 @@ final class CoreLocationService: NSObject, ObservableObject {
         }
     ) {
         self.manager = manager
+        self.notificationCenter = notificationCenter
         self.locationServicesEnabledProvider = locationServicesEnabledProvider
         self.headingAvailableProvider = headingAvailableProvider
         authorizationStatus = manager.authorizationStatus
@@ -68,6 +71,10 @@ final class CoreLocationService: NSObject, ObservableObject {
         manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
         installLifecycleObservers()
         refreshServiceAvailability()
+    }
+
+    deinit {
+        notificationCenter.removeObserver(self)
     }
 
     /// Requests one location fix without leaving GPS or heading updates active.
@@ -89,9 +96,7 @@ final class CoreLocationService: NSObject, ObservableObject {
     private func refreshServiceAvailability(continueAuthorization: Bool = false) {
         let locationServicesEnabledProvider = locationServicesEnabledProvider
         Task { [weak self] in
-            let isAvailable = await Task.detached(priority: .userInitiated) {
-                locationServicesEnabledProvider()
-            }.value
+            let isAvailable = locationServicesEnabledProvider()
             guard let self else { return }
             locationServicesAvailable = isAvailable
             guard continueAuthorization, isAvailable else {
@@ -127,14 +132,13 @@ final class CoreLocationService: NSObject, ObservableObject {
     }
 
     private func installLifecycleObservers() {
-        let center = NotificationCenter.default
-        center.addObserver(
+        notificationCenter.addObserver(
             self,
             selector: #selector(applicationDidBecomeActive),
             name: UIApplication.didBecomeActiveNotification,
             object: nil
         )
-        center.addObserver(
+        notificationCenter.addObserver(
             self,
             selector: #selector(applicationWillResignActive),
             name: UIApplication.willResignActiveNotification,

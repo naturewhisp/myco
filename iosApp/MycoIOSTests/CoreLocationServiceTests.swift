@@ -49,11 +49,12 @@ final class CoreLocationServiceTests: XCTestCase {
     }
 
     func testForegroundWhileStoppedDoesNotRequestAuthorizationOrStartUpdates() async throws {
+        let notificationCenter = NotificationCenter()
         let manager = LocationManagerSpy(authorizationStatus: .notDetermined)
-        let service = makeService(manager: manager)
+        let service = makeService(manager: manager, notificationCenter: notificationCenter)
         service.stopTracking()
 
-        NotificationCenter.default.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        notificationCenter.post(name: UIApplication.didBecomeActiveNotification, object: nil)
         try await settleAsyncAvailabilityCheck()
 
         XCTAssertEqual(manager.authorizationRequestCount, 0)
@@ -62,9 +63,13 @@ final class CoreLocationServiceTests: XCTestCase {
         XCTAssertEqual(manager.startHeadingCount, 0)
     }
 
-    private func makeService(manager: LocationManagerSpy) -> CoreLocationService {
+    private func makeService(
+        manager: LocationManagerSpy,
+        notificationCenter: NotificationCenter = NotificationCenter()
+    ) -> CoreLocationService {
         CoreLocationService(
             manager: manager,
+            notificationCenter: notificationCenter,
             locationServicesEnabledProvider: { true },
             headingAvailableProvider: { true }
         )

@@ -194,6 +194,17 @@ def main() -> int:
             if re.search(r'^\s*(?:@\w+\s+)?import\s+CoreLocation\b', content, re.MULTILINE):
                 errors.append(f"{swift_file.name}: violates architectural isolation by importing CoreLocation outside allowed platform adapters")
 
+    # 15. Verify Sendable conformance for KMP classes in Swift 6
+    geo_bridge_file = ios_dir / "MycoIOS" / "Platform" / "GeoCoordinates+CoreLocation.swift"
+    if not geo_bridge_file.exists() or "@unchecked Sendable" not in geo_bridge_file.read_text(encoding="utf-8"):
+        errors.append("GeoCoordinates+CoreLocation.swift must declare 'extension GeoCoordinates: @unchecked Sendable'")
+
+    for swift_file in swift_files:
+        content = swift_file.read_text(encoding="utf-8")
+        if re.search(r'struct\s+\w+\s*:[^{]*\bSendable\b[^{]*\{[^}]*\bGeoCoordinates\b', content, re.DOTALL):
+            if "@preconcurrency import MycoCore" not in content and "@preconcurrency" not in content:
+                errors.append(f"{swift_file.name}: struct with GeoCoordinates conforms to Sendable, requires '@preconcurrency import MycoCore'")
+
     if errors:
         print("\n[FAIL] Cross-platform contract parity check failed with errors:")
         for err in errors:
@@ -206,6 +217,7 @@ def main() -> int:
     print("  - Verified AnalysisInputs builders & constructors")
     print("  - Verified GeoCoordinates value object & Haversine distance contracts")
     print("  - Verified CoreLocation architectural isolation (zero CoreLocation in data/viewmodel)")
+    print("  - Verified Swift 6 Sendable & @preconcurrency cross-platform conformance")
     print("  - Verified MapView statusDescription binding")
     print("  - Verified MycoViewModel clock injection")
     print("  - Verified OverpassClient saprotrophic alignment")

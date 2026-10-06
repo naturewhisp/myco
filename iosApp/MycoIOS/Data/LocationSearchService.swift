@@ -1,6 +1,6 @@
 import Foundation
 @preconcurrency import MapKit
-import MycoCore
+@preconcurrency import MycoCore
 
 struct LocationSearchResult: Identifiable, Sendable {
     let id: String

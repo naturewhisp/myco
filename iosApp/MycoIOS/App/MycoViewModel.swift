@@ -1,5 +1,5 @@
 import Foundation
-import MycoCore
+@preconcurrency import MycoCore
 
 struct EnvironmentalDay: Identifiable {
     let date: Date

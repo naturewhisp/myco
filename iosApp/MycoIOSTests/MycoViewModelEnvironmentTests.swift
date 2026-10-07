@@ -157,7 +157,7 @@ final class MycoViewModelEnvironmentTests: XCTestCase {
         }
         """.utf8)
         let habitatLoader = TestHTTPDataLoader { request in
-            if request.url?.absoluteString.contains("out") == true {
+            if request.url?.absoluteString.contains("5000") == true {
                 return (forestSnapPayload, httpResponse(for: request))
             }
             return (urbanHabitatPayload, httpResponse(for: request))

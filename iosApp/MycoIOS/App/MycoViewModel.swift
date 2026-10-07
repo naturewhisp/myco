@@ -384,7 +384,7 @@ final class MycoViewModel: ObservableObject {
         elevation = elevations.first ?? forecast.elevation
         let result = analysisEngine.analyze(input: input)
         analysis = result
-        isOutsideHabitat = result.habitatScore < 0.10
+        isOutsideHabitat = result.habitatScore < 0.10 || evidence.status == .knownUnsuitable
         fieldNote = result.deterministicFieldNote
         fieldNoteTask = Task { [weak self, fieldNoteGenerator] in
             let enriched = await fieldNoteGenerator.enrich(deterministicNote: result.deterministicFieldNote)

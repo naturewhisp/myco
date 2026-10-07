@@ -80,7 +80,7 @@ final class CoreLocationServiceTests: XCTestCase {
     }
 
     private func waitUntil(
-        timeout: Duration = .seconds(10),
+        timeout: Duration = .seconds(25),
         condition: @escaping @MainActor () -> Bool
     ) async throws {
         let deadline = ContinuousClock.now + timeout

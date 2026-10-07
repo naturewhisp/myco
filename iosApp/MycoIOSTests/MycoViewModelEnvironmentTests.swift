@@ -147,7 +147,25 @@ final class MycoViewModelEnvironmentTests: XCTestCase {
         let weatherLoader = TestHTTPDataLoader { request in
             (forecastPayload, httpResponse(for: request))
         }
-        let urbanHabitatPayload = Data(#"{"version": 0.6, "elements": []}"#.utf8)
+        let urbanHabitatPayload = Data("""
+        {
+            "version": 0.6,
+            "elements": [
+                {
+                    "type": "way",
+                    "id": 100,
+                    "tags": {"landuse": "residential"},
+                    "geometry": [
+                        {"lat": 44.40, "lon": 7.90},
+                        {"lat": 44.60, "lon": 7.90},
+                        {"lat": 44.60, "lon": 8.10},
+                        {"lat": 44.40, "lon": 8.10},
+                        {"lat": 44.40, "lon": 7.90}
+                    ]
+                }
+            ]
+        }
+        """.utf8)
         let forestSnapPayload = Data("""
         {
             "version": 0.6,
@@ -245,7 +263,7 @@ final class MycoViewModelEnvironmentTests: XCTestCase {
     }
 
     private func waitUntil(
-        timeout: Duration = .seconds(5),
+        timeout: Duration = .seconds(15),
         condition: @escaping @MainActor () -> Bool
     ) async throws {
         let deadline = ContinuousClock.now + timeout

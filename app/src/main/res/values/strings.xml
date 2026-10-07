@@ -6,6 +6,7 @@
     <string name="notice_habitat_title">Area a prevalente insediamento urbano o agricolo</string>
     <string name="notice_habitat_description">La copertura forestale rilevata è inferiore al 10%. La probabilità miceliare richiede la vicinanza a specie arboree ospiti (faggio, castagno, quercia o conifere).</string>
     <string name="notice_habitat_action">Sposta cursore verso il bosco vicino</string>
+    <string name="notice_habitat_action_searching">Ricerca formazioni boschive&#8230;</string>
     <string name="notice_coverage_tag">FUORI COPERTURA ATLANTE SPUN</string>
     <string name="notice_coverage_title">Dati meteorologici attivi • Atlante micorrizico non disponibile</string>
     <string name="notice_coverage_description">Le coordinate selezionate si trovano al di fuori dei confini coperti dall&#8217;atlante SPUN Italia. Il calcolo climatico resta pienamente operativo.</string>

@@ -320,6 +320,26 @@ class MushroomViewModelTest {
         advanceUntilIdle()
 
         assertEquals(Pair(44.21, 7.91), viewModel.selectedLatLng)
+        assertFalse(viewModel.isSearchingForest)
+    }
+
+    @Test
+    fun testSnapToNearestForest_DebouncesConcurrentClicks() = runTest(testDispatcher) {
+        coEvery { repository.findNearestForest(44.2, 7.9) } coAnswers {
+            kotlinx.coroutines.delay(100)
+            Pair(44.21, 7.91)
+        }
+        viewModel.selectLocation(44.2, 7.9, "Pianura")
+        advanceUntilIdle()
+
+        viewModel.snapToNearestForest()
+        assertTrue(viewModel.isSearchingForest)
+        // Tentativo concorrente mentre la prima ricerca è in corso
+        viewModel.snapToNearestForest()
+
+        advanceUntilIdle()
+        assertFalse(viewModel.isSearchingForest)
+        coVerify(exactly = 1) { repository.findNearestForest(44.2, 7.9) }
     }
 
     @Test

@@ -309,6 +309,7 @@ fun HomeScreen(
             Spacer(modifier = Modifier.height(12.dp))
         } else if (viewModel.isOutsideHabitat) {
             HabitatAnomalyNotice(
+                isSearching = viewModel.isSearchingForest,
                 onMoveToForestClick = { viewModel.snapToNearestForest() }
             )
             Spacer(modifier = Modifier.height(12.dp))

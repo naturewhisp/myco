@@ -235,9 +235,11 @@ class MushroomViewModel(
     var placeName by mutableStateOf<PlaceName?>(null)
         private set
     var isOutsideHabitat by mutableStateOf(false)
-        private set
+        internal set
     var isOutsideCoverage by mutableStateOf(false)
-        private set
+        internal set
+    var isSearchingForest by mutableStateOf(false)
+        internal set
     var closestCoverageName by mutableStateOf("Val Veny / Courmayeur (AO)")
         internal set
     var closestCoverageDistanceKm by mutableStateOf(14)
@@ -990,21 +992,30 @@ class MushroomViewModel(
      * Risolve TD-01 eliminando l'offset fisso (+0.015, +0.015).
      */
     fun snapToNearestForest() {
+        if (isSearchingForest) return
+        isSearchingForest = true
+        isLoading = true
+        loadingText = "Scansione formazioni boschive OSM in corso..."
         val current = selectedLatLng ?: Pair(lastLat, lastLon)
         viewModelScope.launch {
-            loadingText = "Scansione formazioni boschive OSM in corso..."
-            val forestCoord = repository.findNearestForest(current.first, current.second)
-            if (forestCoord != null) {
-                val dist = MushroomAlgorithms.haversineDistanceKm(
-                    current.first, current.second, forestCoord.first, forestCoord.second
-                )
-                val distFormatted = String.format(Locale.US, "%.1f", dist)
-                selectLocation(forestCoord.first, forestCoord.second, "Fascia boschiva vicina (~$distFormatted km)")
-            } else {
-                // Fallback di prossimità controllato
-                val fallbackLat = current.first + 0.012
-                val fallbackLon = current.second + 0.012
-                selectLocation(fallbackLat, fallbackLon, "Fascia boschiva adiacente")
+            try {
+                val forestCoord = repository.findNearestForest(current.first, current.second)
+                if (forestCoord != null) {
+                    val dist = MushroomAlgorithms.haversineDistanceKm(
+                        current.first, current.second, forestCoord.first, forestCoord.second
+                    )
+                    val distFormatted = String.format(Locale.US, "%.1f", dist)
+                    selectLocation(forestCoord.first, forestCoord.second, "Fascia boschiva vicina (~$distFormatted km)")
+                } else {
+                    // Fallback di prossimità controllato
+                    val fallbackLat = current.first + 0.012
+                    val fallbackLon = current.second + 0.012
+                    selectLocation(fallbackLat, fallbackLon, "Fascia boschiva adiacente")
+                }
+            } catch (_: Exception) {
+                isLoading = false
+            } finally {
+                isSearchingForest = false
             }
         }
     }
@@ -1103,6 +1114,8 @@ class MushroomViewModel(
             isFromCache = false
             cacheAgeText = null
             isOfflineFieldMode = false
+            isOutsideHabitat = false
+            isOutsideCoverage = false
 
             // Generazione istantanea della nuvola locale in background (<10ms)
             // Sfrutta i dati SPUN residenti in memoria senza attendere 3-5 secondi di chiamate di rete

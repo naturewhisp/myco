@@ -9,10 +9,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -32,6 +35,7 @@ import github.naturewhisp.myco.ui.theme.NewsreaderFontFamily
 @Composable
 fun HabitatAnomalyNotice(
     modifier: Modifier = Modifier,
+    isSearching: Boolean = false,
     onMoveToForestClick: (() -> Unit)? = null
 ) {
     val mycoColors = MycoTheme.colors
@@ -43,9 +47,18 @@ fun HabitatAnomalyNotice(
             .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .border(1.dp, mycoColors.scale3, shape)
-            .padding(16.dp)
     ) {
-        Column {
+        if (isSearching) {
+            LinearProgressIndicator(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.5.dp)
+                    .align(Alignment.TopCenter),
+                color = mycoColors.scale3,
+                trackColor = mycoColors.scale3.copy(alpha = 0.2f)
+            )
+        }
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = stringResource(R.string.notice_habitat_tag),
@@ -79,16 +92,32 @@ fun HabitatAnomalyNotice(
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedButton(
                     onClick = onMoveToForestClick,
+                    enabled = !isSearching,
                     shape = RoundedCornerShape(4.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.onSurface
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
                 ) {
-                    Text(
-                        text = stringResource(R.string.notice_habitat_action),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                    if (isSearching) {
+                        CircularProgressIndicator(
+                            color = mycoColors.scale3,
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = stringResource(R.string.notice_habitat_action_searching),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    } else {
+                        Text(
+                            text = stringResource(R.string.notice_habitat_action),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
             }
         }

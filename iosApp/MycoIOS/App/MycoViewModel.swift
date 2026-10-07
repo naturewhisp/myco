@@ -33,6 +33,8 @@ final class MycoViewModel: ObservableObject {
     @Published private(set) var isSearching = false
     @Published private(set) var isLoadingEnvironment = false
     @Published private(set) var isOfflineFallback = false
+    @Published private(set) var isOutsideHabitat = false
+    @Published private(set) var isSearchingForest = false
     @Published private(set) var errorMessage: String?
     @Published var selectedSpecies: MushroomSpecies
     @Published private(set) var favorites: [SavedPlaceValue] = []
@@ -43,6 +45,7 @@ final class MycoViewModel: ObservableObject {
     private let locationSearch: any LocationSearching
     private let openMeteo: OpenMeteoClient
     private let overpass: OverpassClient
+    private let nominatim: NominatimClient
     private let cacheStore: CacheStore?
     private let spun = SpunBundleService()
     private let fieldNoteGenerator: any FieldNoteGenerating
@@ -53,6 +56,7 @@ final class MycoViewModel: ObservableObject {
     private var environmentTask: Task<Void, Never>?
     private var fieldNoteTask: Task<Void, Never>?
     private var heatmapTask: Task<Void, Never>?
+    private var geocodingTask: Task<Void, Never>?
     /// Monotonically identifies the environment selection currently displayed.
     /// Cancellation is cooperative, so this also rejects results from dependencies
     /// that complete after they have been cancelled.
@@ -63,6 +67,7 @@ final class MycoViewModel: ObservableObject {
         locationSearch: any LocationSearching = MKLocalSearchService(),
         openMeteo: OpenMeteoClient = OpenMeteoClient(),
         overpass: OverpassClient = OverpassClient(),
+        nominatim: NominatimClient = NominatimClient(),
         cacheStore: CacheStore? = nil,
         fieldNoteGenerator: any FieldNoteGenerating = FoundationModelService(),
         savedPlacesStore: SavedPlacesStore? = nil,
@@ -71,6 +76,7 @@ final class MycoViewModel: ObservableObject {
         self.locationSearch = locationSearch
         self.openMeteo = openMeteo
         self.overpass = overpass
+        self.nominatim = nominatim
         self.cacheStore = cacheStore
         self.fieldNoteGenerator = fieldNoteGenerator
         self.savedPlacesStore = savedPlacesStore
@@ -85,6 +91,7 @@ final class MycoViewModel: ObservableObject {
         environmentTask?.cancel()
         fieldNoteTask?.cancel()
         heatmapTask?.cancel()
+        geocodingTask?.cancel()
     }
 
     func submitSearch(query: String) {
@@ -124,12 +131,41 @@ final class MycoViewModel: ObservableObject {
 
     func select(coordinate: GeoCoordinates, name: String = "Punto selezionato") {
         searchTask?.cancel()
+        geocodingTask?.cancel()
         isSearching = false
+        isSearchingForest = false
+        isOutsideHabitat = false
         selectedLocation = SelectedLocation(name: name, coordinate: coordinate)
         try? savedPlacesStore?.recordRecent(name: name, latitude: coordinate.latitude, longitude: coordinate.longitude)
         refreshSavedPlaces()
         searchResults = []
         loadEnvironment(for: coordinate)
+        reverseGeocodeIfNeeded(for: coordinate, currentName: name, generation: environmentGeneration)
+    }
+
+    func snapToNearestForest() {
+        guard !isSearchingForest, let current = selectedLocation?.coordinate else { return }
+        isSearchingForest = true
+        let overpass = self.overpass
+        Task { [weak self] in
+            do {
+                let forestCoord = try await overpass.findNearestForest(around: current)
+                guard let self else { return }
+                self.isSearchingForest = false
+                if let forestCoord {
+                    let dist = current.distanceToKm(other: forestCoord)
+                    let locale = Locale(identifier: "en_US_POSIX")
+                    let distFormatted = String(format: "%.1f", locale: locale, dist)
+                    self.select(coordinate: forestCoord, name: "Fascia boschiva vicina (~\(distFormatted) km)")
+                } else {
+                    let fallback = GeoCoordinates(latitude: current.latitude + 0.012, longitude: current.longitude + 0.012)
+                    self.select(coordinate: fallback, name: "Fascia boschiva adiacente")
+                }
+            } catch {
+                guard let self else { return }
+                self.isSearchingForest = false
+            }
+        }
     }
 
     func useCurrentLocation(latitude: Double, longitude: Double) {
@@ -223,6 +259,7 @@ final class MycoViewModel: ObservableObject {
         let generation = environmentGeneration
         isLoadingEnvironment = true
         isOfflineFallback = false
+        isOutsideHabitat = false
         analysis = nil
         heatmap = nil
         fieldNoteTask?.cancel()
@@ -347,6 +384,7 @@ final class MycoViewModel: ObservableObject {
         elevation = elevations.first ?? forecast.elevation
         let result = analysisEngine.analyze(input: input)
         analysis = result
+        isOutsideHabitat = result.habitatScore < 0.10
         fieldNote = result.deterministicFieldNote
         fieldNoteTask = Task { [weak self, fieldNoteGenerator] in
             let enriched = await fieldNoteGenerator.enrich(deterministicNote: result.deterministicFieldNote)
@@ -365,6 +403,28 @@ final class MycoViewModel: ObservableObject {
         guard !Task.isCancelled, isCurrentEnvironment(generation) else { return }
         heatmap = raster
         isLoadingEnvironment = false
+    }
+
+    private func reverseGeocodeIfNeeded(for coordinate: GeoCoordinates, currentName: String, generation: Int) {
+        let isPlaceholder = currentName == "Punto selezionato" || currentName == "Posizione attuale"
+        guard isPlaceholder else { return }
+        let nominatim = self.nominatim
+        geocodingTask = Task { [weak self] in
+            guard let place = try? await nominatim.reverse(coordinate: coordinate) else { return }
+            guard let self, self.isCurrentEnvironment(generation) else { return }
+            let resolvedName: String
+            if let town = place.address?.village ?? place.address?.town ?? place.address?.city ?? place.address?.municipality {
+                resolvedName = town
+            } else {
+                resolvedName = place.displayName.split(separator: ",").first.map { String($0) } ?? place.displayName
+            }
+            let trimmed = resolvedName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty,
+               self.selectedLocation?.coordinate.latitude == coordinate.latitude,
+               self.selectedLocation?.coordinate.longitude == coordinate.longitude {
+                self.selectedLocation = SelectedLocation(name: trimmed, coordinate: coordinate)
+            }
+        }
     }
 
     private func isCurrentEnvironment(_ generation: Int) -> Bool {

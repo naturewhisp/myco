@@ -174,6 +174,41 @@ final class OverpassClientTests: XCTestCase {
         XCTAssertEqual(evidence.forestProximityIndex, 0)
     }
 
+    func testFindNearestForestFindsClosestCandidateWithinRange() async throws {
+        let payload = Data("""
+        {
+            "version": 0.6,
+            "elements": [
+                {"type": "node", "id": 101, "lat": 44.510, "lon": 8.010, "tags": {"natural": "wood"}},
+                {"type": "node", "id": 102, "lat": 44.502, "lon": 8.002, "tags": {"landuse": "forest"}},
+                {"type": "way", "id": 103, "center": {"lat": 44.520, "lon": 8.020}, "tags": {"natural": "wood"}}
+            ]
+        }
+        """.utf8)
+        let endpoint = URL(string: "https://overpass.test/api")!
+        let loader = TestHTTPDataLoader { request in
+            (payload, httpResponse(for: request))
+        }
+        let client = OverpassClient(apiClient: APIClient(loader: loader), endpoints: [endpoint])
+        let nearest = try await client.findNearestForest(around: GeoCoordinates(latitude: 44.500, longitude: 8.000))
+
+        let target = try XCTUnwrap(nearest)
+        XCTAssertEqual(target.latitude, 44.502, accuracy: 0.0001)
+        XCTAssertEqual(target.longitude, 8.002, accuracy: 0.0001)
+    }
+
+    func testFindNearestForestReturnsNilWhenNoElementsFound() async throws {
+        let payload = Data(#"{"version": 0.6, "elements": []}"#.utf8)
+        let endpoint = URL(string: "https://overpass.test/api")!
+        let loader = TestHTTPDataLoader { request in
+            (payload, httpResponse(for: request))
+        }
+        let client = OverpassClient(apiClient: APIClient(loader: loader), endpoints: [endpoint])
+        let nearest = try await client.findNearestForest(around: GeoCoordinates(latitude: 44.500, longitude: 8.000))
+
+        XCTAssertNil(nearest)
+    }
+
     private func fixture(_ path: String) throws -> Data {
         let components = path.split(separator: "/").map(String.init)
         let fileURL = URL(fileURLWithPath: try XCTUnwrap(components.last))

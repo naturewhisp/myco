@@ -141,6 +141,46 @@ final class MycoViewModelEnvironmentTests: XCTestCase {
         XCTAssertEqual(viewModel.environmentalDays.first?.date, fixedDate)
     }
 
+    func testOutsideHabitatTriggersAnomalyAndSnapNavigatesToNearestForest() async throws {
+        let today = Self.todayIsoString()
+        let forecastPayload = Self.completeForecastPayload(date: today, timezone: "Europe/Rome")
+        let weatherLoader = TestHTTPDataLoader { request in
+            (forecastPayload, httpResponse(for: request))
+        }
+        let urbanHabitatPayload = Data(#"{"version": 0.6, "elements": []}"#.utf8)
+        let forestSnapPayload = Data("""
+        {
+            "version": 0.6,
+            "elements": [
+                {"type": "node", "id": 501, "lat": 44.505, "lon": 8.005, "tags": {"natural": "wood"}}
+            ]
+        }
+        """.utf8)
+        let habitatLoader = TestHTTPDataLoader { request in
+            if request.url?.absoluteString.contains("out") == true {
+                return (forestSnapPayload, httpResponse(for: request))
+            }
+            return (urbanHabitatPayload, httpResponse(for: request))
+        }
+
+        let viewModel = MycoViewModel(
+            openMeteo: OpenMeteoClient(apiClient: APIClient(loader: weatherLoader)),
+            overpass: OverpassClient(apiClient: APIClient(loader: habitatLoader))
+        )
+
+        viewModel.select(coordinate: GeoCoordinates(latitude: 44.500, longitude: 8.000), name: "Piazza Urbana")
+        try await waitUntil { viewModel.analysis != nil }
+
+        XCTAssertTrue(viewModel.isOutsideHabitat)
+
+        viewModel.snapToNearestForest()
+        try await waitUntil { viewModel.selectedLocation?.coordinate.latitude == 44.505 }
+
+        XCTAssertEqual(viewModel.selectedLocation?.coordinate.latitude, 44.505)
+        XCTAssertEqual(viewModel.selectedLocation?.coordinate.longitude, 8.005)
+        XCTAssertFalse(viewModel.isSearchingForest)
+    }
+
     private var forecastPayload: Data {
         let today = Self.todayIsoString()
         return Self.completeForecastPayload(date: today, timezone: "Europe/Rome")

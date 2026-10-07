@@ -20,6 +20,7 @@ struct RegistryView: View {
                 speciesSection
                 savedPlacesSection
                 searchResultsSection
+                habitatAnomalySection
                 analysisSection
                 errorSection
             }
@@ -210,6 +211,58 @@ struct RegistryView: View {
                     }
                     .accessibilityHint("Seleziona la località e avvia l'analisi")
                 }
+            }
+        }
+    }
+
+    @ViewBuilder private var habitatAnomalySection: some View {
+        if viewModel.isOutsideHabitat {
+            Section {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(colors.warning)
+                        Text("AVVISO HABITAT")
+                            .font(.caption)
+                            .fontWeight(.bold)
+                            .foregroundStyle(colors.warning)
+                    }
+
+                    Text("Area a prevalente insediamento urbano o agricolo")
+                        .font(.headline)
+                        .foregroundStyle(colors.ink)
+
+                    Text("La copertura forestale rilevata è inferiore al 10%. La probabilità miceliare richiede la vicinanza a specie arboree ospiti (faggio, castagno, quercia o conifere).")
+                        .font(.footnote)
+                        .foregroundStyle(colors.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if viewModel.isSearchingForest {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Ricerca formazioni boschive…")
+                                .font(.subheadline)
+                                .foregroundStyle(colors.inkSoft)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .center)
+                        .background(colors.surfaceRaised)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    } else {
+                        Button {
+                            viewModel.snapToNearestForest()
+                        } label: {
+                            HStack {
+                                Image(systemName: "tree.fill")
+                                Text("Sposta cursore verso il bosco vicino")
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(colors.forest)
+                    }
+                }
+                .padding(.vertical, 4)
             }
         }
     }

@@ -1,5 +1,5 @@
 import Foundation
-import MycoCore
+@preconcurrency import MycoCore
 
 enum OverpassClientError: LocalizedError, Sendable {
     case allEndpointsFailed([String])
@@ -146,6 +146,36 @@ struct OverpassClient: Sendable {
         let radius = min(max(radiusMeters, 1), 50_000)
         let query = "[out:json][timeout:25];(nwr(around:\(radius),\(coordinate.latitude),\(coordinate.longitude))[\(filter)];);out tags geom;"
         return try await self.query(query)
+    }
+
+    /// Finds the nearest forest centroid within a 5 km search radius around the coordinate.
+    /// Returns the closest forest coordinate (min distance >= 30m and < 10km), or nil if none found.
+    func findNearestForest(around coordinate: GeoCoordinates) async throws -> GeoCoordinates? {
+        let query = "[out:json][timeout:15];(nwr[\"natural\"=\"wood\"](around:5000,\(coordinate.latitude),\(coordinate.longitude));nwr[\"landuse\"=\"forest\"](around:5000,\(coordinate.latitude),\(coordinate.longitude)););out center 20;"
+        let response = try await self.query(query)
+        let candidates: [GeoCoordinates] = response.elements.compactMap { el in
+            if let lat = el.latitude, let lon = el.longitude {
+                return GeoCoordinates(latitude: lat, longitude: lon)
+            } else if let center = el.center {
+                return GeoCoordinates(latitude: center.latitude, longitude: center.longitude)
+            }
+            return nil
+        }
+        guard !candidates.isEmpty else { return nil }
+
+        var closest: GeoCoordinates?
+        var minDistance = Double.infinity
+        for candidate in candidates {
+            let distKm = coordinate.distanceToKm(other: candidate)
+            if distKm >= 0.03 && distKm < minDistance {
+                minDistance = distKm
+                closest = candidate
+            }
+        }
+        if minDistance < 10.0 {
+            return closest
+        }
+        return nil
     }
 
     /// Extracts structured habitat evidence from Overpass elements in lockstep with Android and :core.

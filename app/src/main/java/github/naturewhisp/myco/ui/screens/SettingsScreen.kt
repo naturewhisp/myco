@@ -171,17 +171,8 @@ fun SettingsScreen(
         CalculationModeRow(
             title = stringResource(R.string.settings_calc_unified_title),
             description = stringResource(R.string.settings_calc_unified_desc),
-            isSelected = viewModel.calculationMode == "UNIFIED",
+            isSelected = true,
             onClick = { viewModel.updateCalculationMode("UNIFIED") }
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        CalculationModeRow(
-            title = stringResource(R.string.settings_calc_weather_title),
-            description = stringResource(R.string.settings_calc_weather_desc),
-            isSelected = viewModel.calculationMode == "WEATHER_ONLY",
-            onClick = { viewModel.updateCalculationMode("WEATHER_ONLY") }
         )
 
         Spacer(modifier = Modifier.height(24.dp))

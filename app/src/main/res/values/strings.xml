@@ -27,10 +27,8 @@
     <string name="settings_theme_dark">Nocturne</string>
     <string name="settings_theme_dark_desc">Terra d&#8217;ombra</string>
     <string name="settings_section_calculation">MODELLO DI CALCOLO</string>
-    <string name="settings_calc_unified_title">Modello Unificato (Raccomandato)</string>
-    <string name="settings_calc_unified_desc">Aggrega meteo Open-Meteo, densità ifale SPUN, altimetria e copertura forestale OSM.</string>
-    <string name="settings_calc_weather_title">Solo Dati Meteorologici</string>
-    <string name="settings_calc_weather_desc">Valuta esclusivamente pioggia cumulata, temperatura e umidità atmosferica, escludendo i vincoli di habitat.</string>
+    <string name="settings_calc_unified_title">Modello Ecologico Unificato (Attivo)</string>
+    <string name="settings_calc_unified_desc">Aggrega dati agrometeorologici orari, pendenze ed esposizione orografica DEM, copertura forestale OSM e atlante micorrizico SPUN.</string>
     <string name="settings_section_map_style">BASE CARTOGRAFICA PREDEFINITA</string>
     <string name="settings_map_standard_title">Toponomastica &amp; Sentieri (Consigliata)</string>
     <string name="settings_map_standard_desc">Carta standard OpenStreetMap con nomi dei luoghi, borghi, frazioni, vette e sentieri chiaramente indicati.</string>

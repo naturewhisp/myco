@@ -39,9 +39,11 @@ import github.naturewhisp.myco.ui.theme.ThemeMode
 import github.naturewhisp.myco.ui.theme.ThemePreference
 import github.naturewhisp.myco.utils.HeatmapGenerator
 import github.naturewhisp.myco.utils.MushroomAlgorithms
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -1135,113 +1137,120 @@ class MushroomViewModel(
             }
 
             try {
-                // Se il nome è generico e non abbiamo una voce in cache, avvia il reverse geocoding in parallelo
-                val geocodeDeferred = if (isPlaceholder && cachedGeo == null) {
-                    async { repository.reverseGeocode(lat, lon) }
-                } else null
+                coroutineScope {
+                    // Se il nome è generico e non abbiamo una voce in cache, avvia il reverse geocoding in parallelo
+                    val geocodeDeferred = if (isPlaceholder && cachedGeo == null) {
+                        async { repository.reverseGeocode(lat, lon) }
+                    } else null
 
-                // Aggiorna subito il toponimo non appena il reverse geocoding risponde (~200ms)
-                if (geocodeDeferred != null) {
-                    launch {
-                        val geocoded = geocodeDeferred.await()
-                        if (geocoded != null && selectedLatLng == Pair(lat, lon)) {
-                            val resolvedName = geocoded.displayName
-                            locationName = resolvedName
-                            searchQuery = resolvedName.split(",").firstOrNull()?.trim() ?: resolvedName
-                            val customPrimary = fav?.customName?.takeIf { it.isNotBlank() }
-                            val base = PlaceName.fromGeocodeResult(geocoded, lastElevation)
-                            placeName = if (customPrimary != null) base.copy(primary = customPrimary) else base
+                    // Aggiorna subito il toponimo non appena il reverse geocoding risponde (~200ms)
+                    if (geocodeDeferred != null) {
+                        launch {
+                            try {
+                                val geocoded = geocodeDeferred.await()
+                                if (geocoded != null && selectedLatLng == Pair(lat, lon)) {
+                                    val resolvedName = geocoded.displayName
+                                    locationName = resolvedName
+                                    searchQuery = resolvedName.split(",").firstOrNull()?.trim() ?: resolvedName
+                                    val customPrimary = fav?.customName?.takeIf { it.isNotBlank() }
+                                    val base = PlaceName.fromGeocodeResult(geocoded, lastElevation)
+                                    placeName = if (customPrimary != null) base.copy(primary = customPrimary) else base
+                                }
+                            } catch (_: Exception) {
+                                // Ignora eventuali fallimenti isolati sulla risoluzione toponomastica anticipata
+                            }
                         }
                     }
-                }
 
-                // Fetch weather, habitat, SPUN micorrize, and terrain aspect in parallel
-                val weatherDeferred = async { repository.fetchWeather(lat, lon) }
-                val habitatDeferred = async { repository.fetchHabitat(lat, lon) }
-                val spunDeferred = async { repository.fetchSpunData(lat, lon, searchRadius) }
-                val terrainDeferred = async { repository.fetchTerrainAspect(lat, lon) }
+                    // Fetch weather, habitat, SPUN micorrize, and terrain aspect in parallel
+                    val weatherDeferred = async { repository.fetchWeather(lat, lon) }
+                    val habitatDeferred = async { repository.fetchHabitat(lat, lon) }
+                    val spunDeferred = async { repository.fetchSpunData(lat, lon, searchRadius) }
+                    val terrainDeferred = async { repository.fetchTerrainAspect(lat, lon) }
 
-                val weather = weatherDeferred.await()
-                val habitat = habitatDeferred.await()
-                val spunData = spunDeferred.await()
-                val terrainData = terrainDeferred.await()
-                val resolvedGeo = geocodeDeferred?.await() ?: cachedGeo
+                    val weather = weatherDeferred.await()
+                    val habitat = habitatDeferred.await()
+                    val spunData = spunDeferred.await()
+                    val terrainData = terrainDeferred.await()
+                    val resolvedGeo = geocodeDeferred?.await() ?: cachedGeo
 
-                val finalAgeMs = cacheManager.getWeatherCacheAge(lat, lon)
-                val now = System.currentTimeMillis()
-                dataAcquisitionTimestamp = if (finalAgeMs != null) now - finalAgeMs else now
-                if (finalAgeMs != null && finalAgeMs > 60_000L) {
-                    isFromCache = true
-                    isOfflineFieldMode = finalAgeMs > 60 * 60 * 1000L
-                    cacheAgeText = formatCacheAge(finalAgeMs)
-                } else {
-                    isFromCache = false
-                    cacheAgeText = null
-                    isOfflineFieldMode = false
-                }
-
-                val resolvedDisplayName = when {
-                    resolvedGeo != null -> resolvedGeo.displayName
-                    !isPlaceholder -> displayName
-                    else -> displayName
-                }
-
-                // Calculate Habitat Evidence & Score using Species-Aware Ecological Evaluation (F08, F09)
-
-                val evidence = repository.extractHabitatEvidence(habitat, lat, lon, searchRadius)
-                lastHabitatEvidence = evidence
-
-
-                // Acquisition stores evidence; the shared engine owns every scientific calculation.
-                lastWeatherTimezone = weather.timezone
-                val processedDays = MushroomAlgorithms.processWeatherData(weather)
-                lastProcessedDays = processedDays
-                lastTerrainData = terrainData
-                lastElevation = weather.elevation
-                lastSpunData = spunData
-                lastLat = lat
-                lastLon = lon
-                lastDisplayName = resolvedDisplayName
-                locationName = resolvedDisplayName
-                if (spunData != null) {
-                    spunEcmText = spunData.ecmText
-                    spunHyphalText = spunData.hyphalText
-                    spunRegionName = spunData.regionName
-                    spunDataAvailable = true
-                } else {
-                    spunEcmText = ""
-                    spunHyphalText = ""
-                    spunRegionName = null
-                    spunDataAvailable = false
-                }
-                recalculateForSpecies()
-
-                // Salva nella cronologia recenti (solo se toponimo reale e non segnaposto)
-                if (!SavedLocation.isPlaceholderName(resolvedDisplayName)) {
-                    val shortName = resolvedDisplayName.split(",").firstOrNull()?.trim() ?: resolvedDisplayName
-                    val existingFav = favoriteLocations.firstOrNull {
-                        String.format(Locale.US, "%.3f", it.lat) == rLat &&
-                        String.format(Locale.US, "%.3f", it.lon) == rLon
+                    val finalAgeMs = cacheManager.getWeatherCacheAge(lat, lon)
+                    val now = System.currentTimeMillis()
+                    dataAcquisitionTimestamp = if (finalAgeMs != null) now - finalAgeMs else now
+                    if (finalAgeMs != null && finalAgeMs > 60_000L) {
+                        isFromCache = true
+                        isOfflineFieldMode = finalAgeMs > 60 * 60 * 1000L
+                        cacheAgeText = formatCacheAge(finalAgeMs)
+                    } else {
+                        isFromCache = false
+                        cacheAgeText = null
+                        isOfflineFieldMode = false
                     }
-                    val savedLoc = SavedLocation(
-                        lat = lat,
-                        lon = lon,
-                        displayName = resolvedDisplayName,
-                        shortName = shortName,
-                        savedAt = System.currentTimeMillis(),
-                        isFavorite = currentLocationIsFavorite,
-                        isGpsLocation = isGps,
-                        customName = existingFav?.customName
-                    )
-                    cacheManager.saveRecentLocation(savedLoc)
-                    recentLocations = cacheManager.getRecentLocations()
+
+                    val resolvedDisplayName = when {
+                        resolvedGeo != null -> resolvedGeo.displayName
+                        !isPlaceholder -> displayName
+                        else -> displayName
+                    }
+
+                    // Calculate Habitat Evidence & Score using Species-Aware Ecological Evaluation (F08, F09)
+
+                    val evidence = repository.extractHabitatEvidence(habitat, lat, lon, searchRadius)
+                    lastHabitatEvidence = evidence
+
+
+                    // Acquisition stores evidence; the shared engine owns every scientific calculation.
+                    lastWeatherTimezone = weather.timezone
+                    val processedDays = MushroomAlgorithms.processWeatherData(weather)
+                    lastProcessedDays = processedDays
+                    lastTerrainData = terrainData
+                    lastElevation = weather.elevation
+                    lastSpunData = spunData
+                    lastLat = lat
+                    lastLon = lon
+                    lastDisplayName = resolvedDisplayName
+                    locationName = resolvedDisplayName
+                    if (spunData != null) {
+                        spunEcmText = spunData.ecmText
+                        spunHyphalText = spunData.hyphalText
+                        spunRegionName = spunData.regionName
+                        spunDataAvailable = true
+                    } else {
+                        spunEcmText = ""
+                        spunHyphalText = ""
+                        spunRegionName = null
+                        spunDataAvailable = false
+                    }
+                    recalculateForSpecies()
+
+                    // Salva nella cronologia recenti (solo se toponimo reale e non segnaposto)
+                    if (!SavedLocation.isPlaceholderName(resolvedDisplayName)) {
+                        val shortName = resolvedDisplayName.split(",").firstOrNull()?.trim() ?: resolvedDisplayName
+                        val existingFav = favoriteLocations.firstOrNull {
+                            String.format(Locale.US, "%.3f", it.lat) == rLat &&
+                            String.format(Locale.US, "%.3f", it.lon) == rLon
+                        }
+                        val savedLoc = SavedLocation(
+                            lat = lat,
+                            lon = lon,
+                            displayName = resolvedDisplayName,
+                            shortName = shortName,
+                            savedAt = System.currentTimeMillis(),
+                            isFavorite = currentLocationIsFavorite,
+                            isGpsLocation = isGps,
+                            customName = existingFav?.customName
+                        )
+                        cacheManager.saveRecentLocation(savedLoc)
+                        recentLocations = cacheManager.getRecentLocations()
+                    }
+
+                    // Dismiss main full-screen loader immediately
+                    isLoading = false
+
+                    updateCacheSize()
                 }
-
-                // Dismiss main full-screen loader immediately
-                isLoading = false
-
-                updateCacheSize()
-
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 e.printStackTrace()
                 errorMessage = e.message ?: "Errore durante il caricamento e l'analisi dei dati."
@@ -1249,6 +1258,13 @@ class MushroomViewModel(
                 cacheAgeText = null
                 isOfflineFieldMode = false
                 isLoading = false
+                isCalculable = false
+                todayProbability = 0
+                todaySuitabilityScore = 0.0
+                lastProcessedDays = null
+                lastHabitatEvidence = null
+                factors = emptyList()
+                summaryText = "Dati meteorologici non disponibili: impossibile recuperare le condizioni ambientali. Verifica la connessione di rete."
             }
         }
     }

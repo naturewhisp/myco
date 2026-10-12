@@ -808,4 +808,74 @@ class MushroomViewModelTest {
         assertEquals("2026-09-29", vm.targetAnalysisDate)
         assertTrue("Unknown habitat must yield neutral suitability (20-45), got ${vm.todayProbability}", vm.todayProbability in 20..45)
     }
+
+    @Test
+    fun selectLocationHandlesNetworkFailureWithoutCrashingCoroutineScope() = runTest(testDispatcher) {
+        coEvery { repository.fetchWeather(any(), any()) } throws java.net.UnknownHostException("Unable to resolve host api.open-meteo.com")
+        val vm = MushroomViewModel(
+            repository = repository,
+            cacheManager = cacheManager,
+            localAiService = localAiService,
+            spunDataManager = spunDataManager
+        )
+        vm.selectLocationFromGps(41.8902, 12.4922)
+        vm.dataFetchJob?.join()
+        advanceUntilIdle()
+        assertFalse(vm.isLoading)
+        assertNotNull(vm.errorMessage)
+        assertFalse(vm.isCalculable)
+        assertEquals(0, vm.todayProbability)
+        assertTrue(vm.factors.isEmpty())
+        assertTrue(vm.summaryText.isNotEmpty())
+    }
+
+    @Test
+    fun selectLocationHandlesSocketTimeoutWithoutCrashingCoroutineScope() = runTest(testDispatcher) {
+        coEvery { repository.fetchWeather(any(), any()) } throws java.net.SocketTimeoutException("Read timed out")
+        val vm = MushroomViewModel(
+            repository = repository,
+            cacheManager = cacheManager,
+            localAiService = localAiService,
+            spunDataManager = spunDataManager
+        )
+        vm.selectLocationFromGps(41.8902, 12.4922)
+        vm.dataFetchJob?.join()
+        advanceUntilIdle()
+        assertFalse(vm.isLoading)
+        assertNotNull(vm.errorMessage)
+        assertFalse(vm.isCalculable)
+        assertEquals(0, vm.todayProbability)
+        assertTrue(vm.factors.isEmpty())
+        assertTrue(vm.summaryText.isNotEmpty())
+    }
+
+    @Test
+    fun selectLocationFailureDoesNotLeakPreviousLocationData() = runTest(testDispatcher) {
+        val vm = MushroomViewModel(
+            repository = repository,
+            cacheManager = cacheManager,
+            localAiService = localAiService,
+            spunDataManager = spunDataManager
+        )
+        // First selection succeeds
+        vm.selectLocation(44.2, 7.9, "Punto 1")
+        vm.dataFetchJob?.join()
+        advanceUntilIdle()
+        assertTrue(vm.isCalculable)
+        assertTrue(vm.factors.isNotEmpty())
+
+        // Second selection from GPS fails due to network outage
+        coEvery { repository.fetchWeather(41.8902, 12.4922) } throws java.net.UnknownHostException("No address")
+        vm.selectLocationFromGps(41.8902, 12.4922)
+        vm.dataFetchJob?.join()
+        advanceUntilIdle()
+
+        assertFalse(vm.isLoading)
+        assertNotNull(vm.errorMessage)
+        assertFalse(vm.isCalculable)
+        assertEquals(0, vm.todayProbability)
+        assertTrue(vm.factors.isEmpty())
+        assertTrue(vm.summaryText.contains("Dati meteorologici non disponibili"))
+    }
 }
+

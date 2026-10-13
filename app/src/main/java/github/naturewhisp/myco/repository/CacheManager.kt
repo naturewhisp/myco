@@ -25,6 +25,10 @@ class CacheManager(
 
     private val gson = Gson()
 
+    init {
+        purgeDefectiveHabitatCache()
+    }
+
     companion object {
         private const val KEY_MAP_STYLE = "settings_map_style"
         private const val KEY_RADIUS = "settings_radius"
@@ -280,6 +284,14 @@ class CacheManager(
      */
     fun clearCache() {
         cacheStore.clear()
+    }
+
+    /**
+     * Esegue la bonifica della cache habitat eliminando le voci con relazioni prive di membri.
+     */
+    fun purgeDefectiveHabitatCache(): Int {
+        if (!cacheEnabled) return 0
+        return cacheStore.purgeDefectiveHabitatCache()
     }
 
     fun getCacheSizeString(): String {

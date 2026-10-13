@@ -151,10 +151,14 @@ class MushroomRepository(
 
         val cached = cacheManager.getCachedData(cacheKey, OverpassResponse::class.java, 24 * 60 * 60 * 1000) // 24 hours
         if (cached != null) {
-            return cached
+            if (cached.hasDefectiveRelationGeometries()) {
+                cacheManager.cacheStore.remove(cacheKey)
+            } else {
+                return cached
+            }
         }
 
-        val query = "[out:json];(nwr[\"natural\"=\"wood\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"=\"forest\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"~\"meadow|grass|pasture\"](around:$radius,$latitude,$longitude);nwr[\"natural\"~\"grassland|heath\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"~\"residential|commercial|industrial\"](around:$radius,$latitude,$longitude);nwr[\"genus\"](around:$radius,$latitude,$longitude););out tags geom;"
+        val query = "[out:json];(nwr[\"natural\"=\"wood\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"=\"forest\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"~\"meadow|grass|pasture\"](around:$radius,$latitude,$longitude);nwr[\"natural\"~\"grassland|heath\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"~\"residential|commercial|industrial\"](around:$radius,$latitude,$longitude);nwr[\"genus\"](around:$radius,$latitude,$longitude););out body geom;"
 
         for (service in overpassServices) {
             try {
@@ -165,7 +169,12 @@ class MushroomRepository(
                 // Prova il mirror Overpass successivo
             }
         }
-        return cacheManager.getCachedDataIgnoreExpiry(cacheKey, OverpassResponse::class.java)?.first
+        val fallback = cacheManager.getCachedDataIgnoreExpiry(cacheKey, OverpassResponse::class.java)?.first
+        if (fallback != null && fallback.hasDefectiveRelationGeometries()) {
+            cacheManager.cacheStore.remove(cacheKey)
+            return null
+        }
+        return fallback
     }
 
     /**
@@ -190,7 +199,11 @@ class MushroomRepository(
 
         val cached = cacheManager.getCachedData(cacheKey, OverpassResponse::class.java, 24 * 60 * 60 * 1000) // 24 hours
         if (cached != null) {
-            return cached
+            if (cached.hasDefectiveRelationGeometries()) {
+                cacheManager.cacheStore.remove(cacheKey)
+            } else {
+                return cached
+            }
         }
 
         val knownGeneraMap = mapOf(
@@ -216,9 +229,9 @@ class MushroomRepository(
         }
 
         val query = if (species?.category == EcologicalCategory.SAPROTROPHIC) {
-            "[out:json];(nwr[\"landuse\"~\"meadow|grass|pasture\"](around:$radius,$latitude,$longitude);nwr[\"natural\"~\"grassland|heath\"](around:$radius,$latitude,$longitude););out tags geom;"
+            "[out:json];(nwr[\"landuse\"~\"meadow|grass|pasture\"](around:$radius,$latitude,$longitude);nwr[\"natural\"~\"grassland|heath\"](around:$radius,$latitude,$longitude););out body geom;"
         } else {
-            "[out:json];nwr[\"genus\"~\"$genusRegex\"](around:$radius,$latitude,$longitude);out tags geom;"
+            "[out:json];nwr[\"genus\"~\"$genusRegex\"](around:$radius,$latitude,$longitude);out body geom;"
         }
 
         for (service in overpassServices) {
@@ -230,7 +243,12 @@ class MushroomRepository(
                 // Prova il mirror Overpass successivo
             }
         }
-        return cacheManager.getCachedDataIgnoreExpiry(cacheKey, OverpassResponse::class.java)?.first
+        val fallback = cacheManager.getCachedDataIgnoreExpiry(cacheKey, OverpassResponse::class.java)?.first
+        if (fallback != null && fallback.hasDefectiveRelationGeometries()) {
+            cacheManager.cacheStore.remove(cacheKey)
+            return null
+        }
+        return fallback
     }
 
     /**

@@ -142,4 +142,73 @@ class CacheManagerTest {
         assertNotNull(age)
         assertTrue(age!! >= 0)
     }
+
+    @Test
+    fun testPurgeDefectiveHabitatCache() {
+        // Entry habitat difettosa (relazione senza members)
+        cacheStore.put(
+            key = "habitat_geom_v2_1500m_44.2149_7.9755",
+            dataJson = """{"elements":[{"type":"relation","id":11740315,"tags":{"landuse":"forest"}}]}"""
+        )
+        // Entry meteo valida
+        cacheStore.put(
+            key = "weather_44.2149_7.9755",
+            dataJson = """{"elevation":800.0}"""
+        )
+
+        val purgedCount = cacheManager.purgeDefectiveHabitatCache()
+        assertEquals(1, purgedCount)
+        assertNull(cacheStore.get("habitat_geom_v2_1500m_44.2149_7.9755", 100_000L))
+        assertNotNull(cacheStore.get("weather_44.2149_7.9755", 100_000L))
+    }
+
+    @Test
+    fun testOverpassResponseHasDefectiveRelationGeometries() {
+        val defective = github.naturewhisp.myco.model.OverpassResponse(
+            elements = listOf(
+                github.naturewhisp.myco.model.OverpassElement(
+                    type = "relation",
+                    id = 123L,
+                    tags = mapOf("landuse" to "forest"),
+                    members = null
+                )
+            )
+        )
+        assertTrue(defective.hasDefectiveRelationGeometries())
+
+        val validWithMembers = github.naturewhisp.myco.model.OverpassResponse(
+            elements = listOf(
+                github.naturewhisp.myco.model.OverpassElement(
+                    type = "relation",
+                    id = 123L,
+                    tags = mapOf("landuse" to "forest"),
+                    members = listOf(
+                        github.naturewhisp.myco.model.OverpassMember(
+                            role = "outer",
+                            geometry = listOf(
+                                github.naturewhisp.myco.model.OverpassCenter(44.0, 8.0),
+                                github.naturewhisp.myco.model.OverpassCenter(44.1, 8.1)
+                            )
+                        )
+                    )
+                )
+            )
+        )
+        assertFalse(validWithMembers.hasDefectiveRelationGeometries())
+
+        val validWaysOnly = github.naturewhisp.myco.model.OverpassResponse(
+            elements = listOf(
+                github.naturewhisp.myco.model.OverpassElement(
+                    type = "way",
+                    id = 456L,
+                    tags = mapOf("landuse" to "forest"),
+                    geometry = listOf(
+                        github.naturewhisp.myco.model.OverpassCenter(44.0, 8.0),
+                        github.naturewhisp.myco.model.OverpassCenter(44.1, 8.1)
+                    )
+                )
+            )
+        )
+        assertFalse(validWaysOnly.hasDefectiveRelationGeometries())
+    }
 }

@@ -70,6 +70,14 @@ interface PlatformCacheStore {
     fun clear()
 
     /**
+     * Esegue una bonifica della cache eliminando voci di habitat strutturate che presentano
+     * relazioni prive di membri/geometrie (es. originate da vecchie query truncate).
+     *
+     * @return Numero di record eliminati durante la bonifica.
+     */
+    fun purgeDefectiveHabitatCache(): Int
+
+    /**
      * Restituisce l'età in millisecondi del record in cache, oppure null se inesistente.
      *
      * @param key Chiave dell'elemento.

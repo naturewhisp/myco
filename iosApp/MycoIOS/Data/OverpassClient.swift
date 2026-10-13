@@ -48,6 +48,20 @@ struct OverpassResponse: Codable, Sendable {
             case longitude = "lon"
         }
     }
+
+    var hasDefectiveRelationGeometries: Bool {
+        elements.contains { el in
+            let isWoodOrForest = el.tags?["natural"] == "wood" || el.tags?["landuse"] == "forest"
+            let isMeadowOrGrass = ["meadow", "grass", "pasture"].contains(el.tags?["landuse"] ?? "") ||
+                ["grassland", "heath"].contains(el.tags?["natural"] ?? "")
+            let isUrbanOrBuilt = ["residential", "commercial", "industrial", "retail", "construction"].contains(el.tags?["landuse"] ?? "") ||
+                el.tags?["building"] != nil
+            let relevant = isWoodOrForest || isMeadowOrGrass || isUrbanOrBuilt
+            let missingMembers = el.members == nil || el.members?.isEmpty == true
+            let missingGeometry = el.geometry == nil || el.geometry?.isEmpty == true
+            return el.type == "relation" && relevant && missingMembers && missingGeometry
+        }
+    }
 }
 
 struct HabitatSnapshot: Codable, Sendable {
@@ -144,7 +158,7 @@ struct OverpassClient: Sendable {
 
     func elements(around coordinate: GeoCoordinates, radiusMeters: Int, filter: String) async throws -> OverpassResponse {
         let radius = min(max(radiusMeters, 1), 50_000)
-        let query = "[out:json][timeout:25];(nwr(around:\(radius),\(coordinate.latitude),\(coordinate.longitude))[\(filter)];);out tags geom;"
+        let query = "[out:json][timeout:25];(nwr(around:\(radius),\(coordinate.latitude),\(coordinate.longitude))[\(filter)];);out body geom;"
         return try await self.query(query)
     }
 
@@ -295,7 +309,7 @@ struct OverpassClient: Sendable {
 
     static func forestQuery(around coordinate: GeoCoordinates, radiusMeters: Int) -> String {
         let radius = min(max(radiusMeters, 1), 50_000)
-        return "[out:json][timeout:25];(nwr[\"natural\"~\"wood|grassland|heath\"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude));nwr[\"landuse\"~\"forest|meadow|grass|pasture|residential|commercial|industrial\"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude));nwr[\"genus\"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude)););out tags geom;"
+        return "[out:json][timeout:25];(nwr[\"natural\"~\"wood|grassland|heath\"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude));nwr[\"landuse\"~\"forest|meadow|grass|pasture|residential|commercial|industrial\"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude));nwr[\"genus\"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude)););out body geom;"
     }
 
     /// Matches Android's category-specific Overpass acquisition: open habitats for
@@ -310,10 +324,10 @@ struct OverpassClient: Sendable {
         let location = "(around:\(radius),\(coordinate.latitude),\(coordinate.longitude))"
         switch ecologicalCategory {
         case .saprotrophic:
-            return "[out:json][timeout:25];(nwr[\"landuse\"~\"meadow|grass|pasture\"]\(location);nwr[\"natural\"~\"grassland|heath\"]\(location);nwr[\"leaf_type\"~\"broadleaved|needleleaved\"]\(location););out tags geom;"
+            return "[out:json][timeout:25];(nwr[\"landuse\"~\"meadow|grass|pasture\"]\(location);nwr[\"natural\"~\"grassland|heath\"]\(location);nwr[\"leaf_type\"~\"broadleaved|needleleaved\"]\(location););out body geom;"
         case .treeAssociated:
             let genusRegex = preferredGenusRegex(from: preferredCanopyTypes)
-            return "[out:json][timeout:25];(nwr[\"natural\"=\"wood\"]\(location);nwr[\"landuse\"=\"forest\"]\(location);nwr[\"leaf_type\"~\"broadleaved|needleleaved\"]\(location);nwr[\"genus\"~\"\(genusRegex)\"]\(location););out tags geom;"
+            return "[out:json][timeout:25];(nwr[\"natural\"=\"wood\"]\(location);nwr[\"landuse\"=\"forest\"]\(location);nwr[\"leaf_type\"~\"broadleaved|needleleaved\"]\(location);nwr[\"genus\"~\"\(genusRegex)\"]\(location););out body geom;"
         }
     }
 

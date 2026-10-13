@@ -294,7 +294,18 @@ final class MycoViewModel: ObservableObject {
                 return
             }
             let cachedElevation: OpenMeteoElevation? = freshElevation == nil ? await self.cached(OpenMeteoElevation.self, key: keys.elevation, cache: cacheStore) : nil
-            let cachedHabitat: HabitatSnapshot? = freshHabitat == nil ? await self.cached(HabitatSnapshot.self, key: keys.habitat, cache: cacheStore) : nil
+            let cachedHabitat: HabitatSnapshot?
+            if freshHabitat == nil {
+                let loaded: HabitatSnapshot? = await self.cached(HabitatSnapshot.self, key: keys.habitat, cache: cacheStore)
+                if let raw = loaded?.rawElements, OverpassResponse(version: 0.6, generator: nil, elements: raw).hasDefectiveRelationGeometries {
+                    try? await cacheStore?.remove(key: keys.habitat)
+                    cachedHabitat = nil
+                } else {
+                    cachedHabitat = loaded
+                }
+            } else {
+                cachedHabitat = nil
+            }
             guard !Task.isCancelled, self.isCurrentEnvironment(generation) else { return }
 
             if let freshForecast { await self.save(freshForecast, key: keys.forecast, ttl: 60 * 60, cache: cacheStore) }

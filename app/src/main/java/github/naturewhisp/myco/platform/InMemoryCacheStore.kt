@@ -61,6 +61,21 @@ class InMemoryCacheStore : PlatformCacheStore {
         entries.clear()
     }
 
+    override fun purgeDefectiveHabitatCache(): Int {
+        var count = 0
+        val it = entries.entries.iterator()
+        while (it.hasNext()) {
+            val (k, v) = it.next()
+            if ((k.startsWith("habitat_geom_") || k.startsWith("habitat_bonus_")) &&
+                v.data.contains("\"relation\"") && !v.data.contains("\"members\":[")
+            ) {
+                it.remove()
+                count++
+            }
+        }
+        return count
+    }
+
     override fun getCacheAge(key: String): Long? {
         val entry = entries[key] ?: return null
         return maxOf(0L, System.currentTimeMillis() - entry.timestamp)

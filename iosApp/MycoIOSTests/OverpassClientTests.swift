@@ -16,7 +16,7 @@ final class OverpassClientTests: XCTestCase {
         XCTAssertTrue(query.contains("[\"landuse\"~\"meadow|grass|pasture\"](around:1500,41.9,12.5)"))
         XCTAssertTrue(query.contains("[\"natural\"~\"grassland|heath\"](around:1500,41.9,12.5)"))
         XCTAssertFalse(query.contains("[\"natural\"=\"wood\"]"))
-        XCTAssertTrue(query.hasSuffix("out tags geom;"))
+        XCTAssertTrue(query.hasSuffix("out body geom;"))
     }
 
     func testTreeAssociatedQueryTargetsForestAndPreferredCanopyGenera() {
@@ -30,7 +30,7 @@ final class OverpassClientTests: XCTestCase {
         XCTAssertTrue(query.contains("[\"natural\"=\"wood\"](around:2000,45.4642,9.19)"))
         XCTAssertTrue(query.contains("[\"landuse\"=\"forest\"](around:2000,45.4642,9.19)"))
         XCTAssertTrue(query.contains("[\"genus\"~\"Quercus|Fagus\"](around:2000,45.4642,9.19)"))
-        XCTAssertTrue(query.hasSuffix("out tags geom;"))
+        XCTAssertTrue(query.hasSuffix("out body geom;"))
     }
 
     func testSharedSurfaceFixtureUsesGeometryAndRetainsRawElements() throws {

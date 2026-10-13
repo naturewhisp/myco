@@ -24,6 +24,7 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -227,5 +228,62 @@ class MushroomRepositoryTest {
         assertNotNull(closest)
         assertEquals(44.51, closest!!.first, 0.001)
         assertEquals(8.01, closest.second, 0.001)
+    }
+
+    @Test
+    fun testFetchHabitat_UsesOutBodyGeomAndInvalidatesDefectiveCache() = runBlocking<Unit> {
+        val overpassService = mockk<OverpassService>()
+        val validElements = listOf(
+            OverpassElement(
+                type = "relation",
+                id = 11740315L,
+                tags = mapOf("landuse" to "forest", "type" to "multipolygon"),
+                members = listOf(
+                    github.naturewhisp.myco.model.OverpassMember(
+                        role = "outer",
+                        geometry = listOf(
+                            OverpassCenter(lat = 44.20, lon = 7.96),
+                            OverpassCenter(lat = 44.22, lon = 7.98)
+                        )
+                    )
+                )
+            )
+        )
+        coEvery { overpassService.queryOverpass(any()) } returns OverpassResponse(elements = validElements)
+
+        val repo = MushroomRepository(
+            cacheManager = cacheManager,
+            spunDataManager = spunDataManager,
+            overpassServices = listOf(overpassService)
+        )
+
+        // Pre-popola la cache con un payload difettoso (relazione senza members)
+        val cacheKey = "habitat_geom_v2_1500m_44.2149_7.9755"
+        val defectiveResponse = OverpassResponse(
+            elements = listOf(
+                OverpassElement(
+                    type = "relation",
+                    id = 11740315L,
+                    tags = mapOf("landuse" to "forest", "type" to "multipolygon"),
+                    members = null
+                )
+            )
+        )
+        cacheManager.saveCachedData(cacheKey, defectiveResponse)
+
+        // fetchHabitat deve rilevare che la cache è difettosa, invalidarla ed eseguire la query di rete
+        val result = repo.fetchHabitat(44.2149, 7.9755)
+
+        coVerify(exactly = 1) {
+            overpassService.queryOverpass(match { it.contains("out body geom;") })
+        }
+        assertNotNull(result)
+        assertEquals(1, result!!.elements.size)
+        assertEquals(1, result.elements.first().members?.size)
+
+        // Verifica che la cache ora contenga il dato sano e non sia più difettosa
+        val newCached = cacheManager.getCachedData(cacheKey, OverpassResponse::class.java, 100_000L)
+        assertNotNull(newCached)
+        assertFalse(newCached!!.hasDefectiveRelationGeometries())
     }
 }

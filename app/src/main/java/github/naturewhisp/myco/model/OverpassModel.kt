@@ -9,7 +9,21 @@ import com.google.gson.annotations.SerializedName
  */
 data class OverpassResponse(
     @SerializedName("elements") val elements: List<OverpassElement>
-)
+) {
+    /**
+     * Rileva se la risposta contiene relazioni ecologiche (boschi, prati, aree antropizzate)
+     * prive di membri vettoriali e geometrie, indice di dati incompleti o generati con clausole
+     * di verbosità parziale ("out tags geom;").
+     */
+    fun hasDefectiveRelationGeometries(): Boolean {
+        return elements.any { el ->
+            el.type == "relation" &&
+                (el.isWoodOrForest || el.isMeadowOrGrass || el.isUrbanOrBuilt) &&
+                el.members.isNullOrEmpty() &&
+                el.geometry.isNullOrEmpty()
+        }
+    }
+}
 
 /**
  * Singolo elemento geografico vettoriale restituito da OpenStreetMap Overpass.

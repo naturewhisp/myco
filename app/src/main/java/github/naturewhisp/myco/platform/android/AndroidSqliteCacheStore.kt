@@ -157,6 +157,20 @@ class AndroidSqliteCacheStore(context: Context) : SQLiteOpenHelper(
         }
     }
 
+    override fun purgeDefectiveHabitatCache(): Int {
+        return try {
+            val db = writableDatabase
+            db.delete(
+                TABLE_CACHE,
+                "($COL_KEY LIKE 'habitat_geom_%' OR $COL_KEY LIKE 'habitat_bonus_%') AND " +
+                    "$COL_DATA LIKE '%\"relation\"%' AND $COL_DATA NOT LIKE '%\"members\":[%'",
+                null
+            )
+        } catch (_: Exception) {
+            0
+        }
+    }
+
     override fun getCacheAge(key: String): Long? {
         return try {
             val db = readableDatabase

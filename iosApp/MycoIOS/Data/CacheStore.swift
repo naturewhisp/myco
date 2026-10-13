@@ -107,6 +107,16 @@ final class CacheStore {
         return expiredFallback || !value.isExpired(at: now) ? value : nil
     }
 
+    /// Removes a specific cached entry by key.
+    func remove(key: String) async throws {
+        var descriptor = FetchDescriptor<CacheEntry>(predicate: #Predicate { $0.key == key })
+        descriptor.fetchLimit = 1
+        if let entry = try modelContext.fetch(descriptor).first {
+            modelContext.delete(entry)
+            try modelContext.save()
+        }
+    }
+
     /// Deletes only SwiftData cache records; user preferences remain owned by `PreferencesStore`.
     func clearCache() async throws {
         try modelContext.delete(model: CacheEntry.self)

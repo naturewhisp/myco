@@ -35,7 +35,24 @@ object HabitatGeometry {
 
     fun extract(elements: List<OsmHabitatElement>, target: GeoCoordinates, radius: Int): HabitatEvidence {
         if (elements.isEmpty() || radius <= 0) return HabitatEvidence.UNKNOWN_HABITAT
-        val unique = elements.distinctBy { it.elementKey ?: it }
+        val maxDistanceMeters = kotlin.math.max(radius * 10.0, 15_000.0)
+        val inRangeElements = elements.filter { element ->
+            val points = buildList {
+                if (element.lat != null && element.lon != null && element.lat.isFinite() && element.lon.isFinite()) {
+                    add(GeoCoordinates(element.lat, element.lon))
+                }
+                element.surfaces.forEach { surface ->
+                    surface.vertices.forEach { v ->
+                        if (v.latitude.isFinite() && v.longitude.isFinite()) {
+                            add(v)
+                        }
+                    }
+                }
+            }
+            points.isEmpty() || points.any { pt -> target.distanceToMeters(pt) <= maxDistanceMeters }
+        }
+        if (inRangeElements.isEmpty()) return HabitatEvidence.UNKNOWN_HABITAT
+        val unique = inRangeElements.distinctBy { it.elementKey ?: it }
         val scale = 111_320.0 * cos(target.latitude * kotlin.math.PI / 180.0)
         fun project(coordinate: GeoCoordinates) = Point(
             (coordinate.longitude - target.longitude) * scale,

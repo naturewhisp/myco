@@ -736,6 +736,9 @@ class MushroomViewModel(
     fun clearCache() {
         cacheManager.clearCache()
         updateCacheSize()
+        isFromCache = false
+        cacheAgeText = null
+        isOfflineFieldMode = false
     }
 
     fun clearRecentLocations() {
@@ -827,7 +830,30 @@ class MushroomViewModel(
         isMapCenteredOnUser = false
         mapOrientationMode = MapOrientationMode.NORTH_UP
         centerOnPointTrigger++
-        selectLocation(loc.lat, loc.lon, loc.displayName, isGps = loc.isGpsLocation)
+        val isSameLocation = selectedLatLng?.let { (curLat, curLon) ->
+            String.format(Locale.US, "%.3f", curLat) == String.format(Locale.US, "%.3f", loc.lat) &&
+                String.format(Locale.US, "%.3f", curLon) == String.format(Locale.US, "%.3f", loc.lon)
+        } == true
+        selectLocation(
+            lat = loc.lat,
+            lon = loc.lon,
+            displayName = loc.displayName,
+            isGps = loc.isGpsLocation,
+            forceRefresh = isSameLocation || !isCalculable,
+        )
+    }
+
+    /** Forza l'aggiornamento online di tutti i layer per la località attualmente selezionata */
+    fun refreshCurrentLocation() {
+        val latLng = selectedLatLng ?: return
+        if (isLoading) return
+        selectLocation(
+            lat = latLng.first,
+            lon = latLng.second,
+            displayName = locationName.ifEmpty { "Punto selezionato" },
+            isGps = currentLocationIsGps,
+            forceRefresh = true,
+        )
     }
 
     /** Aggiunge/rimuove il punto corrente dai preferiti */
@@ -1052,7 +1078,7 @@ class MushroomViewModel(
             }
             for (loc in distinctTargets) {
                 try {
-                    repository.prefetchCompleteLocation(loc.lat, loc.lon, selectedSpecies)
+                    repository.prefetchCompleteLocation(loc.lat, loc.lon, selectedSpecies, forceRefresh = true)
                     count++
                 } catch (_: Exception) {}
             }
@@ -1062,7 +1088,13 @@ class MushroomViewModel(
         }
     }
 
-    fun selectLocation(lat: Double, lon: Double, displayName: String = "Punto selezionato", isGps: Boolean = false) {
+    fun selectLocation(
+        lat: Double,
+        lon: Double,
+        displayName: String = "Punto selezionato",
+        isGps: Boolean = false,
+        forceRefresh: Boolean = false,
+    ) {
         analysisGeneration++
         aiJob?.cancel()
         aiJob = null
@@ -1082,6 +1114,8 @@ class MushroomViewModel(
 
         val rLat = String.format(Locale.US, "%.3f", lat)
         val rLon = String.format(Locale.US, "%.3f", lon)
+        val rLat4 = String.format(Locale.US, "%.4f", lat)
+        val rLon4 = String.format(Locale.US, "%.4f", lon)
         val fav = favoriteLocations.firstOrNull {
             String.format(Locale.US, "%.3f", it.lat) == rLat &&
             String.format(Locale.US, "%.3f", it.lon) == rLon
@@ -1089,8 +1123,8 @@ class MushroomViewModel(
         currentLocationIsFavorite = (fav != null)
 
         val isPlaceholder = SavedLocation.isPlaceholderName(displayName)
-        val cachedGeo = if (isPlaceholder) {
-            cacheManager.getCachedData("reverse_${rLat}_${rLon}", GeocodeResult::class.java, 7 * 24 * 60 * 60 * 1000L)
+        val cachedGeo = if (isPlaceholder && !forceRefresh) {
+            cacheManager.getCachedData("rev_${rLat4}_${rLon4}", GeocodeResult::class.java, 7 * 24 * 60 * 60 * 1000L)
         } else null
 
         val initialTitle = fav?.effectiveName
@@ -1140,7 +1174,16 @@ class MushroomViewModel(
                 coroutineScope {
                     // Se il nome è generico e non abbiamo una voce in cache, avvia il reverse geocoding in parallelo
                     val geocodeDeferred = if (isPlaceholder && cachedGeo == null) {
-                        async { repository.reverseGeocode(lat, lon) }
+                        async {
+                            try {
+                                if (forceRefresh) repository.reverseGeocode(lat, lon, forceRefresh = true)
+                                else repository.reverseGeocode(lat, lon)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (_: Exception) {
+                                null
+                            }
+                        }
                     } else null
 
                     // Aggiorna subito il toponimo non appena il reverse geocoding risponde (~200ms)
@@ -1163,10 +1206,39 @@ class MushroomViewModel(
                     }
 
                     // Fetch weather, habitat, SPUN micorrize, and terrain aspect in parallel
-                    val weatherDeferred = async { repository.fetchWeather(lat, lon) }
-                    val habitatDeferred = async { repository.fetchHabitat(lat, lon) }
-                    val spunDeferred = async { repository.fetchSpunData(lat, lon, searchRadius) }
-                    val terrainDeferred = async { repository.fetchTerrainAspect(lat, lon) }
+                    val weatherDeferred = async {
+                        if (forceRefresh) repository.fetchWeather(lat, lon, forceRefresh = true)
+                        else repository.fetchWeather(lat, lon)
+                    }
+                    val habitatDeferred = async {
+                        try {
+                            if (forceRefresh) repository.fetchHabitat(lat, lon, forceRefresh = true)
+                            else repository.fetchHabitat(lat, lon)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                    val spunDeferred = async {
+                        try {
+                            repository.fetchSpunData(lat, lon, searchRadius)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                    val terrainDeferred = async {
+                        try {
+                            if (forceRefresh) repository.fetchTerrainAspect(lat, lon, forceRefresh = true)
+                            else repository.fetchTerrainAspect(lat, lon)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
 
                     val weather = weatherDeferred.await()
                     val habitat = habitatDeferred.await()
@@ -1195,7 +1267,11 @@ class MushroomViewModel(
 
                     // Calculate Habitat Evidence & Score using Species-Aware Ecological Evaluation (F08, F09)
 
-                    val evidence = repository.extractHabitatEvidence(habitat, lat, lon, searchRadius)
+                    val evidence = try {
+                        repository.extractHabitatEvidence(habitat, lat, lon, searchRadius)
+                    } catch (_: Exception) {
+                        HabitatEvidence.UNKNOWN_HABITAT
+                    }
                     lastHabitatEvidence = evidence
 
 

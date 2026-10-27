@@ -267,8 +267,13 @@ class ScientificRegressionBlock1Test {
         assertEquals("2026-09-30", days[10].date)
         assertEquals("2026-10-01", days[11].date)
 
-        val todayIndex = MushroomAlgorithms.deriveTodayIndex(days, "Europe/Rome")
+        val fixedClock = java.time.Clock.fixed(
+            java.time.Instant.parse("2026-10-05T10:00:00Z"),
+            java.time.ZoneId.of("Europe/Rome"),
+        )
+        val todayIndex = MushroomAlgorithms.deriveTodayIndex(days, "Europe/Rome", clock = fixedClock)
         assertTrue("todayIndex deve essere un indice valido", todayIndex in days.indices)
+        assertEquals(15, todayIndex)
     }
 
     // =========================================================================

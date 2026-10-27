@@ -89,14 +89,23 @@ class MushroomRepository(
      * @param longitude Longitudine in gradi decimali.
      * @return [GeocodeResult] con l'indirizzo risolto, o null se non disponibile.
      */
-    suspend fun reverseGeocode(latitude: Double, longitude: Double): GeocodeResult? {
+    suspend fun reverseGeocode(latitude: Double, longitude: Double): GeocodeResult? =
+        reverseGeocode(latitude, longitude, forceRefresh = false)
+
+    suspend fun reverseGeocode(
+        latitude: Double,
+        longitude: Double,
+        forceRefresh: Boolean,
+    ): GeocodeResult? {
         val roundedLat = String.format(Locale.US, "%.4f", latitude)
         val roundedLon = String.format(Locale.US, "%.4f", longitude)
         val cacheKey = "rev_${roundedLat}_${roundedLon}"
 
-        val cached = cacheManager.getCachedData(cacheKey, GeocodeResult::class.java, 7 * 24 * 60 * 60 * 1000) // 7 days
-        if (cached != null) {
-            return cached
+        if (!forceRefresh) {
+            val cached = cacheManager.getCachedData(cacheKey, GeocodeResult::class.java, 7 * 24 * 60 * 60 * 1000) // 7 days
+            if (cached != null) {
+                return cached
+            }
         }
 
         return try {
@@ -116,14 +125,23 @@ class MushroomRepository(
      * @param longitude Longitudine in gradi decimali.
      * @return [WeatherResponse] con temperature, precipitazioni, umidità relativa e parametri orari.
      */
-    suspend fun fetchWeather(latitude: Double, longitude: Double): WeatherResponse {
+    suspend fun fetchWeather(latitude: Double, longitude: Double): WeatherResponse =
+        fetchWeather(latitude, longitude, forceRefresh = false)
+
+    suspend fun fetchWeather(
+        latitude: Double,
+        longitude: Double,
+        forceRefresh: Boolean,
+    ): WeatherResponse {
         val roundedLat = String.format(Locale.US, "%.4f", latitude)
         val roundedLon = String.format(Locale.US, "%.4f", longitude)
         val cacheKey = "weather_${roundedLat}_${roundedLon}"
 
-        val cached = cacheManager.getCachedData(cacheKey, WeatherResponse::class.java, 60 * 60 * 1000) // 1 hour
-        if (cached != null) {
-            return cached
+        if (!forceRefresh) {
+            val cached = cacheManager.getCachedData(cacheKey, WeatherResponse::class.java, 60 * 60 * 1000) // 1 hour
+            if (cached != null) {
+                return cached
+            }
         }
 
         return try {
@@ -143,38 +161,64 @@ class MushroomRepository(
      * @param longitude Longitudine in gradi decimali.
      * @return [OverpassResponse] con gli elementi boschivi individuati, con cache di 24 ore.
      */
-    suspend fun fetchHabitat(latitude: Double, longitude: Double): OverpassResponse? {
+    suspend fun fetchHabitat(latitude: Double, longitude: Double): OverpassResponse? =
+        fetchHabitat(latitude, longitude, forceRefresh = false)
+
+    suspend fun fetchHabitat(
+        latitude: Double,
+        longitude: Double,
+        forceRefresh: Boolean,
+        searchRadiusMeters: Int = -1,
+    ): OverpassResponse? {
         val roundedLat = String.format(Locale.US, "%.4f", latitude)
         val roundedLon = String.format(Locale.US, "%.4f", longitude)
-        val radius = cacheManager.radius
+        val radius = if (searchRadiusMeters > 0) searchRadiusMeters else cacheManager.radius
+        val maxDistanceMeters = maxOf(radius * 10.0, 15_000.0)
         val cacheKey = "habitat_geom_v2_${radius}m_${roundedLat}_${roundedLon}"
 
-        val cached = cacheManager.getCachedData(cacheKey, OverpassResponse::class.java, 24 * 60 * 60 * 1000) // 24 hours
-        if (cached != null) {
-            if (cached.hasDefectiveRelationGeometries()) {
-                cacheManager.cacheStore.remove(cacheKey)
-            } else {
-                return cached
+        if (!forceRefresh) {
+            val cached = cacheManager.getCachedData(cacheKey, OverpassResponse::class.java, 24 * 60 * 60 * 1000) // 24 hours
+            if (cached != null) {
+                if (cached.hasDefectiveRelationGeometries()) {
+                    cacheManager.cacheStore.remove(cacheKey)
+                } else {
+                    return cached.sanitize(latitude, longitude, maxDistanceMeters)
+                }
             }
         }
 
-        val query = "[out:json];(nwr[\"natural\"=\"wood\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"=\"forest\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"~\"meadow|grass|pasture\"](around:$radius,$latitude,$longitude);nwr[\"natural\"~\"grassland|heath\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"~\"residential|commercial|industrial\"](around:$radius,$latitude,$longitude);nwr[\"genus\"](around:$radius,$latitude,$longitude););out body geom;"
+        val query = "[out:json][timeout:15];(nwr[\"natural\"~\"wood|grassland|heath\"](around:$radius,$latitude,$longitude);nwr[\"landuse\"~\"forest|meadow|grass|pasture|residential|commercial|industrial\"](around:$radius,$latitude,$longitude);nwr[\"genus\"](around:$radius,$latitude,$longitude););out body geom;"
 
+        var bestSanitizedFallback: OverpassResponse? = null
         for (service in overpassServices) {
             try {
                 val response = service.queryOverpass(query)
-                cacheManager.saveCachedData(cacheKey, response)
-                return response
+                val sanitized = response.sanitize(latitude, longitude, maxDistanceMeters)
+                if (!response.hasDefectiveRelationGeometries()) {
+                    cacheManager.saveCachedData(cacheKey, sanitized)
+                    return sanitized
+                }
+                if (!sanitized.hasDefectiveRelationGeometries() && bestSanitizedFallback == null) {
+                    bestSanitizedFallback = sanitized
+                }
             } catch (_: Exception) {
                 // Prova il mirror Overpass successivo
             }
         }
-        val fallback = cacheManager.getCachedDataIgnoreExpiry(cacheKey, OverpassResponse::class.java)?.first
-        if (fallback != null && fallback.hasDefectiveRelationGeometries()) {
-            cacheManager.cacheStore.remove(cacheKey)
-            return null
+        if (bestSanitizedFallback != null) {
+            cacheManager.saveCachedData(cacheKey, bestSanitizedFallback)
+            return bestSanitizedFallback
         }
-        return fallback
+        val fallback = cacheManager.getCachedDataIgnoreExpiry(cacheKey, OverpassResponse::class.java)?.first
+        if (fallback != null) {
+            val sanitizedFallback = fallback.sanitize(latitude, longitude, maxDistanceMeters)
+            if (sanitizedFallback.hasDefectiveRelationGeometries()) {
+                cacheManager.cacheStore.remove(cacheKey)
+                return null
+            }
+            return sanitizedFallback
+        }
+        return null
     }
 
     /**
@@ -190,19 +234,30 @@ class MushroomRepository(
         latitude: Double,
         longitude: Double,
         species: MushroomSpecies? = null
+    ): OverpassResponse? = fetchSpecificHabitatBonus(latitude, longitude, species, forceRefresh = false)
+
+    suspend fun fetchSpecificHabitatBonus(
+        latitude: Double,
+        longitude: Double,
+        species: MushroomSpecies? = null,
+        forceRefresh: Boolean,
+        searchRadiusMeters: Int = -1,
     ): OverpassResponse? {
         val roundedLat = String.format(Locale.US, "%.4f", latitude)
         val roundedLon = String.format(Locale.US, "%.4f", longitude)
         val speciesKey = species?.id ?: "general"
-        val radius = cacheManager.radius
+        val radius = if (searchRadiusMeters > 0) searchRadiusMeters else cacheManager.radius
+        val maxDistanceMeters = maxOf(radius * 10.0, 15_000.0)
         val cacheKey = "habitat_bonus_${speciesKey}_${radius}m_${roundedLat}_${roundedLon}"
 
-        val cached = cacheManager.getCachedData(cacheKey, OverpassResponse::class.java, 24 * 60 * 60 * 1000) // 24 hours
-        if (cached != null) {
-            if (cached.hasDefectiveRelationGeometries()) {
-                cacheManager.cacheStore.remove(cacheKey)
-            } else {
-                return cached
+        if (!forceRefresh) {
+            val cached = cacheManager.getCachedData(cacheKey, OverpassResponse::class.java, 24 * 60 * 60 * 1000) // 24 hours
+            if (cached != null) {
+                if (cached.hasDefectiveRelationGeometries()) {
+                    cacheManager.cacheStore.remove(cacheKey)
+                } else {
+                    return cached.sanitize(latitude, longitude, maxDistanceMeters)
+                }
             }
         }
 
@@ -229,26 +284,41 @@ class MushroomRepository(
         }
 
         val query = if (species?.category == EcologicalCategory.SAPROTROPHIC) {
-            "[out:json];(nwr[\"landuse\"~\"meadow|grass|pasture\"](around:$radius,$latitude,$longitude);nwr[\"natural\"~\"grassland|heath\"](around:$radius,$latitude,$longitude););out body geom;"
+            "[out:json][timeout:15];(nwr[\"landuse\"~\"meadow|grass|pasture\"](around:$radius,$latitude,$longitude);nwr[\"natural\"~\"grassland|heath\"](around:$radius,$latitude,$longitude););out body geom;"
         } else {
-            "[out:json];nwr[\"genus\"~\"$genusRegex\"](around:$radius,$latitude,$longitude);out body geom;"
+            "[out:json][timeout:15];nwr[\"genus\"~\"$genusRegex\"](around:$radius,$latitude,$longitude);out body geom;"
         }
 
+        var bestSanitizedFallback: OverpassResponse? = null
         for (service in overpassServices) {
             try {
                 val response = service.queryOverpass(query)
-                cacheManager.saveCachedData(cacheKey, response)
-                return response
+                val sanitized = response.sanitize(latitude, longitude, maxDistanceMeters)
+                if (!response.hasDefectiveRelationGeometries()) {
+                    cacheManager.saveCachedData(cacheKey, sanitized)
+                    return sanitized
+                }
+                if (!sanitized.hasDefectiveRelationGeometries() && bestSanitizedFallback == null) {
+                    bestSanitizedFallback = sanitized
+                }
             } catch (_: Exception) {
                 // Prova il mirror Overpass successivo
             }
         }
-        val fallback = cacheManager.getCachedDataIgnoreExpiry(cacheKey, OverpassResponse::class.java)?.first
-        if (fallback != null && fallback.hasDefectiveRelationGeometries()) {
-            cacheManager.cacheStore.remove(cacheKey)
-            return null
+        if (bestSanitizedFallback != null) {
+            cacheManager.saveCachedData(cacheKey, bestSanitizedFallback)
+            return bestSanitizedFallback
         }
-        return fallback
+        val fallback = cacheManager.getCachedDataIgnoreExpiry(cacheKey, OverpassResponse::class.java)?.first
+        if (fallback != null) {
+            val sanitizedFallback = fallback.sanitize(latitude, longitude, maxDistanceMeters)
+            if (sanitizedFallback.hasDefectiveRelationGeometries()) {
+                cacheManager.cacheStore.remove(cacheKey)
+                return null
+            }
+            return sanitizedFallback
+        }
+        return null
     }
 
     /**
@@ -273,7 +343,9 @@ class MushroomRepository(
         if (response == null) {
             return HabitatEvidence.UNKNOWN_HABITAT
         }
-        val rawElements = response.elements.distinctBy { it.type to it.id }.map { el ->
+        val maxDistanceMeters = maxOf(searchRadiusMeters * 10.0, 15_000.0)
+        val sanitized = response.sanitize(targetLat, targetLon, maxDistanceMeters)
+        val rawElements = sanitized.elements.distinctBy { it.type to it.id }.map { el ->
             github.naturewhisp.myco.core.OsmHabitatElement(
                 lat = el.coordinate?.first,
                 lon = el.coordinate?.second,
@@ -284,9 +356,17 @@ class MushroomRepository(
                 leafType = el.leafType,
                 elementKey = "${el.type}/${el.id}",
                 surfaces = buildList {
-                    fun ring(points: List<github.naturewhisp.myco.model.OverpassCenter>?, inner: Boolean) {
-                        if (points != null && points.size >= 2 && points.all { it.lat in -90.0..90.0 && it.lon in -180.0..180.0 }) {
-                            add(github.naturewhisp.myco.core.OsmSurface(points.map { github.naturewhisp.myco.core.GeoCoordinates(it.lat, it.lon) }, inner))
+                    fun ring(points: List<github.naturewhisp.myco.model.OverpassCenter?>?, inner: Boolean) {
+                        val validPoints = points?.filterNotNull()?.filter {
+                            it.lat.isFinite() && it.lon.isFinite() && it.lat in -90.0..90.0 && it.lon in -180.0..180.0
+                        } ?: return
+                        if (validPoints.size >= 2) {
+                            add(
+                                github.naturewhisp.myco.core.OsmSurface(
+                                    validPoints.map { github.naturewhisp.myco.core.GeoCoordinates(it.lat, it.lon) },
+                                    inner
+                                )
+                            )
                         }
                     }
                     ring(el.geometry, false)
@@ -321,20 +401,29 @@ class MushroomRepository(
      * @param longitude Longitudine centrale in gradi decimali.
      * @return [TerrainAspectData] con i dati orografici calcolati, con cache di 30 giorni.
      */
-    suspend fun fetchTerrainAspect(latitude: Double, longitude: Double): TerrainAspectData? {
+    suspend fun fetchTerrainAspect(latitude: Double, longitude: Double): TerrainAspectData? =
+        fetchTerrainAspect(latitude, longitude, forceRefresh = false)
+
+    suspend fun fetchTerrainAspect(
+        latitude: Double,
+        longitude: Double,
+        forceRefresh: Boolean,
+    ): TerrainAspectData? {
         val roundedLat = String.format(Locale.US, "%.4f", latitude)
         val roundedLon = String.format(Locale.US, "%.4f", longitude)
         val cacheKey = "terrain_${roundedLat}_${roundedLon}"
 
-        val cached = cacheManager.getCachedData(cacheKey, TerrainAspectData::class.java, 30L * 24 * 60 * 60 * 1000L) // 30 giorni
-        if (cached != null) {
-            return if (cached.rawElevations.isNullOrEmpty() || cached.rawElevations.size < 5) {
-                val synthesized = cached.getOrSynthesizeRawElevations().map { it.toFloat() }
-                val upgraded = cached.copy(rawElevations = synthesized)
-                cacheManager.saveCachedData(cacheKey, upgraded)
-                upgraded
-            } else {
-                cached
+        if (!forceRefresh) {
+            val cached = cacheManager.getCachedData(cacheKey, TerrainAspectData::class.java, 30L * 24 * 60 * 60 * 1000L) // 30 giorni
+            if (cached != null) {
+                return if (cached.rawElevations.isNullOrEmpty() || cached.rawElevations.size < 5) {
+                    val synthesized = cached.getOrSynthesizeRawElevations().map { it.toFloat() }
+                    val upgraded = cached.copy(rawElevations = synthesized)
+                    cacheManager.saveCachedData(cacheKey, upgraded)
+                    upgraded
+                } else {
+                    cached
+                }
             }
         }
 
@@ -423,11 +512,19 @@ class MushroomRepository(
      * Esegue il precaricamento sincrono e la persistenza offline in SQLite di tutti i layer ambientali
      * (meteo, elevazione orografica DEM, habitat boschivo e alberi simbionti guida) per una località.
      */
-    suspend fun prefetchCompleteLocation(latitude: Double, longitude: Double, species: MushroomSpecies? = null) {
-        try { fetchWeather(latitude, longitude) } catch (_: Exception) {}
-        try { fetchTerrainAspect(latitude, longitude) } catch (_: Exception) {}
-        try { fetchHabitat(latitude, longitude) } catch (_: Exception) {}
-        try { fetchSpecificHabitatBonus(latitude, longitude, species) } catch (_: Exception) {}
-        try { reverseGeocode(latitude, longitude) } catch (_: Exception) {}
+    suspend fun prefetchCompleteLocation(latitude: Double, longitude: Double, species: MushroomSpecies? = null) =
+        prefetchCompleteLocation(latitude, longitude, species, forceRefresh = false)
+
+    suspend fun prefetchCompleteLocation(
+        latitude: Double,
+        longitude: Double,
+        species: MushroomSpecies? = null,
+        forceRefresh: Boolean,
+    ) {
+        try { fetchWeather(latitude, longitude, forceRefresh = forceRefresh) } catch (_: Exception) {}
+        try { fetchTerrainAspect(latitude, longitude, forceRefresh = forceRefresh) } catch (_: Exception) {}
+        try { fetchHabitat(latitude, longitude, forceRefresh = forceRefresh) } catch (_: Exception) {}
+        try { fetchSpecificHabitatBonus(latitude, longitude, species, forceRefresh = forceRefresh) } catch (_: Exception) {}
+        try { reverseGeocode(latitude, longitude, forceRefresh = forceRefresh) } catch (_: Exception) {}
     }
 }

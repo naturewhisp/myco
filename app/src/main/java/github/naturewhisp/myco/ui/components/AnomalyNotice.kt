@@ -4,10 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -202,7 +204,8 @@ fun OutsideCoverageNotice(
 fun OfflineCacheNotice(
     cacheAgeText: String,
     modifier: Modifier = Modifier,
-    isFieldOffline: Boolean = false
+    isFieldOffline: Boolean = false,
+    onRefreshClick: (() -> Unit)? = null,
 ) {
     val mycoColors = MycoTheme.colors
 
@@ -229,7 +232,26 @@ fun OfflineCacheNotice(
             },
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 11.sp,
-            fontWeight = FontWeight.Medium
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f)
         )
+        if (onRefreshClick != null && !isFieldOffline) {
+            Spacer(modifier = Modifier.width(8.dp))
+            OutlinedButton(
+                onClick = onRefreshClick,
+                shape = RoundedCornerShape(4.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                modifier = Modifier.heightIn(min = 32.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                )
+            ) {
+                Text(
+                    text = "Aggiorna",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
     }
 }

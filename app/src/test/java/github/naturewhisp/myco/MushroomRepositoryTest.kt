@@ -286,4 +286,117 @@ class MushroomRepositoryTest {
         assertNotNull(newCached)
         assertFalse(newCached!!.hasDefectiveRelationGeometries())
     }
+
+    @Test
+    fun testExtractHabitatEvidence_SanitizesNullGeometryAndOutOfRangeRelations() {
+        val rawJson = """
+            {
+              "version": 0.6,
+              "elements": [
+                {
+                  "type": "way",
+                  "id": 100,
+                  "tags": { "landuse": "forest" },
+                  "geometry": [
+                    { "lat": 44.205, "lon": 7.965 },
+                    { "lat": 44.225, "lon": 7.965 },
+                    { "lat": 44.225, "lon": 7.985 },
+                    { "lat": 44.205, "lon": 7.985 },
+                    { "lat": 44.205, "lon": 7.965 }
+                  ]
+                },
+                {
+                  "type": "relation",
+                  "id": 999999,
+                  "tags": { "natural": "wood", "type": "multipolygon" },
+                  "members": [
+                    {
+                      "role": "outer",
+                      "geometry": [
+                        { "lat": 52.5379633, "lon": 8.2103888 },
+                        null,
+                        { "lat": 52.5380000, "lon": 8.2110000 }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+        """.trimIndent()
+        val parsed = com.google.gson.Gson().fromJson(rawJson, OverpassResponse::class.java)
+        assertTrue("Null in member geometry must be flagged as defective", parsed.hasDefectiveRelationGeometries())
+
+        val sanitized = parsed.sanitize(44.2149, 7.9755, 15_000.0)
+        assertFalse("Sanitized response must not be defective", sanitized.hasDefectiveRelationGeometries())
+        assertEquals("Out-of-range German relation must be removed", 1, sanitized.elements.size)
+
+        val evidence = repository.extractHabitatEvidence(parsed, 44.2149, 7.9755, 1500)
+        assertTrue("Local closed forest ring must remain geometryComplete", evidence.geometryComplete)
+        assertTrue("Forest cover must be positive", evidence.forestCoverFraction > 0.5)
+    }
+
+    @Test
+    fun testPurgeDefectiveHabitatCache_RemovesNullGeometryEntries() {
+        val store = InMemoryCacheStore()
+        store.put(
+            key = "habitat_geom_v2_1500m_44.2149_7.9755",
+            dataJson = """{"elements":[{"type":"relation","id":1,"members":[{"role":"outer","geometry":[{"lat":52.5,"lon":8.2},null]}]}]}""",
+            lat = 44.2149,
+            lon = 7.9755,
+            ttlMs = 86_400_000L,
+            timestamp = System.currentTimeMillis()
+        )
+        store.put(
+            key = "habitat_geom_v2_1500m_45.0000_7.0000",
+            dataJson = """{"elements":[{"type":"way","id":2,"geometry":[{"lat":45.0,"lon":7.0},{"lat":45.01,"lon":7.01}]}]}""",
+            lat = 45.0,
+            lon = 7.0,
+            ttlMs = 86_400_000L,
+            timestamp = System.currentTimeMillis()
+        )
+
+        val purged = store.purgeDefectiveHabitatCache()
+        assertEquals(1, purged)
+        org.junit.Assert.assertNull(store.get("habitat_geom_v2_1500m_44.2149_7.9755", 86_400_000L))
+        assertNotNull(store.get("habitat_geom_v2_1500m_45.0000_7.0000", 86_400_000L))
+    }
+
+    @Test
+    fun testFetchWeather_ForceRefreshBypassesFreshCache() = runBlocking {
+        val weatherService = mockk<WeatherService>()
+        val cachedResponse = WeatherResponse(
+            elevation = 700f,
+            timezone = "Europe/Rome",
+            hourly = HourlyData(emptyList(), emptyList(), emptyList(), emptyList()),
+            daily = DailyData(emptyList(), emptyList())
+        )
+        val freshResponse = WeatherResponse(
+            elevation = 902f,
+            timezone = "Europe/Rome",
+            hourly = HourlyData(emptyList(), emptyList(), emptyList(), emptyList()),
+            daily = DailyData(emptyList(), emptyList())
+        )
+        coEvery { weatherService.getForecast(any(), any(), any(), any(), any(), any(), any()) } returns freshResponse
+
+        val repo = MushroomRepository(
+            cacheManager = cacheManager,
+            spunDataManager = spunDataManager,
+            weatherService = weatherService
+        )
+        val cacheKey = "weather_44.2149_7.9755"
+        cacheManager.saveCachedData(cacheKey, cachedResponse)
+
+        // Default call hits cache
+        val first = repo.fetchWeather(44.2149, 7.9755)
+        assertEquals(700f, first.elevation, 0.01f)
+        coVerify(exactly = 0) { weatherService.getForecast(any(), any(), any(), any(), any(), any(), any()) }
+
+        // forceRefresh = true bypasses cache and updates it
+        val refreshed = repo.fetchWeather(44.2149, 7.9755, forceRefresh = true)
+        assertEquals(902f, refreshed.elevation, 0.01f)
+        coVerify(exactly = 1) { weatherService.getForecast(any(), any(), any(), any(), any(), any(), any()) }
+
+        val afterRefresh = repo.fetchWeather(44.2149, 7.9755)
+        assertEquals(902f, afterRefresh.elevation, 0.01f)
+    }
 }

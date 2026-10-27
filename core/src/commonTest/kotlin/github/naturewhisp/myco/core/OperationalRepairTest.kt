@@ -135,6 +135,70 @@ class OperationalRepairTest {
             if (species.category != EcologicalCategory.ECTOMYCORRHIZAL) assertEquals(without, with)
         }
     }
+
+    @Test
+    fun dstFallBackAccepts24DistinctUnoffsetOpenMeteoHoursWhileRejecting25UnoffsetDuplicateHours() {
+        val unoffset24 = hours("2026-10-25")
+        val day24 = WeatherAggregation.aggregate(
+            unoffset24,
+            listOf(ExpectedDayHours("2026-10-25", 25)),
+            emptyList(),
+            "open_meteo",
+        ).single()
+        assertEquals(24, day24.coverage!!.expectedHours)
+        assertTrue(day24.coverage.weatherUsable)
+        assertEquals(24.0, day24.totalPrecipMm, 1e-6)
+
+        val unoffset25WithDup = unoffset24 + unoffset24[2]
+        val day25 = WeatherAggregation.aggregate(
+            unoffset25WithDup,
+            listOf(ExpectedDayHours("2026-10-25", 25)),
+            emptyList(),
+            "open_meteo",
+        ).single()
+        assertEquals(25, day25.coverage!!.expectedHours)
+        assertFalse(day25.coverage.weatherUsable)
+    }
+
+    @Test
+    fun habitatGeometryIgnoresSpuriousOutOfRangeIncompleteRelations() {
+        fun point(lat: Double, lon: Double) = GeoCoordinates(lat, lon)
+        val localRing = listOf(
+            point(44.205, 7.965),
+            point(44.225, 7.965),
+            point(44.225, 7.985),
+            point(44.205, 7.985),
+            point(44.205, 7.965),
+        )
+        val localForest = OsmHabitatElement(
+            lat = 44.2149,
+            lon = 7.9755,
+            isWoodOrForest = true,
+            isMeadowOrGrass = false,
+            isUrbanOrBuilt = false,
+            genus = "fagus",
+            elementKey = "way/1",
+            surfaces = listOf(OsmSurface(localRing, false)),
+        )
+        val distantIncomplete = OsmHabitatElement(
+            lat = 52.5379,
+            lon = 8.2103,
+            isWoodOrForest = true,
+            isMeadowOrGrass = false,
+            isUrbanOrBuilt = false,
+            genus = null,
+            elementKey = "relation/999",
+            surfaces = listOf(OsmSurface(listOf(point(52.5379, 8.2103), point(52.5385, 8.2110)), false)),
+        )
+        val evidence = HabitatGeometry.extract(
+            listOf(localForest, distantIncomplete),
+            point(44.2149, 7.9755),
+            1500,
+        )
+        assertTrue(evidence.geometryComplete)
+        assertEquals(HabitatStatus.KNOWN_SUITABLE, evidence.status)
+        assertTrue(evidence.forestCoverFraction > 0.5)
+    }
 }
 
 

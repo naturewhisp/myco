@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
@@ -134,6 +135,19 @@ fun HomeScreen(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+                if (viewModel.selectedLatLng != null) {
+                    IconButton(
+                        onClick = { viewModel.refreshCurrentLocation() },
+                        enabled = !viewModel.isLoading
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Aggiorna dati online",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
                 // Pulsante preferito per la località corrente
                 IconButton(onClick = { viewModel.toggleCurrentLocationFavorite() }) {
                     Icon(
@@ -295,7 +309,8 @@ fun HomeScreen(
         if (viewModel.isFromCache && viewModel.cacheAgeText != null) {
             OfflineCacheNotice(
                 cacheAgeText = viewModel.cacheAgeText ?: "",
-                isFieldOffline = viewModel.isOfflineFieldMode
+                isFieldOffline = viewModel.isOfflineFieldMode,
+                onRefreshClick = { viewModel.refreshCurrentLocation() }
             )
             Spacer(modifier = Modifier.height(12.dp))
         }

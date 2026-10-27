@@ -355,8 +355,8 @@ class MushroomViewModelTest {
 
         assertEquals(2, prefetchResultCount)
         assertFalse(viewModel.isPrefetchingOffline)
-        coVerify(exactly = 1) { repository.prefetchCompleteLocation(44.5, 8.0, any()) }
-        coVerify(exactly = 1) { repository.prefetchCompleteLocation(45.0, 7.5, any()) }
+        coVerify(exactly = 1) { repository.prefetchCompleteLocation(44.5, 8.0, any(), true) }
+        coVerify(exactly = 1) { repository.prefetchCompleteLocation(45.0, 7.5, any(), true) }
     }
 
     @Test
@@ -876,6 +876,44 @@ class MushroomViewModelTest {
         assertEquals(0, vm.todayProbability)
         assertTrue(vm.factors.isEmpty())
         assertTrue(vm.summaryText.contains("Dati meteorologici non disponibili"))
+    }
+
+    @Test
+    fun selectLocationIsolatesHabitatFailureWithoutDiscardingValidWeather() = runTest(testDispatcher) {
+        coEvery { repository.fetchHabitat(any(), any()) } throws RuntimeException("Overpass mirror malformed payload")
+        val vm = MushroomViewModel(
+            repository = repository,
+            cacheManager = cacheManager,
+            localAiService = localAiService,
+            spunDataManager = spunDataManager
+        )
+
+        vm.selectLocation(44.2149, 7.9755, "Monte Mindino")
+        vm.dataFetchJob?.join()
+        advanceUntilIdle()
+
+        assertFalse(vm.isLoading)
+        org.junit.Assert.assertNull(vm.errorMessage)
+        assertTrue("Valid weather must keep index calculable even when Overpass fails", vm.isCalculable)
+        assertTrue(vm.factors.isNotEmpty())
+    }
+
+    @Test
+    fun refreshCurrentLocationForcesOnlineFetch() = runTest(testDispatcher) {
+        coEvery { repository.fetchWeather(44.2149, 7.9755, true) } returns createRealisticWeatherResponse()
+        coEvery { repository.fetchHabitat(44.2149, 7.9755, true) } returns null
+        coEvery { repository.fetchTerrainAspect(44.2149, 7.9755, true) } returns null
+
+        viewModel.selectLocation(44.2149, 7.9755, "Monte Mindino")
+        viewModel.dataFetchJob?.join()
+        advanceUntilIdle()
+
+        viewModel.refreshCurrentLocation()
+        viewModel.dataFetchJob?.join()
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.fetchWeather(44.2149, 7.9755, true) }
+        assertTrue(viewModel.isCalculable)
     }
 }
 

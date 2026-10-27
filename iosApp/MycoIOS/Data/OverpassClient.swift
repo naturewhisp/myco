@@ -32,11 +32,58 @@ struct OverpassResponse: Codable, Sendable {
             case latitude = "lat"
             case longitude = "lon"
         }
+
+        init(
+            type: String,
+            id: Int64,
+            latitude: Double? = nil,
+            longitude: Double? = nil,
+            tags: [String: String]? = nil,
+            center: Center? = nil,
+            geometry: [Center]? = nil,
+            members: [Member]? = nil
+        ) {
+            self.type = type
+            self.id = id
+            self.latitude = latitude
+            self.longitude = longitude
+            self.tags = tags
+            self.center = center
+            self.geometry = geometry
+            self.members = members
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            self.type = try container.decode(String.self, forKey: .type)
+            self.id = try container.decode(Int64.self, forKey: .id)
+            self.latitude = try container.decodeIfPresent(Double.self, forKey: .latitude)
+            self.longitude = try container.decodeIfPresent(Double.self, forKey: .longitude)
+            self.tags = try container.decodeIfPresent([String: String].self, forKey: .tags)
+            self.center = try container.decodeIfPresent(Center.self, forKey: .center)
+            self.geometry = try container.decodeIfPresent([Center?].self, forKey: .geometry)?.compactMap { $0 }
+            self.members = try container.decodeIfPresent([Member].self, forKey: .members)
+        }
     }
 
     struct Member: Codable, Sendable {
         let role: String?
         let geometry: [Center]?
+
+        enum CodingKeys: String, CodingKey {
+            case role, geometry
+        }
+
+        init(role: String? = nil, geometry: [Center]? = nil) {
+            self.role = role
+            self.geometry = geometry
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            self.role = try container.decodeIfPresent(String.self, forKey: .role)
+            self.geometry = try container.decodeIfPresent([Center?].self, forKey: .geometry)?.compactMap { $0 }
+        }
     }
 
     struct Center: Codable, Sendable {
@@ -198,7 +245,25 @@ struct OverpassClient: Sendable {
         around coordinate: GeoCoordinates,
         radiusMeters: Int = Self.defaultHabitatRadiusMeters
     ) -> HabitatEvidence {
-        let osmElements: [OsmHabitatElement] = elements.map { el in
+        let maxDistanceMeters = max(Double(radiusMeters) * 10.0, 15_000.0)
+        let inRangeElements = elements.filter { el in
+            var points: [GeoCoordinates] = []
+            if let lat = el.latitude ?? el.center?.latitude,
+               let lon = el.longitude ?? el.center?.longitude,
+               lat.isFinite, lon.isFinite, (-90...90).contains(lat), (-180...180).contains(lon) {
+                points.append(GeoCoordinates(latitude: lat, longitude: lon))
+            }
+            for pt in el.geometry ?? [] where pt.latitude.isFinite && pt.longitude.isFinite && (-90...90).contains(pt.latitude) && (-180...180).contains(pt.longitude) {
+                points.append(GeoCoordinates(latitude: pt.latitude, longitude: pt.longitude))
+            }
+            for member in el.members ?? [] {
+                for pt in member.geometry ?? [] where pt.latitude.isFinite && pt.longitude.isFinite && (-90...90).contains(pt.latitude) && (-180...180).contains(pt.longitude) {
+                    points.append(GeoCoordinates(latitude: pt.latitude, longitude: pt.longitude))
+                }
+            }
+            return points.isEmpty || points.contains { coordinate.distanceToMeters(other: $0) <= maxDistanceMeters }
+        }
+        let osmElements: [OsmHabitatElement] = inRangeElements.map { el in
             let lat = el.latitude ?? el.center?.latitude
             let lon = el.longitude ?? el.center?.longitude
             let genus = el.tags?["genus"] ?? el.tags?["species"]?.split(separator: " ").first.map(String.init)
@@ -221,9 +286,11 @@ struct OverpassClient: Sendable {
                 surfaces: ([el.geometry.map { ($0, false) }].compactMap { $0 } + (el.members ?? []).compactMap { member in
                     member.geometry.map { ($0, member.role == "inner") }
                 }).compactMap { points, inner in
-                    guard points.count >= 2,
-                          points.allSatisfy({ (-90...90).contains($0.latitude) && (-180...180).contains($0.longitude) }) else { return nil }
-                    return OsmSurface(vertices: points.map { GeoCoordinates(latitude: $0.latitude, longitude: $0.longitude) }, inner: inner)
+                    let validPoints = points.filter {
+                        $0.latitude.isFinite && $0.longitude.isFinite && (-90...90).contains($0.latitude) && (-180...180).contains($0.longitude)
+                    }
+                    guard validPoints.count >= 2 else { return nil }
+                    return OsmSurface(vertices: validPoints.map { GeoCoordinates(latitude: $0.latitude, longitude: $0.longitude) }, inner: inner)
                 }
             )
         }

@@ -66,9 +66,10 @@ class InMemoryCacheStore : PlatformCacheStore {
         val it = entries.entries.iterator()
         while (it.hasNext()) {
             val (k, v) = it.next()
-            if ((k.startsWith("habitat_geom_") || k.startsWith("habitat_bonus_")) &&
-                v.data.contains("\"relation\"") && !v.data.contains("\"members\":[")
-            ) {
+            val isHabitatKey = k.startsWith("habitat_geom_") || k.startsWith("habitat_bonus_")
+            val missingMembers = v.data.contains("\"relation\"") && !v.data.contains("\"members\":[")
+            val hasNullElements = v.data.contains(",null") || v.data.contains("[null") || v.data.contains(", null")
+            if (isHabitatKey && (missingMembers || hasNullElements)) {
                 it.remove()
                 count++
             }

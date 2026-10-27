@@ -209,6 +209,55 @@ final class OverpassClientTests: XCTestCase {
         XCTAssertNil(nearest)
     }
 
+    func testDecodeHandlesNullPointsInMemberGeometryAndFiltersOutOfRangeRelations() throws {
+        let payload = Data("""
+        {
+            "version": 0.6,
+            "elements": [
+                {
+                    "type": "way",
+                    "id": 100,
+                    "tags": {"landuse": "forest"},
+                    "geometry": [
+                        {"lat": 44.205, "lon": 7.965},
+                        {"lat": 44.225, "lon": 7.965},
+                        {"lat": 44.225, "lon": 7.985},
+                        {"lat": 44.205, "lon": 7.985},
+                        {"lat": 44.205, "lon": 7.965}
+                    ]
+                },
+                {
+                    "type": "relation",
+                    "id": 999,
+                    "tags": {"natural": "wood", "type": "multipolygon"},
+                    "members": [
+                        {
+                            "role": "outer",
+                            "geometry": [
+                                {"lat": 52.5379633, "lon": 8.2103888},
+                                null,
+                                {"lat": 52.5380000, "lon": 8.2110000}
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+        """.utf8)
+        let response = try JSONDecoder().decode(OverpassResponse.self, from: payload)
+        XCTAssertEqual(response.elements.count, 2)
+        XCTAssertEqual(response.elements.last?.members?.first?.geometry?.count, 2)
+
+        let client = OverpassClient()
+        let evidence = client.extractHabitatEvidence(
+            from: response.elements,
+            around: GeoCoordinates(latitude: 44.2149, longitude: 7.9755),
+            radiusMeters: 1_500
+        )
+        XCTAssertTrue(evidence.geometryComplete)
+        XCTAssertGreaterThan(evidence.forestCoverFraction, 0.5)
+    }
+
     private func fixture(_ path: String) throws -> Data {
         let components = path.split(separator: "/").map(String.init)
         let fileURL = URL(fileURLWithPath: try XCTUnwrap(components.last))

@@ -163,7 +163,8 @@ class AndroidSqliteCacheStore(context: Context) : SQLiteOpenHelper(
             db.delete(
                 TABLE_CACHE,
                 "($COL_KEY LIKE 'habitat_geom_%' OR $COL_KEY LIKE 'habitat_bonus_%') AND " +
-                    "$COL_DATA LIKE '%\"relation\"%' AND $COL_DATA NOT LIKE '%\"members\":[%'",
+                    "(($COL_DATA LIKE '%\"relation\"%' AND $COL_DATA NOT LIKE '%\"members\":[%') OR " +
+                    "$COL_DATA LIKE '%,null%' OR $COL_DATA LIKE '%[null%' OR $COL_DATA LIKE '%, null%')",
                 null
             )
         } catch (_: Exception) {

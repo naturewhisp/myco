@@ -75,8 +75,20 @@ object WeatherAggregation {
             val shallow = values("shallowSoil") { it.shallowSoil }
             val deep = values("deepSoil") { it.deepSoil }
             val et0 = values("et0") { it.et0 }
+            val rawExpected = expected[date] ?: 24
+            val hasExplicitDstOffsets = validHours.any { it.timestamp.length > 16 }
+            val effectiveExpected = if (
+                rawExpected in 23..25 &&
+                !hasExplicitDstOffsets &&
+                validHours.size == 24 &&
+                validHours.map { it.timestamp }.distinct().size == 24
+            ) {
+                24
+            } else {
+                rawExpected
+            }
             val coverage = WeatherCoverage(
-                expected[date] ?: 24, temperatures.size, humidities.size, rain.size,
+                effectiveExpected, temperatures.size, humidities.size, rain.size,
                 shallow.size, deep.size, et0.size, conflicts.distinct(), provenance,
             )
             val dayCodes = codes.filter { it.dateIso == date }.map { it.code }.distinct()

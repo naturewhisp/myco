@@ -57,11 +57,11 @@ interface GeocodingService {
  */
 interface WeatherService {
     /**
-     * Recupera le serie temporali meteorologiche (passato 14 giorni e previsione fino a 11 giorni).
+     * Recupera le serie temporali meteorologiche (passato 60 giorni e previsione fino a 11 giorni).
      *
      * @param latitude Latitudine in gradi decimali.
      * @param longitude Longitudine in gradi decimali.
-     * @param pastDays Giorni di archivio storico da recuperare (default 14).
+     * @param pastDays Giorni di archivio storico da recuperare (default 60: copre la memoria pluviometrica massima per specie, 56 giorni).
      * @param forecastDays Giorni di previsione futura da recuperare (default 11).
      * @param hourly Variabili orarie richieste separate da virgola.
      * @param daily Parametri giornalieri aggregati richiesti (default "weathercode").
@@ -72,7 +72,7 @@ interface WeatherService {
     suspend fun getForecast(
         @Query("latitude") latitude: Double,
         @Query("longitude") longitude: Double,
-        @Query("past_days") pastDays: Int = 28,
+        @Query("past_days") pastDays: Int = 60,
         @Query("forecast_days") forecastDays: Int = 11,
         @Query("hourly") hourly: String = "temperature_2m,relativehumidity_2m,precipitation,soil_moisture_0_to_7cm,soil_moisture_7_to_28cm,et0_fao_evapotranspiration",
         @Query("daily") daily: String = "weathercode",

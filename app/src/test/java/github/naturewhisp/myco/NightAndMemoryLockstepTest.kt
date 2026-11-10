@@ -19,8 +19,8 @@ class NightAndMemoryLockstepTest {
 
     private fun series(rainLag: Int, nightMinAtLag3: Float = 16.0f): List<ProcessedDay> {
         val start = LocalDate.of(2026, 9, 1)
-        return (0 until 45).map { index ->
-            val lag = 44 - index
+        return (0 until SERIES_LENGTH).map { index ->
+            val lag = SERIES_LENGTH - 1 - index
             ProcessedDay(
                 date = start.plusDays(index.toLong()).toString(),
                 avgTemp = 18.0f,
@@ -34,7 +34,7 @@ class NightAndMemoryLockstepTest {
     }
 
     private fun legacy(rainLag: Int, nightMinAtLag3: Float = 16.0f, species: github.naturewhisp.myco.model.MushroomSpecies = edulis) =
-        MushroomAlgorithms.calculateEffectiveRainfall(44, series(rainLag, nightMinAtLag3), species)
+        MushroomAlgorithms.calculateEffectiveRainfall(SERIES_LENGTH - 1, series(rainLag, nightMinAtLag3), species)
 
     private fun core(rainLag: Int, species: github.naturewhisp.myco.model.MushroomSpecies): Double {
         val days = series(rainLag).map { d ->
@@ -44,7 +44,7 @@ class NightAndMemoryLockstepTest {
                 minTemp = d.minTemp.toDouble(), maxTemp = d.maxTemp.toDouble(),
             )
         }
-        return MycoAlgorithms.calculateEffectiveRainfall(44, days, species.toCore())
+        return MycoAlgorithms.calculateEffectiveRainfall(SERIES_LENGTH - 1, days, species.toCore())
     }
 
     @Test
@@ -76,10 +76,27 @@ class NightAndMemoryLockstepTest {
     @Test
     fun legacyRainMemoryFadesOutLikeTheCore() {
         for (species in SPECIES_CATALOG) {
-            assertTrue("${species.id}: ${legacy(26, species = species)} mm a 26 gg", legacy(26, species = species) <= 0.05 * 40.0)
-            for (lag in listOf(11, 20, 22, 24, 26, 27)) {
+            // Memoria della specie (minimo 26 gg) presa dal :core: stessa estinzione C1 nei due motori.
+            val memory = MycoAlgorithms.rainMemoryDays(species.toCore())
+            assertTrue("${species.id}: ${legacy(memory, species = species)} mm a $memory gg", legacy(memory, species = species) <= 0.05 * 40.0)
+            assertEquals("${species.id} a ${memory + 1} gg", 0.0, legacy(memory + 1, species = species), 1e-12)
+            for (lag in listOf(11, 20, 22, 24, 26, 27, 30, 33, 36, 39, 42, 43, memory - 6, memory, memory + 1)) {
                 assertEquals("${species.id} a $lag gg", core(lag, species), legacy(lag, species = species), 1e-3)
             }
         }
+    }
+
+    @Test
+    fun legacyKeepsRainBeyondTwentySixDaysForLongLatencySpecies() {
+        // Cantharellus (picco 14 gg, memoria 42 gg): a 30 gg il kernel pesa ancora, a 22 gg resta intatto.
+        val cantharellus = SPECIES_CATALOG.first { it.id == "cantharellus_cibarius" }
+        assertTrue(legacy(30, species = cantharellus) > 1.0)
+        val pure22 = 40.0 * MycoAlgorithms.phenologyKernel(22.0, cantharellus.phenologyLatencyPeakDays, cantharellus.phenologyShapeAlpha)
+        assertEquals(pure22, legacy(22, species = cantharellus), 1e-3)
+    }
+
+    private companion object {
+        /** 60 giorni di calendario reale (1 settembre – 30 ottobre 2026): copre la memoria massima del catalogo (42 gg). */
+        const val SERIES_LENGTH = 60
     }
 }

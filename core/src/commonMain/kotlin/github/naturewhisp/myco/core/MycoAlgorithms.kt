@@ -3,6 +3,7 @@ package github.naturewhisp.myco.core
 import kotlin.math.abs
 import kotlin.math.atan
 import kotlin.math.atan2
+import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
@@ -159,7 +160,8 @@ object MycoAlgorithms {
         species: MushroomSpecies,
     ): Double {
         if (dayIndex !in days.indices) return 0.0
-        val maxMemoryDays = ParameterRegistry.PHENOLOGY_MEMORY_DAYS.value
+        val maxMemoryDays = rainMemoryDays(species)
+        val deepSoilWindowDays = ParameterRegistry.PHENOLOGY_MEMORY_DAYS.value
         val chillingDuration = ParameterRegistry.CHILLING_DURATION_DAYS.value
         val chillingExpansion = ParameterRegistry.CHILLING_LATENCY_EXPANSION_DAYS.value
         val targetDay = days[dayIndex]
@@ -200,10 +202,11 @@ object MycoAlgorithms {
                     alpha = species.phenologyShapeAlpha,
                 )
                 // Il gelo successivo alla pioggia azzera la memoria fenologica di quell'evento (rilievo A4);
-                // la memoria si estingue con raccordo C1 verso il limite dei 26 giorni (rilievo B1).
-                weightedRain += precip * weight * frostSurvival[i] * rainMemoryTaper(tau)
+                // la memoria si estingue con raccordo C1 verso il limite della memoria della specie (rilievo B1).
+                weightedRain += precip * weight * frostSurvival[i] * rainMemoryTaper(tau, maxMemoryDays)
             }
-            pastDay.soilMoisture7To28?.let { pastDeepSoilList.add(it) }
+            // La compensazione del suolo profondo resta mediata sulla finestra fissa di 26 giorni.
+            if (tau <= deepSoilWindowDays.toDouble()) pastDay.soilMoisture7To28?.let { pastDeepSoilList.add(it) }
         }
         val avgPastDeepSoil = if (pastDeepSoilList.isNotEmpty()) pastDeepSoilList.average() else null
         val comp = deepSoilMoistureCompensation(avgPastDeepSoil)
@@ -978,6 +981,17 @@ object MycoAlgorithms {
      * scende con raccordo Hermite C1 e si annulla a `memoryDays + 1`, così un evento non esce dalla memoria
      * con un gradino. Il supporto resta fisso e indipendente dalla lunghezza dello storico.
      */
+    /**
+     * Memoria pluviometrica della specie in giorni (rilievo B1, §8): multiplo del picco di latenza fenologica,
+     * arrotondato per eccesso e limitato tra la memoria minima (26 gg) e quella massima (56 gg). Dipende solo
+     * dalla specie: non dall'allungamento di latenza da freddo né dalla lunghezza dello storico disponibile.
+     */
+    fun rainMemoryDays(species: MushroomSpecies): Int {
+        val raw = ceil(ParameterRegistry.PHENOLOGY_MEMORY_PEAK_MULTIPLE.value * species.phenologyLatencyPeakDays)
+        val days = if (raw.isFinite()) raw.toInt() else ParameterRegistry.PHENOLOGY_MEMORY_DAYS.value
+        return days.coerceIn(ParameterRegistry.PHENOLOGY_MEMORY_DAYS.value, ParameterRegistry.PHENOLOGY_MEMORY_MAX_DAYS.value)
+    }
+
     fun rainMemoryTaper(tauDays: Double, memoryDays: Int = ParameterRegistry.PHENOLOGY_MEMORY_DAYS.value): Double {
         val taperDays = ParameterRegistry.PHENOLOGY_MEMORY_TAPER_DAYS.value
         return 1.0 - smoothstep(memoryDays.toDouble() - taperDays, memoryDays + 1.0, tauDays)

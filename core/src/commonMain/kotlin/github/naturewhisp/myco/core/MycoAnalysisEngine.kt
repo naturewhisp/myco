@@ -13,8 +13,11 @@ class MycoAnalysisEngine {
             ?: return emptyResult(DataQualityStatus.DEGRADED_OUT_OF_BOUNDS)
         if (rawInput.targetDateIso != null && rawInput.targetDateIso != target.dateIso) return emptyResult(DataQualityStatus.DEGRADED_OUT_OF_BOUNDS)
         if (target.coverage?.weatherUsable == false) return emptyResult(DataQualityStatus.UNAVAILABLE_INCOMPLETE_WEATHER)
+        // La finestra di validazione copre almeno 28 giorni e comunque l'intera memoria pluviometrica della specie (B1).
+        val rainMemoryDays = MycoAlgorithms.rainMemoryDays(SpeciesCatalog.byId(rawInput.speciesId))
+        val validationDays = max(28, rainMemoryDays)
         val relevant = rawInput.days.filter {
-            MycoAlgorithms.isoDateToEpochDay(it.dateIso)?.let { epoch -> epoch in (targetEpoch - 28)..targetEpoch } == true
+            MycoAlgorithms.isoDateToEpochDay(it.dateIso)?.let { epoch -> epoch in (targetEpoch - validationDays)..targetEpoch } == true
         }
         if (relevant.map { it.dateIso }.distinct().size != relevant.size) return emptyResult(DataQualityStatus.DEGRADED_OUT_OF_BOUNDS)
         val usable = rawInput.days.filter {
@@ -55,7 +58,7 @@ class MycoAnalysisEngine {
 
         // 1. Controllo preventivo di plausibilità e completezza dati (C05, D04, D05)
         var dataQuality = DataQualityStatus.OPTIMAL
-        for (day in input.days.filter { MycoAlgorithms.isoDateToEpochDay(it.dateIso)?.let { epoch -> epoch in (targetEpoch - 28)..targetEpoch } == true }) {
+        for (day in input.days.filter { MycoAlgorithms.isoDateToEpochDay(it.dateIso)?.let { epoch -> epoch in (targetEpoch - validationDays)..targetEpoch } == true }) {
             if (!validWeatherDay(day)) {
                 dataQuality = DataQualityStatus.DEGRADED_OUT_OF_BOUNDS
                 break
@@ -94,6 +97,8 @@ class MycoAnalysisEngine {
             qualityReasons.add("meteo lacunoso")
             if (dataQuality == DataQualityStatus.OPTIMAL) dataQuality = DataQualityStatus.DEGRADED_INCOMPLETE_WEATHER
         }
+        val availableEpochs = bufferedDays.mapNotNull { MycoAlgorithms.isoDateToEpochDay(it.dateIso) }.toSet()
+        if (!rainHistoryCovers(availableEpochs, targetEpoch, rainMemoryDays)) qualityReasons.add(PARTIAL_RAIN_HISTORY)
         val waterDiagnosis = soilEval.diagnosisText
 
         val terrainBase = MycoAlgorithms.terrain(input.elevationSamples)
@@ -172,6 +177,8 @@ class MycoAnalysisEngine {
             val dayQuality = buildList {
                 if (dayWindows.temperatureAvailableDays < 5 || dayWindows.rainAvailableDays < 8 || dayWindows.humidityAvailableDays < 4) add("meteo lacunoso")
                 if (daySoil.availableDaysCount < 2) add("suolo") else if (daySoil.availableDaysCount < 3) add("suolo parziale")
+                val dayEpoch = MycoAlgorithms.isoDateToEpochDay(day.dateIso)
+                if (dayEpoch == null || !rainHistoryCovers(availableEpochs, dayEpoch, rainMemoryDays)) add(PARTIAL_RAIN_HISTORY)
             }
             val dayWeather = MycoAlgorithms.weatherScore(
                 dayIndex = index,
@@ -369,7 +376,7 @@ class MycoAnalysisEngine {
         )
         return buildList {
             add(factor(FactorId.TEMPERATURE, "Temperatura media", oneDecimal(windows.averageTempWindowC) + " °C", MycoAlgorithms.temperatureResponse(windows.averageTempWindowC, species), "Ottimale ${species.idealTempMin.toInt()}–${species.idealTempMax.toInt()} °C (tollerata ${species.toleratedTempMin.toInt()}–${species.toleratedTempMax.toInt()} °C)"))
-            // C03: Usare la reale convoluzione per latenza fenologica f(tau) over 26 gg
+            // C03: Usare la reale convoluzione per latenza fenologica f(tau) sulla memoria della specie (minimo 26 gg)
             add(factor(FactorId.PRECIPITATION, "Apporto ponderato per latenza", effectiveRainMm.roundToIntText() + " mm ponderati", MycoAlgorithms.rainResponse(effectiveRainMm, species), "Indicatore fenologico temporale; non misura la riserva idrica residua nel suolo"))
             add(factor(FactorId.HUMIDITY, "Umidità relativa", windows.averageHumidityWindowPercent.roundToIntText() + "%", MycoAlgorithms.humidityResponse(windows.averageHumidityWindowPercent), "Aria prossima alla lettiera", favorable = 0.7))
             if (windows.averageSoil0To7 != null || windows.averageSoil7To28 != null) {
@@ -569,6 +576,13 @@ class MycoAnalysisEngine {
         return "${stressWarning}${qualityWarning}${supplementary}Indice di idoneità stimato $probability/100. Fattore più favorevole: $strongest; principale limite: $weakest. $coverage"
     }
 
+    /**
+     * Vero se la serie contiene ogni giorno di calendario in [giorno - memoria, giorno - 1]: altrimenti la
+     * convoluzione pluviometrica della specie vede solo una parte della sua memoria (motivo informativo, B1).
+     */
+    private fun rainHistoryCovers(availableEpochs: Set<Long>, dayEpoch: Long, memoryDays: Int): Boolean =
+        (1..memoryDays).all { (dayEpoch - it) in availableEpochs }
+
     private fun emptyDay() = ProcessedDay("", 0.0, 0.0, 0.0, null, null, null, null)
 
     private fun emptyResult(dataQuality: DataQualityStatus): AnalysisResult {
@@ -612,6 +626,10 @@ class MycoAnalysisEngine {
             else -> 31
         }
         return day <= maxDays
+    }
+
+    private companion object {
+        const val PARTIAL_RAIN_HISTORY = "storico pioggia parziale"
     }
 
     private fun oneDecimal(value: Double): String = ((value * 10.0).roundToInt() / 10.0).toString()

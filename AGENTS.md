@@ -95,7 +95,7 @@ docs/
   - The rainfall memory factor must be labeled `"Apporto ponderato per latenza"`.
   - The right-aligned value slot must strictly receive compact atomic tokens (e.g. `"28 mm ponderati"`, `"35 mm ponderati"`), never allowing text to wrap or starve horizontal space.
   - The left-aligned detail slot must contain the explanatory disclaimer: `"Indicatore fenologico temporale; non misura la riserva idrica residua nel suolo"` along with the date/latency details.
-  - In all factor breakdowns, the PRECIPITATION factor must reflect the 26-day phenological convolution (`effectiveRainMm`), not a rectangular recent sum.
+  - In all factor breakdowns, the PRECIPITATION factor must reflect the phenological convolution over the species-dependent rainfall memory (`rainMemoryDays`, minimum 26 days) (`effectiveRainMm`), not a rectangular recent sum.
 - **Forest Proximity Index vs Canopy Cover Layout Contract**:
   - Remote forest evidence from OpenStreetMap must be labeled `"Indice di prossimità forestale"` on a normalized `X/100` scale rather than a percentage of direct physical canopy closure.
   - The right-aligned value slot must receive compact atomic tokens (e.g. `"100/100"`, `"60/100"`, `"0/100"`).
@@ -139,7 +139,7 @@ docs/
     $$f_{\text{species}}(\tau) = \left(\frac{\tau}{\tau_{\text{peak}}}\right)^\alpha \exp\left(-\alpha\left(\frac{\tau}{\tau_{\text{peak}}} - 1\right)\right)$$
   - Mass conservation must be strictly preserved across rainfall clusters ($R_1 + R_2 = R_{\text{total}}$); clustering must never drop real rainfall volume.
   - Multi-event transitions must be continuous ($C^1$ smoothness); **never apply hard discontinuous threshold resets** (e.g., $R_{\text{recent}} \ge 0.70 \cdot R_{\text{earlier}}$) that induce artificial double-digit point drops for infinitesimal variations ($\Delta R \approx 0.02\text{ mm}$).
-  - **Memory Fade-Out**: the rainfall kernel must reach zero continuously at the memory limit (`rainMemoryTaper`); an event must never leave the 26-day window with a step.
+  - **Memory Fade-Out**: the rainfall kernel must reach zero continuously at the memory limit (`rainMemoryTaper`); an event must never leave the species-dependent memory window (minimum 26 days) with a step.
   - **Rain Monotonicity**: adding or increasing a rainfall event must never lower $\Phi_{\text{phase}}$ or the suitability score. Multi-event combinations must not average a mature event with a recent one (soft reset); a single event stays capped by its own stage.
 - **Soil Moisture Modeling & Aeration**:
   - Model soil moisture response continuously. When volumetric water content approaches saturation ($\theta > 0.38\text{ m}^3/\text{m}^3$), apply continuous damping representing oxygen depletion, falling toward the biological floor ($0.15 \dots 0.20$) in acute waterlogging ($\theta > 0.44\text{ m}^3/\text{m}^3$). Distinguish empirical smoothstep functions from full van Genuchten hydraulic retention parameters.

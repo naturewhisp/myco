@@ -390,20 +390,21 @@ object MushroomAlgorithms {
      *
      * NOTA SCIENTIFICA (F17 - Memoria idrica indipendente dalla lunghezza dello storico):
      * Per garantire che il ricalcolo per la stessa data sia invariante rispetto alla lunghezza dell'archivio
-     * storico passato fornito (es. 28 gg vs 60 gg vs 100 gg), il supporto temporale del kernel e la media
-     * del suolo profondo sono rigidamente vincolati a una finestra massima fissa [maxMemoryDays] (default 26 giorni).
+     * storico passato fornito (es. 45 gg vs 60 gg vs 100 gg), il supporto temporale del kernel è vincolato alla
+     * memoria della specie [maxMemoryDays] (lockstep con `:core` `rainMemoryDays`: 3 × picco di latenza, tra 26 e
+     * 56 giorni), mentre la media del suolo profondo resta sulla finestra fissa di 26 giorni.
      *
      * @param dayIndex Indice del giorno target all'interno di [allData].
      * @param allData Serie temporale completa dei giorni elaborati.
      * @param species Specie fungina target con i relativi parametri fenologici.
-     * @param maxMemoryDays Finestra massima di memoria fenologica idrica retrospettiva (default 26 giorni).
+     * @param maxMemoryDays Memoria fenologica idrica retrospettiva (default: memoria della specie calcolata dal `:core`).
      * @return Precipitazione efficace ponderata in mm.
      */
     fun calculateEffectiveRainfall(
         dayIndex: Int,
         allData: List<ProcessedDay>,
         species: MushroomSpecies = SPECIES_CATALOG[0],
-        maxMemoryDays: Int = 26
+        maxMemoryDays: Int = github.naturewhisp.myco.core.MycoAlgorithms.rainMemoryDays(species.toCore())
     ): Double {
         if (dayIndex <= 0 || allData.isEmpty()) return 0.0
 
@@ -417,6 +418,7 @@ object MushroomAlgorithms {
         val effectiveTauPeak = if (hasChillingTrauma) species.phenologyLatencyPeakDays + chillingLatencyExpansion else species.phenologyLatencyPeakDays
 
         val memoryWindowStart = max(0, dayIndex - maxMemoryDays)
+        val deepSoilWindowDays = github.naturewhisp.myco.core.ParameterRegistry.PHENOLOGY_MEMORY_DAYS.value.toDouble()
         // Lockstep con :core (revisione 2026-11-09, A4): il gelo successivo a una pioggia ne azzera la memoria fenologica.
         val lastIndex = min(dayIndex, allData.lastIndex)
         val frostSurvival = DoubleArray(allData.size) { 1.0 }
@@ -440,7 +442,8 @@ object MushroomAlgorithms {
                 val taper = github.naturewhisp.myco.core.MycoAlgorithms.rainMemoryTaper(tau, maxMemoryDays)
                 weightedRain += precip * weight * frostSurvival[i] * taper
             }
-            allData[i].avgSoilMoisture7To28cm?.toDouble()?.let { pastDeepSoilList.add(it) }
+            // La compensazione del suolo profondo resta mediata sulla finestra fissa di 26 giorni (lockstep con :core).
+            if (tau <= deepSoilWindowDays) allData[i].avgSoilMoisture7To28cm?.toDouble()?.let { pastDeepSoilList.add(it) }
         }
         val avgPastDeepSoil = if (pastDeepSoilList.isNotEmpty()) pastDeepSoilList.average() else null
         val comp = deepSoilMoistureCompensation(avgPastDeepSoil)

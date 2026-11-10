@@ -289,7 +289,29 @@ object ParameterRegistry {
         provenance = ParameterProvenance.EXPERT_PRIOR,
         reference = "Revisione v1.3 (§4.7 / MYCO-SCI-10)",
         domain = "Inerzia fenologica",
-        description = "Supporto temporale fisso per la convoluzione delle precipitazioni passate f(tau)."
+        description = "Memoria minima della convoluzione delle precipitazioni passate f(tau) e finestra fissa della compensazione del suolo profondo (7-28 cm); la memoria di ciascuna specie non scende mai sotto questo valore."
+    )
+
+    val PHENOLOGY_MEMORY_PEAK_MULTIPLE = EcologicalParameter(
+        key = "phenology.memory_peak_multiple",
+        name = "Multiplo del picco di latenza per la memoria pluviometrica",
+        value = 3.0,
+        unit = "multiplo di tau_peak",
+        provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Revisione algoritmi 2026-11-09 (B1, §8)",
+        domain = "Inerzia fenologica",
+        description = "La memoria pluviometrica della specie vale questo multiplo del picco di latenza (arrotondato per eccesso), così le specie a latenza lunga non perdono pioggia ancora pesata dal kernel. Scelta di forma, non calibrazione di campo."
+    )
+
+    val PHENOLOGY_MEMORY_MAX_DAYS = EcologicalParameter(
+        key = "phenology.memory_max_days",
+        name = "Memoria pluviometrica massima",
+        value = 56,
+        unit = "giorni",
+        provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Revisione algoritmi 2026-11-09 (B1, §8)",
+        domain = "Inerzia fenologica",
+        description = "Tetto della memoria pluviometrica per specie, compatibile con lo storico di 60 giorni richiesto alla fonte meteo."
     )
 
     val ALL: List<EcologicalParameter<*>> = listOf(
@@ -320,5 +342,7 @@ object ParameterRegistry {
         CHILLING_LATENCY_EXPANSION_DAYS,
         SOIL_SATURATION_ANOXIA_THRESHOLD,
         PHENOLOGY_MEMORY_DAYS,
+        PHENOLOGY_MEMORY_PEAK_MULTIPLE,
+        PHENOLOGY_MEMORY_MAX_DAYS,
     )
 }

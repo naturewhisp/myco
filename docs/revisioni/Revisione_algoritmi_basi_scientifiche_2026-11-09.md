@@ -373,3 +373,39 @@ Con un evento da 60 mm il finferlo passa da S = 16,9 a 14,1 tra 26 e 27 giorni (
 **Verifica (A2, B1).** `testDebugUnitTest :core:allTests --rerun-tasks`: 253 + 70 test, 0 fallimenti. `lintDebug`: 0 errori, 0 warning (21 hint informativi). `compileDebugKotlin`, `assembleDebug` e controllo dei contratti Swift riusciti. APK debug SHA256 `4e4c42cfc9a68e042c060e43d20818d1c35eeee53dee414b2ab9108b249d6873`.
 
 **Collaudo sul Pixel `56271FDCH00BHR`.** Installazione stream riuscita, nessuna riga `AndroidRuntime`/`FATAL`. Preferito Mindino, modello polifito, stessi dati in archivio locale del collaudo precedente: indice ancora 0/100 per la temperatura media di 6,4 °C; l'apporto ponderato passa da 69 a 63 mm, effetto atteso della finestra di estinzione sulle piogge di oltre 20 giorni. Le soglie notturne non sono osservabili con questi dati perché il punteggio meteo è già azzerato dalla media. Schermate in `build/audit/2026-11-10/device-a2b1/` (cartella non versionata).
+
+## 9. Storico a 60 giorni e memoria per specie
+
+Completamento di B1 in `:core` e nel ramo Android non delegato. Firme esportate ed etichette Swift invariate; aggiunte la funzione `rainMemoryDays` e due parametri `EXPERT_PRIOR`.
+
+**Che cosa cambia.**
+- Android chiede 60 giorni di archivio (`past_days = 60` in `ApiServices.kt`, prima 28).
+- La memoria pluviometrica dipende dalla specie: $M = \text{clamp}(\lceil 3\,\tau_{\text{peak}} \rceil, 26, 56)$ (`PHENOLOGY_MEMORY_PEAK_MULTIPLE = 3`, `PHENOLOGY_MEMORY_MAX_DAYS = 56`, `PHENOLOGY_MEMORY_DAYS = 26` diventa il minimo). Valori: *Cantharellus* 42, *Hydnum* 39, *B. pinophilus* e *L. deliciosus* 36, *B. edulis* e «general» 33, *Armillaria* 30, *B. aereus* 27, le altre 26. Dipende solo dalla specie, non dal picco allungato dal freddo né dalla lunghezza dello storico.
+- Il raccordo di estinzione resta di 6 giorni, ora riferito a $M$: peso intatto fino a $M - 6$, nullo a $M + 1$. La compensazione del suolo profondo (7–28 cm) resta mediata su 26 giorni.
+- Il motore valida almeno $\max(28, M)$ giorni e aggiunge il motivo «storico pioggia parziale» a `qualityReasons` e `missingSources` (e ai motivi di ogni giorno di prospettiva) se manca un giorno di $[t - M, t - 1]$. `DataQualityStatus` non cambia.
+- Il ramo Android `calculateEffectiveRainfall` usa per default la memoria della specie del `:core`. `formatLastSignificantRain` non riceve la specie e resta a 26 giorni.
+
+**Pioggia efficace di un evento da 40 mm** (notti a 16 °C, nessun freddo né gelo; scenario SINTETICO):
+
+| Specie | 22 gg | 26 gg | 30 gg | 36 gg | 42 gg |
+|---|---|---|---|---|---|
+| *Cantharellus cibarius*, prima | 21,11 mm | 0,96 mm | 0 | 0 | 0 |
+| *Cantharellus cibarius*, dopo | 26,33 mm | 17,38 mm | 10,55 mm | 4,46 mm | 0,09 mm |
+| *B. edulis*, prima | 9,40 mm | 0,30 mm | 0 | 0 | 0 |
+| *B. edulis*, dopo | 11,72 mm | 5,34 mm | 1,34 mm | 0 | 0 |
+
+Calo giornaliero massimo nel raccordo di estinzione: 3,9 % del volume dell'evento (*B. aereus*), contro il 16,5 % del vecchio raccordo fisso 20–27 giorni per il finferlo. Sull'intera curva il calo massimo resta sotto il 12 % per tutte le specie con memoria oltre 26 giorni (massimo 10,1 %, *B. aereus*). Per tre specie a latenza breve con memoria minima il kernel puro, non toccato dal raccordo, scende più del 12 % in un giorno: *Macrolepiota* 14,9 % a 9 giorni, *Morchella* 13,0 % a 10, *Amanita caesarea* 12,2 % a 11. È la forma del kernel, uguale a prima; il test del 12 % per queste specie copre il solo raccordo.
+
+**Test aggiunti.** `SpeciesRainMemoryTest` (9 test, core): valori di `rainMemoryDays`; registrazione dei parametri; kernel puro fino a $M - 6$, ≤ 5 % a $M$, zero a $M + 1$; calo giornaliero ≤ 12 %; finferlo a 22 giorni pari al kernel puro; invarianza tra serie di 45 e 60 giorni; finestra del suolo profondo a 26 giorni; motivo «storico pioggia parziale» con 28 e con 60 giorni di storico (stato di qualità invariato) e al confine esatto della memoria. Visti fallire sul codice precedente: valori di memoria, calo ≤ 12 % (finferlo), finferlo a 22 giorni, i due test sul motivo di qualità. `NightAndMemoryLockstepTest`: nuovo `legacyKeepsRainBeyondTwentySixDaysForLongLatencySpecies`, visto fallire insieme al test di lockstep riscritto.
+
+**Test modificati.**
+- `NightThresholdsAndKernelTaperTest` (core): le soglie «≤ 5 % a 26 gg, zero a 27, intatto fino a 20» diventano relative alla memoria della specie; il test del salto d'indice usa $M$ e $M + 1$. Serie di 45 giorni sufficienti.
+- `NightAndMemoryLockstepTest` (Android): serie da 45 a 60 giorni; lockstep core/Android anche a 30–43 giorni e ai confini della memoria.
+- `ScientificRegressionBlock3Test.reg17_fixedMemoryWindowInvariance26Days` diventa `reg17_speciesMemoryWindowInvariance`: codificava il vecchio taglio fisso a 26 giorni con una base di 28 giorni, che non copre più i 33 di *B. edulis*, e usava date inesistenti («2026-08-35»). Ora la base è di 40 giorni su date reali e l'invarianza è verificata oltre la memoria della specie.
+- Nessun test esistente controllava `qualityReasons` vuoti o il testo «Tutte le fonti ambientali sono disponibili» con serie corte: nessuna fixture allungata per questo motivo.
+
+**Limiti.**
+- Il multiplo 3 e il tetto di 56 giorni sono scelte di forma `EXPERT_PRIOR`, non calibrazioni di campo; le fonti esaminate non danno una durata di memoria per specie.
+- Il client iOS chiede ancora il proprio `past_days`: finché non è allineato a 60 giorni, sulle specie con memoria oltre 28 giorni le analisi iOS riportano «storico pioggia parziale» e pesano meno pioggia di Android.
+- Le risposte meteo già in cache con 28 giorni di storico, se riusate dopo l'aggiornamento, producono il motivo di storico parziale per le specie con memoria oltre 28 giorni (comportamento della cache non verificato sul dispositivo).
+- Verifica XCTest su macOS non eseguita; controllo statico dei contratti Swift riuscito.

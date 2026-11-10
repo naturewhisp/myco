@@ -5,6 +5,7 @@ import github.naturewhisp.myco.core.SpeciesCatalog
 import github.naturewhisp.myco.model.EcologicalWeightsConfig
 import github.naturewhisp.myco.model.ProcessedDay
 import github.naturewhisp.myco.model.SPECIES_CATALOG
+import github.naturewhisp.myco.model.toCore
 import github.naturewhisp.myco.platform.AssetProvider
 import github.naturewhisp.myco.repository.SpunDataManager
 import github.naturewhisp.myco.utils.MushroomAlgorithms
@@ -15,6 +16,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.security.MessageDigest
+import java.time.LocalDate
 import kotlin.math.abs
 
 /**
@@ -123,22 +125,26 @@ class ScientificRegressionBlock3Test {
     }
 
     /**
-     * REG-17 (F17): Invarianza della memoria idrica fenologica (supporto a 26 giorni).
-     * Dimostra che estendere lo storico da 28 a 63 giorni aggiungendo dati antecedenti
-     * alla finestra dei 26 giorni non altera in alcun modo il risultato per il giorno bersaglio.
+     * REG-17 (F17): Invarianza della memoria idrica fenologica rispetto alla lunghezza dello storico.
+     * La memoria dipende dalla specie (B. edulis: 33 giorni, minimo 26; rilievo B1 della revisione 2026-11-09):
+     * una volta coperta, aggiungere 35 giorni antecedenti con piogge forti e suolo profondo secco non altera il
+     * risultato per il giorno bersaglio. Scenario SINTETICO su date di calendario reali.
      */
     @Test
-    fun reg17_fixedMemoryWindowInvariance26Days() {
+    fun reg17_speciesMemoryWindowInvariance() {
         val species = SPECIES_CATALOG.first { it.id == "boletus_edulis" }
+        val memory = github.naturewhisp.myco.core.MycoAlgorithms.rainMemoryDays(species.toCore())
+        assertEquals(33, memory)
 
-        // Creazione di 28 giorni di storico meteo standard (con pioggia e umidità variabile)
-        val base28Days = List(28) { idx ->
+        // 40 giorni di storico meteo standard (1 settembre – 10 ottobre 2026): coprono la memoria della specie.
+        val baseStart = LocalDate.of(2026, 9, 1)
+        val baseDays = List(40) { idx ->
             ProcessedDay(
-                date = "2026-09-${(idx + 1).toString().padStart(2, '0')}",
+                date = baseStart.plusDays(idx.toLong()).toString(),
                 avgTemp = 18.0f,
                 minTemp = 12.0f,
                 maxTemp = 24.0f,
-                totalPrecip = if (idx in 12..20) 8.0f else 0.0f,
+                totalPrecip = if (idx in 24..32) 8.0f else 0.0f,
                 avgHumidity = 78.0f,
                 weatherCode = 1,
                 avgSoilMoisture0To7cm = 0.28f,
@@ -146,35 +152,35 @@ class ScientificRegressionBlock3Test {
                 totalEvapotranspiration = 2.0f
             )
         }
+        val targetDayIndexBase = baseDays.lastIndex
+        val effectiveRainBase = MushroomAlgorithms.calculateEffectiveRainfall(targetDayIndexBase, baseDays, species)
 
-        val targetDayIndex28 = 27 // Giorno 28 (indice 27)
-        val effectiveRain28 = MushroomAlgorithms.calculateEffectiveRainfall(targetDayIndex28, base28Days, species)
-
-        // Creazione di uno storico esteso aggiungendo 35 giorni pregressi (per un totale di 63 giorni)
+        // Storico esteso con 35 giorni pregressi (28 luglio – 31 agosto 2026), per un totale di 75 giorni.
+        val olderStart = baseStart.minusDays(35)
         val older35Days = List(35) { idx ->
             ProcessedDay(
-                date = "2026-08-${(idx + 1).toString().padStart(2, '0')}",
+                date = olderStart.plusDays(idx.toLong()).toString(),
                 avgTemp = 22.0f,
                 minTemp = 16.0f,
                 maxTemp = 28.0f,
-                totalPrecip = 15.0f, // forti piogge remote antecedenti alla finestra dei 26 giorni
+                totalPrecip = 15.0f, // forti piogge remote antecedenti alla memoria della specie
                 avgHumidity = 85.0f,
                 weatherCode = 1,
                 avgSoilMoisture0To7cm = 0.35f,
-                avgSoilMoisture7To28cm = 0.10f, // deficit o eccessi remoti
+                avgSoilMoisture7To28cm = 0.10f, // deficit remoto oltre la finestra fissa del suolo profondo (26 gg)
                 totalEvapotranspiration = 4.0f
             )
         }
-        val extended63Days = older35Days + base28Days
-        val targetDayIndex63 = 35 + 27 // Stesso giorno bersaglio traslato in avanti di 35 giorni
+        val extendedDays = older35Days + baseDays
+        val targetDayIndexExtended = 35 + targetDayIndexBase // Stesso giorno bersaglio traslato di 35 giorni
+        assertEquals(baseDays[targetDayIndexBase].date, extendedDays[targetDayIndexExtended].date)
 
-        val effectiveRain63 = MushroomAlgorithms.calculateEffectiveRainfall(targetDayIndex63, extended63Days, species)
+        val effectiveRainExtended = MushroomAlgorithms.calculateEffectiveRainfall(targetDayIndexExtended, extendedDays, species)
 
-        // L'invarianza a 26 giorni garantisce che le piogge e il suolo oltre i 26 giorni non alterano il calcolo
         assertEquals(
-            "La precipitazione efficace deve essere identica a prescindere dalla presenza di storico remoto oltre i 26 giorni",
-            effectiveRain28,
-            effectiveRain63,
+            "La precipitazione efficace deve essere identica a prescindere dallo storico remoto oltre la memoria della specie",
+            effectiveRainBase,
+            effectiveRainExtended,
             1e-5
         )
     }

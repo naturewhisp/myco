@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 /**
  * Scenari SINTETICI (non riscontri empirici) per i rilievi A2 e B1 della revisione del 9 novembre 2026:
  * - A2: le minime notturne non vanno giudicate con le soglie di temperatura media della specie;
- * - B1: la memoria pluviometrica deve estinguersi senza gradino al limite dei 26 giorni.
+ * - B1: la memoria pluviometrica deve estinguersi senza gradino al limite della memoria della specie (minimo 26 giorni).
  */
 class NightThresholdsAndKernelTaperTest {
     private val seriesLength = 45
@@ -121,11 +121,12 @@ class NightThresholdsAndKernelTaperTest {
     @Test
     fun rainMemoryFadesOutWithoutACliffAtTheMemoryLimit() {
         for (species in SpeciesCatalog.all) {
-            // All'ultimo giorno di memoria l'evento pesa meno del 5% del suo volume, poi zero.
-            assertTrue(effectiveRainOfSingleEvent(species, 26) <= 0.05 * 40.0, "${species.id}: ${effectiveRainOfSingleEvent(species, 26)} mm a 26 gg")
-            assertEquals(0.0, effectiveRainOfSingleEvent(species, 27), 1e-12, species.id)
+            // Memoria della specie (minimo 26 gg): all'ultimo giorno l'evento pesa meno del 5% del suo volume, poi zero.
+            val memory = MycoAlgorithms.rainMemoryDays(species)
+            assertTrue(effectiveRainOfSingleEvent(species, memory) <= 0.05 * 40.0, "${species.id}: ${effectiveRainOfSingleEvent(species, memory)} mm a $memory gg")
+            assertEquals(0.0, effectiveRainOfSingleEvent(species, memory + 1), 1e-12, species.id)
             // Nessun calo giornaliero superiore al 20% del volume dell'evento lungo tutta la coda.
-            for (lag in 12..27) {
+            for (lag in 12..(memory + 1)) {
                 val drop = effectiveRainOfSingleEvent(species, lag) - effectiveRainOfSingleEvent(species, lag + 1)
                 assertTrue(drop <= 0.20 * 40.0, "${species.id}: calo di $drop mm tra $lag e ${lag + 1} gg")
             }
@@ -134,9 +135,10 @@ class NightThresholdsAndKernelTaperTest {
 
     @Test
     fun rainMemoryIsUntouchedBeforeTheTaperStarts() {
-        // Fino a 20 giorni il peso resta quello del kernel fenologico puro.
+        // Fino a memoria - 6 giorni il peso resta quello del kernel fenologico puro.
         for (species in SpeciesCatalog.all) {
-            for (lag in listOf(3, 8, 11, 14, 20)) {
+            val memory = MycoAlgorithms.rainMemoryDays(species)
+            for (lag in listOf(3, 8, 11, 14, 20, memory - 6)) {
                 val expected = 40.0 * MycoAlgorithms.phenologyKernel(lag.toDouble(), species.phenologyLatencyPeakDays, species.phenologyShapeAlpha)
                 assertEquals(expected, effectiveRainOfSingleEvent(species, lag), 1e-9, "${species.id} a $lag gg")
             }
@@ -146,8 +148,9 @@ class NightThresholdsAndKernelTaperTest {
     @Test
     fun theIndexDoesNotJumpWhenAnEventLeavesTheMemoryWindow() {
         for (speciesId in listOf("cantharellus_cibarius", "hydnum_repandum", "boletus_pinophilus")) {
-            val inside = weatherOnlyIndex(series(rainByLag = mapOf(26 to 60.0)), speciesId)
-            val outside = weatherOnlyIndex(series(rainByLag = mapOf(27 to 60.0)), speciesId)
+            val memory = MycoAlgorithms.rainMemoryDays(SpeciesCatalog.byId(speciesId))
+            val inside = weatherOnlyIndex(series(rainByLag = mapOf(memory to 60.0)), speciesId)
+            val outside = weatherOnlyIndex(series(rainByLag = mapOf(memory + 1 to 60.0)), speciesId)
             assertTrue(inside - outside <= 3, "$speciesId: da $inside a $outside in un giorno")
         }
     }

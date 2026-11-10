@@ -213,6 +213,53 @@ object MycoAlgorithms {
         return (weightedRain * comp).coerceAtLeast(0.0)
     }
 
+    /**
+     * Scala euristica di cella per l'umidità del suolo (rilievo A3): P90 dei valori giornalieri dell'orizzonte
+     * (interpolazione lineare fra statistiche d'ordine, continua nei dati) diviso per il livello di riferimento
+     * [ParameterRegistry.SOIL_REFERENCE_CAPACITY], saturato con raccordo C1 in [SOIL_SCALE_MIN, SOIL_SCALE_MAX].
+     * Regola asimmetrica: una scala < 1 (soglie abbassate) entra con smoothstep della pioggia della finestra tra
+     * [ParameterRegistry.SOIL_SCALE_DOWN_MIN_RAIN_MM] ± [ParameterRegistry.SOIL_SCALE_DOWN_RAIN_BLEND_MM]
+     * (80–120 mm), perché dopo un periodo secco un P90 basso non indica un suolo grossolano; una scala > 1 vale da subito.
+     * Proxy della capacità di campo ricavato dal livello umido della cella stessa, non proprietà idraulica misurata.
+     * Restituisce null (soglie assolute) con meno di [ParameterRegistry.SOIL_SCALE_MIN_DAYS] valori finiti o con
+     * pioggia liquida nella finestra inferiore a [ParameterRegistry.SOIL_SCALE_MIN_RAIN_MM].
+     */
+    fun soilCellScale(values: List<Double>, rainMm: Double): Double? = soilCellScaleEvaluation(values, rainMm)?.scale
+
+    /** Scala applicata e flag di riduzione bloccata (raccordo pluviometrico sotto 0.5 con P90 sotto il riferimento). */
+    internal class SoilCellScale(val scale: Double, val reductionBlocked: Boolean)
+
+    internal fun soilCellScaleEvaluation(values: List<Double>, rainMm: Double): SoilCellScale? {
+        val finite = values.filter { it.isFinite() }.sorted()
+        if (finite.size < ParameterRegistry.SOIL_SCALE_MIN_DAYS.value) return null
+        if (!rainMm.isFinite() || rainMm < ParameterRegistry.SOIL_SCALE_MIN_RAIN_MM.value) return null
+        val h = (finite.size - 1) * ParameterRegistry.SOIL_SCALE_PERCENTILE.value
+        val lo = h.toInt()
+        val hi = min(lo + 1, finite.lastIndex)
+        val percentile = finite[lo] + (h - lo) * (finite[hi] - finite[lo])
+        val cellScale = smoothClamp(
+            percentile / ParameterRegistry.SOIL_REFERENCE_CAPACITY.value,
+            ParameterRegistry.SOIL_SCALE_MIN.value,
+            ParameterRegistry.SOIL_SCALE_MAX.value,
+            ParameterRegistry.SOIL_SCALE_BLEND_HALF_WIDTH.value,
+        )
+        if (cellScale >= 1.0) return SoilCellScale(cellScale, reductionBlocked = false)
+        val centre = ParameterRegistry.SOIL_SCALE_DOWN_MIN_RAIN_MM.value
+        val halfWidth = ParameterRegistry.SOIL_SCALE_DOWN_RAIN_BLEND_MM.value
+        val admission = smoothstep(centre - halfWidth, centre + halfWidth, rainMm)
+        // Continua in P90 (a scala 1 i due rami coincidono) e C1 nella pioggia.
+        return SoilCellScale(1.0 + admission * (cellScale - 1.0), reductionBlocked = admission < 0.5)
+    }
+
+    /** Saturazione C1: identità in [low + w, high - w], raccordi quadratici, costante fuori da [low - w, high + w]. */
+    private fun smoothClamp(value: Double, low: Double, high: Double, w: Double): Double = when {
+        value <= low - w -> low
+        value < low + w -> value + (low + w - value) * (low + w - value) / (4.0 * w)
+        value <= high - w -> value
+        value < high + w -> value - (value - high + w) * (value - high + w) / (4.0 * w)
+        else -> high
+    }
+
     fun calculateDtrPenalty(dtr: Double, usePhenologicalInertia: Boolean = true): Double {
         return if (usePhenologicalInertia) {
             1.0 - 0.20 * smoothstep(12.0, 18.0, dtr)

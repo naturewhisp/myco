@@ -77,9 +77,52 @@ class MycoAnalysisEngine {
         }
         val current = bufferedDays.getOrNull(todayIndex) ?: emptyDay()
 
+        // 1b. Umidità del suolo normalizzata per cella (A3): theta / scala di cella per orizzonte, stimata sui 56 giorni
+        // precedenti il target (escluso) e condivisa da tutti i giorni di prospettiva. La validazione resta sui valori
+        // grezzi; gli algoritmi ricevono i valori normalizzati, l'interfaccia mostra quelli grezzi.
+        val scaleWindow = input.days.filter {
+            MycoAlgorithms.isoDateToEpochDay(it.dateIso)?.let { epoch ->
+                epoch in (targetEpoch - ParameterRegistry.SOIL_SCALE_WINDOW_DAYS.value)..(targetEpoch - 1)
+            } == true
+        }.distinctBy { it.dateIso }
+        val scaleRainMm = scaleWindow.sumOf { day -> day.liquidPrecipMm.takeIf { it.isFinite() && it in 0.0..500.0 } ?: 0.0 }
+        val shallowScale = MycoAlgorithms.soilCellScaleEvaluation(
+            scaleWindow.mapNotNull { day -> day.soilMoisture0To7?.takeIf { it.isFinite() && it in 0.0..0.60 } },
+            scaleRainMm,
+        )
+        val deepScale = MycoAlgorithms.soilCellScaleEvaluation(
+            scaleWindow.mapNotNull { day -> day.soilMoisture7To28?.takeIf { it.isFinite() && it in 0.0..0.60 } },
+            scaleRainMm,
+        )
+        // Il motivo riguarda solo gli orizzonti presenti nella serie: un orizzonte del tutto assente non ha nulla da normalizzare.
+        // Compare anche quando la riduzione della scala (< 1) è bloccata da una finestra poco piovosa (regola asimmetrica).
+        val soilNotNormalized =
+            ((shallowScale == null || shallowScale.reductionBlocked) && bufferedDays.any { it.soilMoisture0To7 != null }) ||
+                ((deepScale == null || deepScale.reductionBlocked) && bufferedDays.any { it.soilMoisture7To28 != null })
+        val shallowDivisor = shallowScale?.scale ?: 1.0
+        val deepDivisor = deepScale?.scale ?: 1.0
+        val scoringDays = if (shallowDivisor == 1.0 && deepDivisor == 1.0) {
+            bufferedDays
+        } else {
+            bufferedDays.map { day ->
+                day.copy(
+                    soilMoisture0To7 = day.soilMoisture0To7?.let { it / shallowDivisor },
+                    soilMoisture7To28 = day.soilMoisture7To28?.let { it / deepDivisor },
+                )
+            }
+        }
+        val soilScaleNote = if (shallowDivisor != 1.0 || deepDivisor != 1.0) {
+            val shallowText = fixedTwoDecimals(shallowDivisor)
+            val deepText = fixedTwoDecimals(deepDivisor)
+            " • normalizzata sulla cella (×" + (if (shallowText == deepText) shallowText else "$shallowText / ×$deepText") + ")"
+        } else {
+            ""
+        }
+
         // 2. Diagnosi idrica pedologica condivisa C1 (C06) e copertura finestre temporali
-        val soilEval = MycoAlgorithms.calculateSoilMoistureFactor(bufferedDays, todayIndex)
-        val windows = EnvironmentalWindows.derive(bufferedDays, todayIndex)
+        val soilEval = MycoAlgorithms.calculateSoilMoistureFactor(scoringDays, todayIndex)
+        val windows = EnvironmentalWindows.derive(scoringDays, todayIndex)
+        val displayWindows = EnvironmentalWindows.derive(bufferedDays, todayIndex)
         if (soilEval.availableDaysCount < 2) {
             if (dataQuality == DataQualityStatus.OPTIMAL) {
                 dataQuality = DataQualityStatus.DEGRADED_MISSING_SOIL
@@ -91,6 +134,7 @@ class MycoAnalysisEngine {
         if (windows.evapotranspiration.any { it.coverage?.et0Usable == false }) qualityReasons.add("ET0 incompleta")
         if (soilEval.availableDaysCount < 2) qualityReasons.add("suolo")
         else if (soilEval.availableDaysCount < 3) qualityReasons.add("suolo parziale")
+        if (soilNotNormalized) qualityReasons.add(SOIL_NOT_NORMALIZED)
         val incompleteWeather = windows.temperatureAvailableDays < 5 || windows.rainAvailableDays < 8 ||
             windows.humidityAvailableDays < 4 || relevant.any { it.coverage?.weatherUsable == false }
         if (incompleteWeather) {
@@ -99,7 +143,8 @@ class MycoAnalysisEngine {
         }
         val availableEpochs = bufferedDays.mapNotNull { MycoAlgorithms.isoDateToEpochDay(it.dateIso) }.toSet()
         if (!rainHistoryCovers(availableEpochs, targetEpoch, rainMemoryDays)) qualityReasons.add(PARTIAL_RAIN_HISTORY)
-        val waterDiagnosis = soilEval.diagnosisText
+        // Diagnosi testuale sui valori grezzi (A3): la normalizzazione non deve alterare il theta mostrato.
+        val waterDiagnosis = MycoAlgorithms.calculateSoilMoistureFactor(bufferedDays, todayIndex).diagnosisText
 
         val terrainBase = MycoAlgorithms.terrain(input.elevationSamples)
         val terrainModifier = MycoAlgorithms.terrainModifier(terrainBase, input.monthIndex, current.avgTemp, species)
@@ -126,12 +171,12 @@ class MycoAnalysisEngine {
         val effectiveSeasonality = if (isWeatherOnly) 1.0 else seasonality
         val effectiveTerrainModifier = if (isWeatherOnly) 1.0 else terrainModifier
 
-        val growthPhaseEval = MycoAlgorithms.evaluateGrowthPhase(bufferedDays, species, todayIndex)
+        val growthPhaseEval = MycoAlgorithms.evaluateGrowthPhase(scoringDays, species, todayIndex)
 
-        // Single-pass microclimate buffering invariant (RES-04): bufferedDays è già trasformato sub-canopy
+        // Single-pass microclimate buffering invariant (RES-04): scoringDays è già trasformato sub-canopy
         val weather = MycoAlgorithms.weatherScore(
             dayIndex = todayIndex,
-            days = bufferedDays,
+            days = scoringDays,
             species = species,
             spunHyphalDensity = input.spunHyphalDensity,
             applySpunHyphalBonus = false,
@@ -150,10 +195,12 @@ class MycoAnalysisEngine {
             useHurdle = !isWeatherOnly,
         )
 
-        val effectiveRain = MycoAlgorithms.calculateEffectiveRainfall(todayIndex, bufferedDays, species)
+        val effectiveRain = MycoAlgorithms.calculateEffectiveRainfall(todayIndex, scoringDays, species)
         val factors = factors(
             input = input,
             windows = windows,
+            displayWindows = displayWindows,
+            soilScaleNote = soilScaleNote,
             species = species,
             habitat = displayHabitatFactorScore,
             altitude = effectiveAltitude,
@@ -166,23 +213,24 @@ class MycoAnalysisEngine {
         val outlooks = rawInput.days.filter { day ->
             MycoAlgorithms.isoDateToEpochDay(day.dateIso)?.let { it in targetEpoch..(targetEpoch + 6) } == true
         }.distinctBy { it.dateIso }.sortedBy { it.dateIso }.map { rawDay ->
-            val index = bufferedDays.indexOfFirst { it.dateIso == rawDay.dateIso }
+            val index = scoringDays.indexOfFirst { it.dateIso == rawDay.dateIso }
             if (index < 0 || !validWeatherDay(rawDay) || rawInput.days.count { it.dateIso == rawDay.dateIso } != 1) {
                 return@map DailyOutlook(rawDay.dateIso, rawDay.weatherCode, 0.0, 0.0, 0.0, 0,
                     ProbabilityTier.VERY_LOW, false, listOf("Copertura meteorologica insufficiente o dati non validi"))
             }
-            val day = bufferedDays[index]
-            val dayWindows = EnvironmentalWindows.derive(bufferedDays, index)
-            val daySoil = MycoAlgorithms.calculateSoilMoistureFactor(bufferedDays, index)
+            val day = scoringDays[index]
+            val dayWindows = EnvironmentalWindows.derive(scoringDays, index)
+            val daySoil = MycoAlgorithms.calculateSoilMoistureFactor(scoringDays, index)
             val dayQuality = buildList {
                 if (dayWindows.temperatureAvailableDays < 5 || dayWindows.rainAvailableDays < 8 || dayWindows.humidityAvailableDays < 4) add("meteo lacunoso")
                 if (daySoil.availableDaysCount < 2) add("suolo") else if (daySoil.availableDaysCount < 3) add("suolo parziale")
+                if (soilNotNormalized) add(SOIL_NOT_NORMALIZED)
                 val dayEpoch = MycoAlgorithms.isoDateToEpochDay(day.dateIso)
                 if (dayEpoch == null || !rainHistoryCovers(availableEpochs, dayEpoch, rainMemoryDays)) add(PARTIAL_RAIN_HISTORY)
             }
             val dayWeather = MycoAlgorithms.weatherScore(
                 dayIndex = index,
-                days = bufferedDays,
+                days = scoringDays,
                 species = species,
                 spunHyphalDensity = input.spunHyphalDensity,
                 applySpunHyphalBonus = false,
@@ -196,7 +244,7 @@ class MycoAnalysisEngine {
                 input.monthIndex
             }
             val daySeasonality = if (isWeatherOnly) 1.0 else MycoAlgorithms.seasonalityScore(dayMonth, species)
-            val dayGrowthPhase = MycoAlgorithms.evaluateGrowthPhase(bufferedDays, species, index)
+            val dayGrowthPhase = MycoAlgorithms.evaluateGrowthPhase(scoringDays, species, index)
             val dayProbability = MycoAlgorithms.growthProbability(
                 weatherScore = dayWeather,
                 habitatScore = probabilityHabitatScore,
@@ -361,6 +409,8 @@ class MycoAnalysisEngine {
     private fun factors(
         input: AnalysisInputs,
         windows: EnvironmentalWindows,
+        displayWindows: EnvironmentalWindows,
+        soilScaleNote: String,
         species: MushroomSpecies,
         habitat: Double,
         altitude: Double,
@@ -380,8 +430,9 @@ class MycoAnalysisEngine {
             add(factor(FactorId.PRECIPITATION, "Apporto ponderato per latenza", effectiveRainMm.roundToIntText() + " mm ponderati", MycoAlgorithms.rainResponse(effectiveRainMm, species), "Indicatore fenologico temporale; non misura la riserva idrica residua nel suolo"))
             add(factor(FactorId.HUMIDITY, "Umidità relativa", windows.averageHumidityWindowPercent.roundToIntText() + "%", MycoAlgorithms.humidityResponse(windows.averageHumidityWindowPercent), "Aria prossima alla lettiera", favorable = 0.7))
             if (windows.averageSoil0To7 != null || windows.averageSoil7To28 != null) {
-                val soilVal = windows.averageSoil0To7 ?: windows.averageSoil7To28 ?: 0.0
-                add(factor(FactorId.SOIL_MOISTURE, "Idratazione suolo", twoDecimals(soilVal) + " m³/m³", soil, "Orizzonti 0-7 e 7-28 cm", neutral = 0.45))
+                // Valore mostrato grezzo; punteggio sui valori normalizzati per cella (A3), nota nel dettaglio.
+                val soilVal = displayWindows.averageSoil0To7 ?: displayWindows.averageSoil7To28 ?: 0.0
+                add(factor(FactorId.SOIL_MOISTURE, "Idratazione suolo", twoDecimals(soilVal) + " m³/m³", soil, "Orizzonti 0-7 e 7-28 cm$soilScaleNote", neutral = 0.45))
             }
             // Mostrare separatamente prossimità forestale e idoneità ecologica (D03 / Issue 3)
             val habLabel = if (species.category == EcologicalCategory.SAPROTROPHIC) "Idoneità suolo/margine" else "Idoneità ecologica habitat"
@@ -630,11 +681,18 @@ class MycoAnalysisEngine {
 
     private companion object {
         const val PARTIAL_RAIN_HISTORY = "storico pioggia parziale"
+        const val SOIL_NOT_NORMALIZED = "suolo non normalizzato"
     }
 
     private fun oneDecimal(value: Double): String = ((value * 10.0).roundToInt() / 10.0).toString()
 
     private fun twoDecimals(value: Double): String = ((value * 100.0).roundToInt() / 100.0).toString()
+
+    /** Due decimali sempre presenti (es. 0.80), senza String.format in commonMain. */
+    private fun fixedTwoDecimals(value: Double): String {
+        val hundredths = (value * 100.0).roundToInt()
+        return "${hundredths / 100}.${(hundredths % 100).toString().padStart(2, '0')}"
+    }
 
     private fun Double.roundToIntText(): String = roundToInt().toString()
 }

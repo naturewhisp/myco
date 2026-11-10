@@ -18,12 +18,12 @@ Stato dei rilievi della [revisione degli algoritmi del 9 novembre 2026](revision
 | A4 — gelo post-innesco non abbatte l'indice e può alzarlo | **Corretto** in `:core` e nel ramo Android non delegato (`frostDamage`, vitalità dello shock) | Soglie `EXPERT_PRIOR` indipendenti dalla specie |
 | A2 — minime notturne giudicate con soglie di media | **Corretto** in `:core` e nel ramo Android non delegato (`NOCTURNAL_MIN_OFFSET_C`) | Scarto unico di 6 °C dalle soglie di media, `EXPERT_PRIOR`; soglie notturne proprie per specie restano un'evoluzione possibile |
 | B1 — gradino del kernel a 26 giorni | **Corretto** in `:core` e nel ramo Android non delegato (`rainMemoryTaper`, `rainMemoryDays`) | Storico Android a 60 giorni; memoria per specie = 3 × picco di latenza tra 26 e 56 giorni (finferlo 42), estinzione C1 sugli ultimi 6 giorni; motivo di qualità «storico pioggia parziale» se la serie non copre la memoria. Client iOS (`past_days`) in carico a un altro intervento |
-| A3 — soglie assolute di umidità del suolo | Aperto | Richiede normalizzazione per cella e più storico |
+| A3 — soglie assolute di umidità del suolo | **Mitigato** in `:core` (`soilCellScale`, `MycoAnalysisEngine`) | θ diviso per una scala di cella per orizzonte (P90 dei 56 giorni precedenti / 0,35, saturata in [0,60; 1,50]); con meno di 30 giorni di suolo o meno di 30 mm di pioggia soglie assolute e motivo «suolo non normalizzato»; una scala < 1 richiede almeno 100 mm nella finestra (raccordo 80–120 mm), così un periodo secco non maschera la siccità. Valori mostrati grezzi. Euristica `EXPERT_PRIOR`, non capacità di campo misurata; Android e iOS la ereditano dal motore |
 | A5 — gate Diluvio non garantito dall'ipossia | Aperto | Decidere se resta un requisito |
 | A6 — habitat sconosciuto e query Overpass | Aperto | Tocca repository e core |
 | B2–B6, C1–C3, D | Aperti | Vedi revisione |
 
-Piano di rilascio: `past_days` Android esteso a 60 giorni e memoria pluviometrica per specie (B1 completo lato Android e `:core`); allineamento del client iOS a 60 giorni da chiudere nello stesso rilascio. Poi A3 (che può usare lo storico più lungo) e A6 con la query Overpass; quindi B2–B5. XCTest su macOS non eseguiti per queste modifiche: i contratti statici Swift passano, le firme esportate non sono cambiate.
+Piano di rilascio: `past_days` Android esteso a 60 giorni e memoria pluviometrica per specie (B1 completo lato Android e `:core`); allineamento del client iOS a 60 giorni da chiudere nello stesso rilascio. A3 mitigato nel motore `:core` con la scala di cella sui 56 giorni dello storico (nessun cambio negli adattatori); poi A6 con la query Overpass e la decisione su A5, che con la normalizzazione dipende dal livello umido della cella; quindi B2–B5. XCTest su macOS non eseguiti per queste modifiche: i contratti statici Swift passano, le firme esportate non sono cambiate.
 
 ## Aggiornamento operativo — 6 ottobre 2026
 

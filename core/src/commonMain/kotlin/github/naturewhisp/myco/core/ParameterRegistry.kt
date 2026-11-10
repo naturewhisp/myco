@@ -314,6 +314,76 @@ object ParameterRegistry {
         description = "Tetto della memoria pluviometrica per specie, compatibile con lo storico di 60 giorni richiesto alla fonte meteo."
     )
 
+    val SOIL_REFERENCE_CAPACITY = EcologicalParameter(
+        key = "soil.cell_reference_capacity", name = "Livello umido di riferimento della cella", value = 0.35,
+        unit = "m³/m³", provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Revisione algoritmi 2026-11-09 (A3)", domain = "Idrologia pedologica",
+        description = "Livello umido della cella al quale le soglie volumetriche restano invariate (scala 1.0). Proxy euristico della capacità di campo della cella ricavato dal suo stesso livello nei periodi umidi; non è una proprietà idraulica misurata.",
+    )
+
+    val SOIL_SCALE_PERCENTILE = EcologicalParameter(
+        key = "soil.cell_scale_percentile", name = "Percentile del livello umido della cella", value = 0.90,
+        unit = "quantile (0–1)", provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Revisione algoritmi 2026-11-09 (A3)", domain = "Idrologia pedologica",
+        description = "Quantile (interpolazione lineare fra statistiche d'ordine, continuo nei dati) dei valori giornalieri della cella usato come proxy euristico della sua capacità di campo; non è una misura idraulica.",
+    )
+
+    val SOIL_SCALE_WINDOW_DAYS = EcologicalParameter(
+        key = "soil.cell_scale_window_days", name = "Finestra della scala di cella", value = 56,
+        unit = "giorni", provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Revisione algoritmi 2026-11-09 (A3)", domain = "Idrologia pedologica",
+        description = "Giorni di calendario precedenti il target (escluso) da cui si stima il livello umido della cella; finestra fissa, indipendente dalla lunghezza dell'archivio. Proxy euristico, non proprietà misurata.",
+    )
+
+    val SOIL_SCALE_MIN = EcologicalParameter(
+        key = "soil.cell_scale_min", name = "Scala di cella minima", value = 0.60,
+        unit = "moltiplicatore", provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Revisione algoritmi 2026-11-09 (A3)", domain = "Idrologia pedologica",
+        description = "Limite inferiore, raggiunto con raccordo C1, della scala euristica di cella (suoli a tessitura grossolana); non è una proprietà idraulica misurata.",
+    )
+
+    val SOIL_SCALE_MAX = EcologicalParameter(
+        key = "soil.cell_scale_max", name = "Scala di cella massima", value = 1.50,
+        unit = "moltiplicatore", provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Revisione algoritmi 2026-11-09 (A3)", domain = "Idrologia pedologica",
+        description = "Limite superiore, raggiunto con raccordo C1, della scala euristica di cella (suoli a tessitura fine); non è una proprietà idraulica misurata.",
+    )
+
+    val SOIL_SCALE_BLEND_HALF_WIDTH = EcologicalParameter(
+        key = "soil.cell_scale_blend_half_width", name = "Semiampiezza del raccordo ai limiti della scala", value = 0.05,
+        unit = "moltiplicatore", provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Revisione algoritmi 2026-11-09 (A3)", domain = "Idrologia pedologica",
+        description = "Raccordo quadratico C1 attorno ai limiti: scala grezza identica in [0.65, 1.45], costante fuori da [0.55, 1.55]. Scelta di forma, non calibrazione.",
+    )
+
+    val SOIL_SCALE_MIN_DAYS = EcologicalParameter(
+        key = "soil.cell_scale_min_days", name = "Giorni minimi per la scala di cella", value = 30,
+        unit = "giorni", provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Revisione algoritmi 2026-11-09 (A3)", domain = "Qualità dati",
+        description = "Valori giornalieri minimi dell'orizzonte nella finestra; sotto questa soglia la scala vale 1.0 (soglie assolute) e si segnala \"suolo non normalizzato\".",
+    )
+
+    val SOIL_SCALE_MIN_RAIN_MM = EcologicalParameter(
+        key = "soil.cell_scale_min_rain_mm", name = "Pioggia minima per la scala di cella", value = 30.0,
+        unit = "mm", provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Revisione algoritmi 2026-11-09 (A3)", domain = "Qualità dati",
+        description = "Pioggia liquida grezza (prima della chioma) minima nella finestra perché il livello della cella rappresenti un periodo umido; altrimenti scala 1.0 e \"suolo non normalizzato\". Euristica, non proprietà misurata.",
+    )
+
+    val SOIL_SCALE_DOWN_MIN_RAIN_MM = EcologicalParameter(
+        key = "soil.cell_scale_down_min_rain_mm", name = "Pioggia per ridurre le soglie del suolo", value = 100.0,
+        unit = "mm", provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Revisione algoritmi 2026-11-09 (A3, regola asimmetrica)", domain = "Idrologia pedologica",
+        description = "Una scala di cella < 1 (soglie abbassate, suolo trattato come grossolano) è ammessa solo se la pioggia liquida grezza dei 56 giorni raggiunge questo valore (centro del raccordo): dopo un periodo secco un P90 basso non va scambiato per un suolo sabbioso. Euristica, non proprietà idraulica misurata.",
+    )
+
+    val SOIL_SCALE_DOWN_RAIN_BLEND_MM = EcologicalParameter(
+        key = "soil.cell_scale_down_rain_blend_mm", name = "Semiampiezza del raccordo pluviometrico della scala < 1", value = 20.0,
+        unit = "mm", provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Revisione algoritmi 2026-11-09 (A3, regola asimmetrica)", domain = "Idrologia pedologica",
+        description = "La riduzione della scala entra con smoothstep tra 80 e 120 mm di pioggia nella finestra, senza gradino a 100 mm; sotto metà raccordo compare «suolo non normalizzato». Scelta di forma, non calibrazione.",
+    )
+
     val ALL: List<EcologicalParameter<*>> = listOf(
         HABITAT_RESPONSE_PRIORS,
         ECM_RESPONSE_PRIORS,
@@ -344,5 +414,15 @@ object ParameterRegistry {
         PHENOLOGY_MEMORY_DAYS,
         PHENOLOGY_MEMORY_PEAK_MULTIPLE,
         PHENOLOGY_MEMORY_MAX_DAYS,
+        SOIL_REFERENCE_CAPACITY,
+        SOIL_SCALE_PERCENTILE,
+        SOIL_SCALE_WINDOW_DAYS,
+        SOIL_SCALE_MIN,
+        SOIL_SCALE_MAX,
+        SOIL_SCALE_BLEND_HALF_WIDTH,
+        SOIL_SCALE_MIN_DAYS,
+        SOIL_SCALE_MIN_RAIN_MM,
+        SOIL_SCALE_DOWN_MIN_RAIN_MM,
+        SOIL_SCALE_DOWN_RAIN_BLEND_MM,
     )
 }

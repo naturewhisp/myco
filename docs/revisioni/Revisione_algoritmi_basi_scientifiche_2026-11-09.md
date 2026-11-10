@@ -4,7 +4,7 @@
 **Natura:** lettura interna al progetto eseguita da una sessione AI (Claude, con tre sotto-agenti usati solo per scaricare pagine web). Non è una revisione esterna né una peer review.
 **Oggetto:** motore `:core` (`MycoAlgorithms`, `MycoAnalysisEngine`, `HabitatGeometry`, `HeatmapEngine`, `ParameterRegistry`, `SpeciesCatalog`) e i suoi ingressi Android. Nessun file sorgente è stato modificato.
 
-**Aggiornamento 10 novembre 2026:** i rilievi **A1**, **A4** (sezione 7), **A2** e **B1** (sezione 8) sono stati corretti dopo questa revisione. Le sezioni 1–6 descrivono il commit `747fd44` e restano invariate.
+**Aggiornamento 10 novembre 2026:** i rilievi **A1**, **A4** (sezione 7), **A2** e **B1** (sezioni 8–9) sono stati corretti dopo questa revisione; **A3** è mitigato con la normalizzazione per cella (sezione 10). Le sezioni 1–6 descrivono il commit `747fd44` e restano invariate.
 
 ## 1. Esito
 
@@ -408,4 +408,39 @@ Calo giornaliero massimo nel raccordo di estinzione: 3,9 % del volume dell'event
 - Il multiplo 3 e il tetto di 56 giorni sono scelte di forma `EXPERT_PRIOR`, non calibrazioni di campo; le fonti esaminate non danno una durata di memoria per specie.
 - Il client iOS chiede ancora il proprio `past_days`: finché non è allineato a 60 giorni, sulle specie con memoria oltre 28 giorni le analisi iOS riportano «storico pioggia parziale» e pesano meno pioggia di Android.
 - Le risposte meteo già in cache con 28 giorni di storico, se riusate dopo l'aggiornamento, producono il motivo di storico parziale per le specie con memoria oltre 28 giorni (comportamento della cache non verificato sul dispositivo).
+- Verifica XCTest su macOS non eseguita; controllo statico dei contratti Swift riuscito.
+
+## 10. Umidità del suolo normalizzata per cella (A3)
+
+Mitigazione di A3 nel solo motore `:core` (`MycoAnalysisEngine`): Android e iOS la ereditano senza modifiche agli adattatori. Firme esportate e nomi dei parametri invariati; aggiunte la funzione pubblica `MycoAlgorithms.soilCellScale(values, rainMm)` e dieci parametri `EXPERT_PRIOR`.
+
+**Che cosa cambia.**
+- Per ciascun orizzonte (0–7 e 7–28 cm) il motore calcola la scala di cella $k = \text{P90}/0.35$ (`SOIL_REFERENCE_CAPACITY`, `SOIL_SCALE_PERCENTILE`) sui valori giornalieri dei 56 giorni di calendario precedenti il target, target escluso (`SOIL_SCALE_WINDOW_DAYS`). Il percentile interpola linearmente fra statistiche d'ordine ed è continuo nei dati.
+- $k$ è saturata in $[0.60, 1.50]$ (`SOIL_SCALE_MIN`, `SOIL_SCALE_MAX`) con raccordo quadratico $C^1$ di semiampiezza 0,05 (`SOIL_SCALE_BLEND_HALF_WIDTH`): identità in $[0.65, 1.45]$, costante fuori da $[0.55, 1.55]$, nessun angolo.
+- Una scala > 1 (cella fine) vale con almeno 30 valori dell'orizzonte (`SOIL_SCALE_MIN_DAYS`) e almeno 30 mm di pioggia liquida grezza, prima della chioma, nella finestra (`SOIL_SCALE_MIN_RAIN_MM`). Una scala < 1 (soglie abbassate) richiede inoltre una finestra piovosa: è moltiplicata per un raccordo smoothstep della pioggia tra 80 e 120 mm (`SOIL_SCALE_DOWN_MIN_RAIN_MM = 100`, `SOIL_SCALE_DOWN_RAIN_BLEND_MM = 20`), perché dopo un periodo secco un P90 basso non indica un suolo grossolano. Sotto i minimi, o con raccordo sotto 0,5, il motore aggiunge «suolo non normalizzato» a `qualityReasons`, `missingSources` e ai motivi dei giorni di prospettiva; `DataQualityStatus` non cambia. Il motivo non compare per un orizzonte del tutto assente dalla serie.
+- La validazione (0–0,60 m³/m³) resta sui valori grezzi. Dopo la chioma ogni θ è diviso per la scala del proprio orizzonte nella serie passata a `MycoAlgorithms`: equivale a moltiplicare per $k$ tutte le soglie volumetriche (0,14/0,22, 0,38/0,44, nodi profondi 0,12–0,52) senza cambiare firme. La stessa coppia di scale, calcolata per il target, vale per tutti i giorni di prospettiva.
+- Restano grezzi il valore del fattore SOIL_MOISTURE, `waterDiagnosis` e i `DailyOutlook`. Il dettaglio del fattore diventa «Orizzonti 0-7 e 7-28 cm • normalizzata sulla cella (×0.66)» (due valori se gli orizzonti differiscono).
+- Le funzioni Android non delegate di `MushroomAlgorithms.kt` non cambiano: ricevono serie già preparate e la normalizzazione è un passo del motore.
+
+**Scenario di invarianza** (SINTETICO: *B. edulis*, ottobre, solo meteo, 60 giorni passati, cinque piogge da 25 mm, 125 mm nella finestra, traccia con P90 0,355 m³/m³ su entrambi gli orizzonti, suolo moltiplicato per c):
+
+| c | Indice prima | Φ_soil prima | Indice dopo | Φ_soil dopo |
+|---|---|---|---|---|
+| 0,65 | 40 | 0,56 | 73 | 1,00 |
+| 1,00 | 73 | 1,00 | 73 | 1,00 |
+| 1,40 | 71 | 1,00 | 73 | 1,00 |
+
+Controlli direzionali (stessa traccia, SINTETICI): cella grossolana (c = 0,6) in periodo umido 26 → 73 (Φ_soil 0,37 → 1,00); stessa cella con gli ultimi tre giorni a 0,10/0,12 m³/m³ 12 → 24 (Φ_soil 0,20 → 0,35, resta siccità). Cella fine (c = 1,3) al proprio P90: fattore suolo da sfavorevole (indice 66) a favorevole (73); al 125 % del proprio P90 resta non favorevole (indice 70, punteggio meteo 82 contro 85). Traccia «tipo Mindino» (livello umido 0,25–0,28, poi 0,16 per 11 giorni): con 47,6 mm nella finestra scala 1,0, indice 25 e Φ_soil 0,32 come prima, motivo presente; con 125 mm la scala scende a 0,71 e l'indice sale a 79 (Φ_soil 1,00).
+
+**Gate Mindino e ordinamento delle stazioni.** Le due fixture esistenti passano senza modifiche. `EndToEndOperationalParityTest.mindinoGate_droughtDecayAbortsFruitingInCoreAndEngine` (47,6 mm nella finestra, P90 0,28): scala 1,0, indice **23** come prima (≤ 35), con il motivo «suolo non normalizzato». Con la prima versione della regola, senza soglia asimmetrica, la stessa fixture dava 67. `ComparativeValidationTest.rankingConcordanceAcrossStations` (35 mm): stazioni 76 > 43 > 23 > 0, invariate. Il replay empirico (`MindinoEmpiricalReplayTest`, 24 giorni) ricade sulle soglie assolute ed è invariato.
+
+**Test aggiunti.** `SoilCellNormalizationTest` (15 test, core): percentile e scala con valori calcolati a mano; non calcolabilità sotto 30 giorni o 30 mm; raccordo pluviometrico della scala < 1 (1,0 fino a 80 mm, 0,90 a 100, 0,80 da 120, continuo e monotono; scala > 1 già con 30 mm); registrazione dei parametri; saturazione e continuità $C^1$ ai limiti; invarianza alla tessitura (c = 0,65, 0,8, 1,25, 1,4; indice entro 1 punto, Φ_soil e punteggio meteo uguali, anche nei giorni di prospettiva); cella grossolana nei due sensi; cella fine nei due sensi; traccia tipo Mindino con circa 50 mm (scala 1,0, Φ_soil ≤ 0,5, motivo presente) e con 125 mm (scala < 1 applicata); cella argillosa (P90 0,45) con 40 mm (scala 1,29 applicata); ripiego con pochi giorni di suolo e con poca pioggia; invarianza fra serie di 60 e 90 giorni; valori mostrati grezzi. Visti fallire sul codice senza normalizzazione: i test della funzione, invarianza (c = 0,65: 40 contro 73), cella grossolana (Φ_soil 0,37), cella fine (fattore sfavorevole a 0,46 m³/m³), ripieghi e valori mostrati. Visti fallire sulla prima versione senza regola asimmetrica: raccordo pluviometrico, traccia tipo Mindino a 50 mm (motivo assente) e confronto 50/125 mm (Φ_soil 1,0 in entrambi), oltre alle due fixture esistenti. Il test 60/90 giorni e quello della cella argillosa passavano già.
+
+**Test esistenti adattati.** Nessuna fixture esistente modificata e nessuna soglia numerica allentata.
+
+**Limiti.**
+- La scala è un'euristica ricavata da 56 giorni della stessa cella, non una capacità di campo misurata né un parametro idraulico; 0,35 m³/m³, il P90 e la soglia di 100 mm sono scelte `EXPERT_PRIOR`.
+- Regola asimmetrica: una cella sabbiosa in un periodo con meno di 100 mm di pioggia nei 56 giorni resta giudicata con le soglie assolute (riduzione piena solo da 120 mm), quindi con la penalità di siccità di A3; sotto 30 mm vale lo stesso anche per le celle argillose.
+- Una cella persistentemente satura alza il proprio P90 e attenua lo smorzamento per saturazione già da 30 mm: il gate Diluvio (A5) dipende ora dal livello umido della cella.
+- Analisi e prospettiva condividono una sola coppia di scale, calcolata per il target.
 - Verifica XCTest su macOS non eseguita; controllo statico dei contratti Swift riuscito.

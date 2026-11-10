@@ -181,7 +181,7 @@ object MycoAlgorithms {
         }
         val effectiveTauPeak = species.phenologyLatencyPeakDays + (1.0 - chillingSurvival) * chillingExpansion
 
-        val frostSurvival = frostSurvivalSince(days, dayIndex)
+        val frostSurvival = frostSurvivalSince(days, dayIndex, species)
         var weightedRain = 0.0
         val pastDeepSoilList = mutableListOf<Double>()
         for (i in 0 until dayIndex) {
@@ -363,7 +363,7 @@ object MycoAlgorithms {
         }
         // Maturità normalizzata di ogni evento sopra il livello di attesa, prima e dopo il danno da gelo.
         val waiting = PHASE_WAITING_LEVEL
-        val frostSurvival = frostSurvivalSince(processedData, effectiveToday)
+        val frostSurvival = frostSurvivalSince(processedData, effectiveToday, species)
         val rawMaturity = evaluations.map { ((it.multiplier - waiting) / (1.0 - waiting)).coerceIn(0.0, 1.0) }
         val maturity = events.indices.map { rawMaturity[it] * frostSurvival[events[it].triggerIndex] }
         val ensemble = layeredPhaseEnsemble(maturity, weights)
@@ -380,11 +380,17 @@ object MycoAlgorithms {
                     multiplier = multiplier,
                     stage = GrowthStage.WAITING_FOR_RAIN,
                 )
-            } else {
-                evaluations[representative ?: ensemble.mostMature].copy(
+            } else if (representative == null) {
+                // Nessun livello attivato almeno a metà (§11): il testo non descrive l'evento più maturo né i
+                // giorni dall'innesco, che non è consolidato. Il moltiplicatore resta quello dell'ensemble.
+                evaluations[ensemble.mostMature].copy(
+                    phaseText = "Fase temporale potenziale: Piogge deboli, innesco non consolidato (in attesa di precipitazioni più consistenti).",
                     multiplier = multiplier,
-                    stage = if (representative == null) GrowthStage.WAITING_FOR_RAIN else evaluations[representative].stage,
+                    daysSinceTrigger = null,
+                    stage = GrowthStage.WAITING_FOR_RAIN,
                 )
+            } else {
+                evaluations[representative].copy(multiplier = multiplier)
             }
         }
 
@@ -1047,16 +1053,28 @@ object MycoAlgorithms {
     /**
      * Frazione di flusso fenologico persa per una notte di gelo, in funzione della minima vista dal modello
      * (sottochioma quando è applicato il microclima forestale). Raccordo Hermite C1 tra soglia di innesco e
-     * danno completo; soglie `EXPERT_PRIOR` indipendenti dalla specie, prive di calibrazione di campo.
+     * danno completo; soglie `EXPERT_PRIOR` di una specie senza resistenza al gelo, prive di calibrazione di campo.
      */
-    fun frostDamage(minTemp: Double): Double {
+    fun frostDamage(minTemp: Double): Double = frostDamageShifted(minTemp, 0.0)
+
+    /**
+     * Danno da gelo della specie (§11): stesse soglie comuni abbassate della resistenza al gelo
+     * h = [MushroomSpecies.frostHardinessC], limitata in [0, 4] °C. Con h = 0 coincide con [frostDamage].
+     */
+    fun frostDamage(minTemp: Double, species: MushroomSpecies): Double =
+        frostDamageShifted(minTemp, species.frostHardinessC)
+
+    private fun frostDamageShifted(minTemp: Double, hardinessC: Double): Double {
         if (!minTemp.isFinite()) return 0.0
+        val h = if (hardinessC.isFinite()) hardinessC.coerceIn(0.0, MAX_FROST_HARDINESS_C) else 0.0
         return 1.0 - smoothstep(
-            ParameterRegistry.FROST_DAMAGE_FULL_C.value,
-            ParameterRegistry.FROST_DAMAGE_ONSET_C.value,
+            ParameterRegistry.FROST_DAMAGE_FULL_C.value - h,
+            ParameterRegistry.FROST_DAMAGE_ONSET_C.value - h,
             minTemp,
         )
     }
+
+    private const val MAX_FROST_HARDINESS_C = 4.0
 
     /**
      * Quota di shock termico riconosciuta a un giorno di calo (rilievo A4): nulla se la media del giorno è sotto
@@ -1072,14 +1090,15 @@ object MycoAlgorithms {
 
     /**
      * Sopravvivenza al gelo del flusso innescato in ciascun giorno della serie: prodotto di `1 - frostDamage`
-     * sulle notti successive al giorno i fino al target incluso. Il gelo precedente a una pioggia non la tocca.
+     * (soglie della specie, §11) sulle notti successive al giorno i fino al target incluso. Il gelo precedente a
+     * una pioggia non la tocca.
      */
-    internal fun frostSurvivalSince(days: List<ProcessedDay>, targetIndex: Int): DoubleArray {
+    internal fun frostSurvivalSince(days: List<ProcessedDay>, targetIndex: Int, species: MushroomSpecies): DoubleArray {
         val survival = DoubleArray(days.size) { 1.0 }
         var running = 1.0
         for (i in min(targetIndex, days.lastIndex) downTo 0) {
             survival[i] = running
-            running *= 1.0 - frostDamage(days[i].minTemp)
+            running *= 1.0 - frostDamage(days[i].minTemp, species)
         }
         return survival
     }

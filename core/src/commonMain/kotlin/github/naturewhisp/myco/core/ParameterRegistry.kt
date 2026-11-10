@@ -92,14 +92,25 @@ object ParameterRegistry {
         key = "frost.damage_onset_c", name = "Minima di innesco del danno da gelo", value = 1.0,
         unit = "°C", provenance = ParameterProvenance.EXPERT_PRIOR,
         reference = "Revisione algoritmi 2026-11-09 (A4)", domain = "Gelo post-innesco",
-        description = "Minima (sottochioma se applicato il microclima) sotto la quale inizia la perdita del flusso già innescato. Indipendente dalla specie; non calibrata.",
+        description = "Minima (sottochioma se applicato il microclima) sotto la quale inizia la perdita del flusso già innescato, per una specie senza resistenza al gelo; la soglia della specie è questo valore meno FROST_HARDINESS_BY_SPECIES. Non calibrata.",
     )
 
     val FROST_DAMAGE_FULL_C = EcologicalParameter(
         key = "frost.damage_full_c", name = "Minima di danno completo da gelo", value = -2.0,
         unit = "°C", provenance = ParameterProvenance.EXPERT_PRIOR,
         reference = "Revisione algoritmi 2026-11-09 (A4) / Nocturnal Frost Gate", domain = "Gelo post-innesco",
-        description = "Minima alla quale una sola notte azzera memoria pluviometrica e maturità degli eventi precedenti; raccordo Hermite C1 fino alla soglia di innesco.",
+        description = "Minima alla quale una sola notte azzera memoria pluviometrica e maturità degli eventi precedenti, per una specie senza resistenza al gelo (per le altre: questo valore meno FROST_HARDINESS_BY_SPECIES); raccordo Hermite C1 fino alla soglia di innesco.",
+    )
+
+    val FROST_HARDINESS_BY_SPECIES = EcologicalParameter(
+        key = "frost.hardiness_by_species", name = "Resistenza al gelo per specie",
+        value = mapOf(
+            "hydnum_repandum" to 2.0, "morchella_esculenta" to 2.0, "armillaria_mellea" to 1.0,
+            "lactarius_deliciosus" to 1.0, "boletus_pinophilus" to 1.0,
+        ),
+        unit = "°C", provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Revisione algoritmi 2026-11-10 (§11)", domain = "Gelo post-innesco",
+        description = "Spostamento h (limitato in [0, 4]) che abbassa entrambe le soglie del danno da gelo: innesco 1 - h, danno completo -2 - h. Valori non nulli (le altre specie valgono 0) stimati da descrizioni di catalogo di specie tardo-autunnali e primaverili; stime esperte, non misure né calibrazione di campo.",
     )
 
     val HABITAT_SURFACE_GRID = EcologicalParameter(
@@ -395,6 +406,7 @@ object ParameterRegistry {
         PHENOLOGY_MEMORY_TAPER_DAYS,
         FROST_DAMAGE_ONSET_C,
         FROST_DAMAGE_FULL_C,
+        FROST_HARDINESS_BY_SPECIES,
         HABITAT_SURFACE_GRID,
         HABITAT_HOST_MODIFIER,
         KNEE_THRESHOLD,

@@ -4,7 +4,7 @@
 **Natura:** lettura interna al progetto eseguita da una sessione AI (Claude, con tre sotto-agenti usati solo per scaricare pagine web). Non è una revisione esterna né una peer review.
 **Oggetto:** motore `:core` (`MycoAlgorithms`, `MycoAnalysisEngine`, `HabitatGeometry`, `HeatmapEngine`, `ParameterRegistry`, `SpeciesCatalog`) e i suoi ingressi Android. Nessun file sorgente è stato modificato.
 
-**Aggiornamento 10 novembre 2026:** i rilievi **A1**, **A4** (sezione 7), **A2** e **B1** (sezioni 8–9) sono stati corretti dopo questa revisione; **A3** è mitigato con la normalizzazione per cella (sezione 10). Le sezioni 1–6 descrivono il commit `747fd44` e restano invariate.
+**Aggiornamento 10 novembre 2026:** i rilievi **A1**, **A4** (sezione 7), **A2** e **B1** (sezioni 8–9) sono stati corretti dopo questa revisione; **A3** è mitigato con la normalizzazione per cella (sezione 10); i due limiti dichiarati in sezione 7 (soglie del gelo uguali per tutte le specie, testo di fase con piogge deboli) sono chiusi in sezione 11. Le sezioni 1–6 descrivono il commit `747fd44` e restano invariate.
 
 ## 1. Esito
 
@@ -444,3 +444,37 @@ Controlli direzionali (stessa traccia, SINTETICI): cella grossolana (c = 0,6) in
 - Una cella persistentemente satura alza il proprio P90 e attenua lo smorzamento per saturazione già da 30 mm: il gate Diluvio (A5) dipende ora dal livello umido della cella.
 - Analisi e prospettiva condividono una sola coppia di scale, calcolata per il target.
 - Verifica XCTest su macOS non eseguita; controllo statico dei contratti Swift riuscito.
+
+## 11. Resistenza al gelo per specie e testo di attesa
+
+Chiude due limiti dichiarati in sezione 7. Modifiche in `:core` (`Domain.kt`, `SpeciesCatalog.kt`, `MycoAlgorithms.kt`, `ParameterRegistry.kt`) e, per allineamento, nel modello e nel ramo Android non delegato (`model/MushroomSpecies.kt`, `utils/MushroomAlgorithms.kt`). Firme esistenti e nomi dei parametri invariati: `frostHardinessC: Double = 0.0` è aggiunto come ultimo parametro, con valore di default, ai due `MushroomSpecies`; il codice Swift (`iosApp/`, sola lettura) non costruisce `MushroomSpecies` e il controllo statico dei contratti passa. Aggiunti l'overload `frostDamage(minTemp, species)` e il parametro `FROST_HARDINESS_BY_SPECIES` (`EXPERT_PRIOR`).
+
+**Che cosa cambia.**
+- Danno da gelo della specie: $d = 1 - \text{smoothstep}(-2 - h, 1 - h, T_{\min})$ con $h$ = `frostHardinessC` limitato in $[0, 4]$ °C. Con $h = 0$ coincide con `frostDamage(minTemp)`, che resta invariata. L'overload è usato da `frostSurvivalSince` (quindi da `calculateEffectiveRainfall` ed `evaluateGrowthPhase`) e dal `calculateEffectiveRainfall` Android non delegato.
+- Il Nocturnal Frost Gate (`AGENTS.md`) vale alla minima di danno completo della specie, $-2\,°\text{C} - h$.
+- In `evaluateGrowthPhase`, se esistono eventi ma nessun livello è attivato almeno a metà e il ramo del gelo non si applica, il testo diventa «Fase temporale potenziale: Piogge deboli, innesco non consolidato (in attesa di precipitazioni più consistenti).» con `daysSinceTrigger = null`; moltiplicatore e stadio (`WAITING_FOR_RAIN`) invariati. Il fattore MYCELIAL_PHASE mostra «In attesa» con questo testo; nessun codice Android o Compose legge `daysSinceTrigger` dal risultato del motore.
+
+| Specie | h (°C) | Innesco del danno | Danno completo |
+|---|---|---|---|
+| *Hydnum repandum*, *Morchella esculenta* | 2 | −1 °C | −4 °C |
+| *Armillaria mellea*, *Lactarius deliciosus*, *Boletus pinophilus* | 1 | 0 °C | −3 °C |
+| Tutte le altre | 0 | +1 °C | −2 °C |
+
+I valori sono letti dalle descrizioni del catalogo («resistente alle prime brinate», autunno inoltrato, primavera precoce): stime esperte, non misure.
+
+**Test aggiunti.** `SpeciesFrostHardinessTest` (10 test, core, scenari SINTETICI su 62 giorni reali, 15 agosto – 15 ottobre 2026): valori del catalogo e del registro; `frostDamage(t, species)` per *Hydnum* (0 a −1, 0,5 a −2,5, 7/27 a −2, 1 a −4), identità con la funzione a un argomento per *B. edulis*, $C^1$ ai due estremi, limitazione di $h$ in $[0, 4]$; stessa notte a −2 °C 7 giorni dopo 40 mm: memoria azzerata per *B. edulis*, conservata per 20/27 ≈ 0,741 per *Hydnum* ($u = 2/3$, $3u^2 - 2u^3 = 20/27$), azzerata per *Hydnum* a −4 °C; gate per specie (sei specie, 40 e 80 mm, gelo da 1 a 10 giorni: indice ≤ 20 alla minima di danno completo, controllo a innesco + 2 °C almeno 15 punti sopra); testo di attesa con pioggerella quotidiana e con 3 mm isolati, «Culmine teorico» con 11 giorni per 40 mm a 11 giorni, precedenza del testo del gelo, fattore MYCELIAL_PHASE senza conteggio di giorni. `SpeciesFrostHardinessLockstepTest` (1 test, Android): parità core/Android per *Hydnum* a sette minime tra +3 e −4 °C. `CanonicalSpeciesSafetyParityTest` confronta anche `frostHardinessC` e la mappatura di `toCore()` per una specie fuori catalogo.
+
+Visti fallire prima dell'implementazione: con l'API esistente, la memoria di *Hydnum* (0 contro 30,03 mm attesi), il testo con piogge deboli (3 mm isolati e fattore MYCELIAL_PHASE: «Culmine teorico della finestra (11 gg dall'innesco)» al posto del nuovo testo; la prima versione del test della pioggerella, su *B. edulis*, falliva per lo stadio `WANING`, vedi sotto, e la versione riscritta è stata vista fallire ripristinando temporaneamente il vecchio testo) e il lockstep Android (0 contro 28,10 mm); i test che usano `frostHardinessC` e l'overload non compilavano. Passavano già: «Culmine teorico» con 40 mm e precedenza del testo del gelo (guardie).
+
+**Scostamento dalla consegna.** Con 2 mm al giorno *B. edulis* non resta «in attesa»: su 29 eventi nella finestra di ricerca il peso cumulato (≈ 6 mm) supera metà attivazione e la fase segue l'evento rappresentativo (`WANING`, 24 giorni). Il test della pioggerella usa le cinque specie a latenza breve per cui lo stadio è `WAITING_FOR_RAIN` (*Macrolepiota*, *Morchella*, *A. caesarea*, *B. reticulatus*, *B. aereus*) e verifica per tutte le specie che `WAITING_FOR_RAIN` non porti giorni; il caso *B. edulis* è coperto da 3 mm isolati a 11 giorni.
+
+**Attese modificate in test preesistenti.** `RainMonotonicityAndFrostTest.aFrostNightAfterTheTriggerKeepsTheIndexAtOrBelowTwenty`: la notte di gelo passa da −2 °C fisso alla minima di danno completo della specie (−4 °C per *Hydnum*, −2 °C per *B. edulis* e «general») e il controllo da +3 °C fisso a innesco + 2 °C (+1 °C per *Hydnum*, +3 °C per le altre). La soglia dell'indice (≤ 20) e lo scarto del controllo (≥ 15 punti) sono invariati. Nessun'altra asserzione cambiata.
+
+**Limiti.**
+- I valori di $h$ sono stime esperte da rivedere da parte del responsabile del progetto; nessuna fonte esaminata fornisce soglie di gelo per specie.
+- Lo spostamento è unico per innesco e danno completo; la larghezza del raccordo (3 °C) resta comune.
+- Lo scarto notturno di 6 °C (`NOCTURNAL_MIN_OFFSET_C`) resta deliberatamente comune a tutte le specie: non è stata trovata una base per differenziarlo.
+- Con piogge deboli ma numerose le specie a latenza lunga possono superare metà attivazione e mostrare uno stadio maturo con il conteggio dell'evento rappresentativo: comportamento dell'ensemble, non modificato qui.
+- Verifica XCTest su macOS non eseguita; controllo statico dei contratti Swift riuscito.
+
+**Verifica (§11).** `testDebugUnitTest :core:allTests --rerun-tasks`: 255 test Android e 104 core, 0 fallimenti. `lintDebug`: 0 errori, 0 warning (21 hint informativi). `compileDebugKotlin` e `assembleDebug` riusciti senza warning del compilatore. Controllo dei contratti Swift: 6 test e analisi statica passati. Nessun dispositivo usato.

@@ -419,13 +419,15 @@ object MushroomAlgorithms {
 
         val memoryWindowStart = max(0, dayIndex - maxMemoryDays)
         val deepSoilWindowDays = github.naturewhisp.myco.core.ParameterRegistry.PHENOLOGY_MEMORY_DAYS.value.toDouble()
-        // Lockstep con :core (revisione 2026-11-09, A4): il gelo successivo a una pioggia ne azzera la memoria fenologica.
+        // Lockstep con :core (revisione 2026-11-09, A4): il gelo successivo a una pioggia ne azzera la memoria fenologica,
+        // con le soglie spostate della resistenza al gelo della specie (§11).
         val lastIndex = min(dayIndex, allData.lastIndex)
         val frostSurvival = DoubleArray(allData.size) { 1.0 }
+        val coreSpecies = species.toCore()
         var runningSurvival = 1.0
         for (i in lastIndex downTo 0) {
             frostSurvival[i] = runningSurvival
-            runningSurvival *= 1.0 - github.naturewhisp.myco.core.MycoAlgorithms.frostDamage(allData[i].minTemp.toDouble())
+            runningSurvival *= 1.0 - github.naturewhisp.myco.core.MycoAlgorithms.frostDamage(allData[i].minTemp.toDouble(), coreSpecies)
         }
         var weightedRain = 0.0
         val pastDeepSoilList = mutableListOf<Double>()

@@ -37,6 +37,8 @@ enum class EcologicalCategory(val label: String, val description: String) {
  * @property preferredCanopyTypes Generi arborei forestali simbionti o associati (nomi botanici minuscoli).
  * @property fruitingPeriodDescription Descrizione discorsiva del calendario di fruttificazione.
  * @property activeMonths Lista degli indici dei mesi attivi (0-indexed: 0 = Gennaio .. 11 = Dicembre).
+ * @property frostHardinessC Resistenza al gelo in °C (stima esperta, lockstep con `:core`): abbassa entrambe le
+ * soglie del danno da gelo post-innesco; limitata in [0, 4] nel calcolo.
  */
 data class MushroomSpecies(
     val id: String,
@@ -61,7 +63,8 @@ data class MushroomSpecies(
     val phenologyShapeAlpha: Double = 4.0,
     val optimalTemp: Float = (idealTempMin + idealTempMax) / 2.0f,
     val optimalBasalAreaM2Ha: Float = 32.0f,
-    val hurdleStrictness: Double = 1.0
+    val hurdleStrictness: Double = 1.0,
+    val frostHardinessC: Double = 0.0
 ) {
     /**
      * Indica se la specie rappresenta il modello baseline polifito generale.
@@ -160,7 +163,8 @@ val SPECIES_CATALOG: List<MushroomSpecies> = listOf(
         toxicLookAlikes = listOf("Tylopilus felleus (amaro)"),
         edibilityWarning = "Cuticola rugosa color rosso-vinato o granata con reticolo marcato sul gambo.",
         phenologyLatencyPeakDays = 12.0,
-        phenologyShapeAlpha = 4.0
+        phenologyShapeAlpha = 4.0,
+        frostHardinessC = 1.0
     ),
     MushroomSpecies(
         id = "boletus_reticulatus",
@@ -248,7 +252,8 @@ val SPECIES_CATALOG: List<MushroomSpecies> = listOf(
         toxicLookAlikes = listOf("Hydnum albidum (amaro se vecchio)"),
         edibilityWarning = "Imenoforo ad aculei facilmente asportabili; togliere gli aculei dai campioni adulti prima della cottura.",
         phenologyLatencyPeakDays = 13.0,
-        phenologyShapeAlpha = 4.0
+        phenologyShapeAlpha = 4.0,
+        frostHardinessC = 2.0
     ),
     MushroomSpecies(
         id = "macrolepiota_procera",
@@ -294,7 +299,8 @@ val SPECIES_CATALOG: List<MushroomSpecies> = listOf(
         toxicLookAlikes = listOf("Hypholoma fasciculare (falso chiodino, tossico amaro)", "Galerina marginata (mortale)"),
         edibilityWarning = "Tossico da crudo: necessita di pre-bollitura prolungata (almeno 20 min) gettando l'acqua di cottura.",
         phenologyLatencyPeakDays = 10.0,
-        phenologyShapeAlpha = 4.0
+        phenologyShapeAlpha = 4.0,
+        frostHardinessC = 1.0
     ),
     MushroomSpecies(
         id = "lactarius_deliciosus",
@@ -319,7 +325,8 @@ val SPECIES_CATALOG: List<MushroomSpecies> = listOf(
         phenologyShapeAlpha = 4.0,
         optimalTemp = 13.5f,
         optimalBasalAreaM2Ha = 20.0f,
-        hurdleStrictness = 1.0
+        hurdleStrictness = 1.0,
+        frostHardinessC = 1.0
     ),
     MushroomSpecies(
         id = "morchella_esculenta",
@@ -344,7 +351,8 @@ val SPECIES_CATALOG: List<MushroomSpecies> = listOf(
         phenologyShapeAlpha = 4.0,
         optimalTemp = 14.0f,
         optimalBasalAreaM2Ha = 15.0f,
-        hurdleStrictness = 0.5
+        hurdleStrictness = 0.5,
+        frostHardinessC = 2.0
     )
 )
 
@@ -380,6 +388,7 @@ fun MushroomSpecies.toCore(): github.naturewhisp.myco.core.MushroomSpecies {
             phenologyShapeAlpha = phenologyShapeAlpha,
             optimalTemp = optimalTemp.toDouble(),
             optimalBasalAreaM2Ha = optimalBasalAreaM2Ha.toDouble(),
-            hurdleStrictness = hurdleStrictness
+            hurdleStrictness = hurdleStrictness,
+            frostHardinessC = frostHardinessC
         )
 }

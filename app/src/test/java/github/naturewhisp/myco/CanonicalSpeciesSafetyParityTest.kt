@@ -2,6 +2,7 @@ package github.naturewhisp.myco
 
 import github.naturewhisp.myco.core.SpeciesCatalog
 import github.naturewhisp.myco.model.SPECIES_CATALOG
+import github.naturewhisp.myco.model.toCore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -31,7 +32,12 @@ class CanonicalSpeciesSafetyParityTest {
             assertEquals(android.activeMonths, shared.activeMonths)
             assertEquals(android.toxicLookAlikes, shared.toxicLookAlikes)
             assertEquals(android.edibilityWarning, shared.edibilityWarning)
+            assertEquals(android.frostHardinessC, shared.frostHardinessC, 0.0)
+            assertEquals(shared.frostHardinessC, android.toCore().frostHardinessC, 0.0)
         }
+        // Specie fuori catalogo: toCore() deve mappare il campo esplicitamente.
+        val custom = SPECIES_CATALOG.first().copy(id = "custom_species", frostHardinessC = 1.5)
+        assertEquals(1.5, custom.toCore().frostHardinessC, 0.0)
     }
 
     @Test

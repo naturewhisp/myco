@@ -193,6 +193,11 @@ data class MushroomSpecies(
     val optimalTemp: Double = (idealTempMin + idealTempMax) / 2.0,
     val optimalBasalAreaM2Ha: Double = 32.0,
     val hurdleStrictness: Double = 1.0,
+    /**
+     * Resistenza al gelo in °C (stima esperta `EXPERT_PRIOR`, §11): abbassa di questo valore entrambe le soglie
+     * del danno da gelo post-innesco; limitata in [0, 4] nel calcolo.
+     */
+    val frostHardinessC: Double = 0.0,
 ) {
     val isGeneralBaseline: Boolean
         get() = id == "general"

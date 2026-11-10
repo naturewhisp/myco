@@ -127,7 +127,12 @@ class RainMonotonicityAndFrostTest {
 
     @Test
     fun aFrostNightAfterTheTriggerKeepsTheIndexAtOrBelowTwenty() {
+        // Gate alla minima di danno completo della specie (-2 °C meno la resistenza al gelo, §11): per
+        // H. repandum -4 °C; controllo a soglia di innesco + 2 °C (+3 °C per le specie senza resistenza).
         for (speciesId in listOf("boletus_edulis", "general", "hydnum_repandum")) {
+            val hardiness = SpeciesCatalog.byId(speciesId).frostHardinessC
+            val fullDamage = ParameterRegistry.FROST_DAMAGE_FULL_C.value - hardiness
+            val controlMin = ParameterRegistry.FROST_DAMAGE_ONSET_C.value - hardiness + 2.0
             for (rainMm in listOf(40.0, 80.0, 180.0)) {
                 for (frostLag in 1..10) {
                     fun index(nightMin: Double) = weatherOnlyIndex(
@@ -136,10 +141,10 @@ class RainMonotonicityAndFrostTest {
                         },
                         speciesId,
                     )
-                    val frozen = index(-2.0)
+                    val frozen = index(fullDamage)
                     assertTrue(frozen <= 20, "$speciesId, $rainMm mm, gelo a $frostLag gg: indice $frozen")
                     // Controllo: stessa giornata fredda ma senza gelo; l'indice deve restare chiaramente più alto.
-                    val control = index(3.0)
+                    val control = index(controlMin)
                     assertTrue(control >= frozen + 15, "$speciesId, $rainMm mm, $frostLag gg: controllo $control vs gelo $frozen")
                 }
             }

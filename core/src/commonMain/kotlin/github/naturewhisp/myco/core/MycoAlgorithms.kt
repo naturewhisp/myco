@@ -175,10 +175,11 @@ object MycoAlgorithms {
                 (dayIndex - i).toDouble()
             }
             if (tau in 1.0..chillingDuration.toDouble()) chillingSurvival *=
-                1.0 - smoothstep(0.0, 3.0, species.toleratedTempMin - day.minTemp)
+                1.0 - smoothstep(0.0, 3.0, nightToleratedMin(species) - day.minTemp)
         }
         val effectiveTauPeak = species.phenologyLatencyPeakDays + (1.0 - chillingSurvival) * chillingExpansion
 
+        val frostSurvival = frostSurvivalSince(days, dayIndex)
         var weightedRain = 0.0
         val pastDeepSoilList = mutableListOf<Double>()
         for (i in 0 until dayIndex) {
@@ -198,7 +199,9 @@ object MycoAlgorithms {
                     tauPeak = effectiveTauPeak,
                     alpha = species.phenologyShapeAlpha,
                 )
-                weightedRain += precip * weight
+                // Il gelo successivo alla pioggia azzera la memoria fenologica di quell'evento (rilievo A4);
+                // la memoria si estingue con raccordo C1 verso il limite dei 26 giorni (rilievo B1).
+                weightedRain += precip * weight * frostSurvival[i] * rainMemoryTaper(tau)
             }
             pastDay.soilMoisture7To28?.let { pastDeepSoilList.add(it) }
         }
@@ -308,17 +311,31 @@ object MycoAlgorithms {
         val evaluations = events.map { event ->
             evaluateStageFromTrigger(event, effectiveToday, species, hydrationThreshold, incubationThreshold, fruitingThreshold, tauPeak, processedData)
         }
-        val activation = smoothstep(0.0, ParameterRegistry.PHASE_RAIN_ACTIVATION_MM.value, totalWeight)
+        // Maturità normalizzata di ogni evento sopra il livello di attesa, prima e dopo il danno da gelo.
+        val waiting = PHASE_WAITING_LEVEL
+        val frostSurvival = frostSurvivalSince(processedData, effectiveToday)
+        val rawMaturity = evaluations.map { ((it.multiplier - waiting) / (1.0 - waiting)).coerceIn(0.0, 1.0) }
+        val maturity = events.indices.map { rawMaturity[it] * frostSurvival[events[it].triggerIndex] }
+        val ensemble = layeredPhaseEnsemble(maturity, weights)
+        val frostFreeLevel = layeredPhaseEnsemble(rawMaturity, weights).level
         val baseEval = if (totalWeight == 0.0) {
-            GrowthPhaseEvaluation("Fase temporale potenziale: Crescita assente (in attesa di precipitazioni).", 0.25,
-                stage = GrowthStage.WAITING_FOR_RAIN, phiBase = 0.25, phiSoil = soilEval.phiSoil)
+            GrowthPhaseEvaluation("Fase temporale potenziale: Crescita assente (in attesa di precipitazioni).", waiting,
+                stage = GrowthStage.WAITING_FOR_RAIN, phiBase = waiting, phiSoil = soilEval.phiSoil)
         } else {
-            val weightedPhase = evaluations.indices.sumOf { evaluations[it].multiplier * weights[it] } / totalWeight
-            val representative = weights.indices.maxBy { weights[it] }
-            evaluations[representative].copy(
-                multiplier = 0.25 + activation * (weightedPhase - 0.25),
-                stage = if (activation < 0.5) GrowthStage.WAITING_FOR_RAIN else evaluations[representative].stage,
-            )
+            val multiplier = waiting + (1.0 - waiting) * ensemble.level
+            val representative = ensemble.representative
+            if (frostFreeLevel > 0.0 && ensemble.level < 0.5 * frostFreeLevel) {
+                evaluations[representative ?: ensemble.mostMature].copy(
+                    phaseText = "Fase temporale potenziale: Flusso interrotto dal gelo notturno (in attesa di un nuovo innesco).",
+                    multiplier = multiplier,
+                    stage = GrowthStage.WAITING_FOR_RAIN,
+                )
+            } else {
+                evaluations[representative ?: ensemble.mostMature].copy(
+                    multiplier = multiplier,
+                    stage = if (representative == null) GrowthStage.WAITING_FOR_RAIN else evaluations[representative].stage,
+                )
+            }
         }
 
         val finalMultiplier = baseEval.multiplier * soilEval.phiSoil
@@ -344,6 +361,34 @@ object MycoAlgorithms {
                 phiSoil = soilEval.phiSoil,
             )
         }
+    }
+
+    private const val PHASE_WAITING_LEVEL = 0.25
+
+    private class PhaseEnsemble(val level: Double, val representative: Int?, val mostMature: Int)
+
+    /**
+     * Combinazione monotona degli eventi pluviometrici (rilievo A1). Per ogni livello di maturità q l'attivazione
+     * dipende dal peso cumulato degli eventi con maturità >= q:
+     * level = ∫ smoothstep(0, R0, Σ_{i: q_i >= q} w_i) dq.
+     * Aggiungere o aumentare una pioggia non può ridurre il risultato; un evento isolato resta limitato dal
+     * proprio stadio (level = attivazione × maturità), come nella formulazione precedente. C1 nei volumi di pioggia.
+     * `representative` è l'evento più maturo il cui livello è attivato almeno a metà, se esiste.
+     */
+    private fun layeredPhaseEnsemble(maturity: List<Double>, weights: List<Double>): PhaseEnsemble {
+        val order = maturity.indices.sortedByDescending { maturity[it] }
+        var cumulativeWeight = 0.0
+        var level = 0.0
+        var representative: Int? = null
+        for (position in order.indices) {
+            val index = order[position]
+            cumulativeWeight += weights[index]
+            val nextMaturity = if (position + 1 < order.size) maturity[order[position + 1]] else 0.0
+            val activation = smoothstep(0.0, ParameterRegistry.PHASE_RAIN_ACTIVATION_MM.value, cumulativeWeight)
+            level += (maturity[index] - nextMaturity) * activation
+            if (representative == null && activation >= 0.5 && maturity[index] > 0.0) representative = index
+        }
+        return PhaseEnsemble(level, representative, order.firstOrNull() ?: 0)
     }
 
     internal fun extractCandidateRainEvents(
@@ -613,7 +658,8 @@ object MycoAlgorithms {
                         )
                         val dropFactor = smoothstep(minDrop, minDrop + 3.0, drop)
                         val rainFactor = smoothstep(0.0, 25.0, effectiveRain)
-                        val candidateShock = 15.0 * dropFactor * rainFactor * phenoWeight
+                        val coldViability = shockColdViability(candidateDay.avgTemp, species)
+                        val candidateShock = 15.0 * dropFactor * rainFactor * phenoWeight * coldViability
                         shockSurvival *= 1.0 - candidateShock / 15.0
                     }
                 }
@@ -909,12 +955,72 @@ object MycoAlgorithms {
         }
     }
 
+    /**
+     * Soglia notturna tollerata: la soglia di temperatura MEDIA della specie ridotta dello scarto media-minima
+     * compatibile con un'escursione non penalizzata (rilievo A2). Le minime non vanno confrontate con soglie di media.
+     */
+    private fun nightToleratedMin(species: MushroomSpecies): Double =
+        species.toleratedTempMin - ParameterRegistry.NOCTURNAL_MIN_OFFSET_C.value
+
+    private fun nightIdealMin(species: MushroomSpecies): Double =
+        species.idealTempMin - ParameterRegistry.NOCTURNAL_MIN_OFFSET_C.value
+
     fun nocturnalChillingInhibition(minTemp: Double, species: MushroomSpecies): Double {
-        val idealMin = species.idealTempMin
-        val toleratedMin = species.toleratedTempMin
+        val idealMin = nightIdealMin(species)
+        val toleratedMin = nightToleratedMin(species)
         if (minTemp >= idealMin) return 1.0
         if (minTemp <= toleratedMin) return 0.3
         return 0.3 + 0.7 * smoothstep(toleratedMin, idealMin, minTemp)
+    }
+
+    /**
+     * Finestra di estinzione della memoria pluviometrica (rilievo B1): vale 1 fino a `memoryDays - taper`,
+     * scende con raccordo Hermite C1 e si annulla a `memoryDays + 1`, così un evento non esce dalla memoria
+     * con un gradino. Il supporto resta fisso e indipendente dalla lunghezza dello storico.
+     */
+    fun rainMemoryTaper(tauDays: Double, memoryDays: Int = ParameterRegistry.PHENOLOGY_MEMORY_DAYS.value): Double {
+        val taperDays = ParameterRegistry.PHENOLOGY_MEMORY_TAPER_DAYS.value
+        return 1.0 - smoothstep(memoryDays.toDouble() - taperDays, memoryDays + 1.0, tauDays)
+    }
+
+    /**
+     * Frazione di flusso fenologico persa per una notte di gelo, in funzione della minima vista dal modello
+     * (sottochioma quando è applicato il microclima forestale). Raccordo Hermite C1 tra soglia di innesco e
+     * danno completo; soglie `EXPERT_PRIOR` indipendenti dalla specie, prive di calibrazione di campo.
+     */
+    fun frostDamage(minTemp: Double): Double {
+        if (!minTemp.isFinite()) return 0.0
+        return 1.0 - smoothstep(
+            ParameterRegistry.FROST_DAMAGE_FULL_C.value,
+            ParameterRegistry.FROST_DAMAGE_ONSET_C.value,
+            minTemp,
+        )
+    }
+
+    /**
+     * Quota di shock termico riconosciuta a un giorno di calo (rilievo A4): nulla se la media del giorno è sotto
+     * la tollerata della specie, piena dalla soglia ideale in su, raccordo Hermite C1 tra le due. Un calo che
+     * porta fuori dall'intervallo tollerato non è contato come induttivo. Usa soli parametri di specie esistenti.
+     */
+    fun shockColdViability(dayMeanTemp: Double, species: MushroomSpecies): Double {
+        if (species.idealTempMin <= species.toleratedTempMin) {
+            return if (dayMeanTemp >= species.toleratedTempMin) 1.0 else 0.0
+        }
+        return smoothstep(species.toleratedTempMin, species.idealTempMin, dayMeanTemp)
+    }
+
+    /**
+     * Sopravvivenza al gelo del flusso innescato in ciascun giorno della serie: prodotto di `1 - frostDamage`
+     * sulle notti successive al giorno i fino al target incluso. Il gelo precedente a una pioggia non la tocca.
+     */
+    internal fun frostSurvivalSince(days: List<ProcessedDay>, targetIndex: Int): DoubleArray {
+        val survival = DoubleArray(days.size) { 1.0 }
+        var running = 1.0
+        for (i in min(targetIndex, days.lastIndex) downTo 0) {
+            survival[i] = running
+            running *= 1.0 - frostDamage(days[i].minTemp)
+        }
+        return survival
     }
 
     fun temperatureResponse(temp: Double, species: MushroomSpecies): Double = when {

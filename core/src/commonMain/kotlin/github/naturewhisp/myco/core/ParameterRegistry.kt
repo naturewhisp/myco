@@ -74,6 +74,34 @@ object ParameterRegistry {
         description = "Pesi continui R*smoothstep(0,10,R), senza soglie di esclusione o reset. Non altera il volume della convoluzione pluviometrica.",
     )
 
+    val NOCTURNAL_MIN_OFFSET_C = EcologicalParameter(
+        key = "nocturnal.min_offset_c", name = "Scarto media-minima per le soglie notturne", value = 6.0,
+        unit = "°C", provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Revisione algoritmi 2026-11-09 (A2)", domain = "Inibizione termica notturna",
+        description = "Le soglie notturne sono le soglie di temperatura media della specie meno questo scarto: metà dell'escursione diurna (12 °C) oltre la quale inizia la penalità DTR. Coerenza interna, non calibrazione biologica.",
+    )
+
+    val PHENOLOGY_MEMORY_TAPER_DAYS = EcologicalParameter(
+        key = "phenology.memory_taper_days", name = "Raccordo di estinzione della memoria pluviometrica", value = 6.0,
+        unit = "giorni", provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Revisione algoritmi 2026-11-09 (B1)", domain = "Inerzia fenologica",
+        description = "Negli ultimi giorni della finestra di memoria il peso del kernel scende con raccordo Hermite C1 fino a zero, evitando il gradino all'uscita dell'evento.",
+    )
+
+    val FROST_DAMAGE_ONSET_C = EcologicalParameter(
+        key = "frost.damage_onset_c", name = "Minima di innesco del danno da gelo", value = 1.0,
+        unit = "°C", provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Revisione algoritmi 2026-11-09 (A4)", domain = "Gelo post-innesco",
+        description = "Minima (sottochioma se applicato il microclima) sotto la quale inizia la perdita del flusso già innescato. Indipendente dalla specie; non calibrata.",
+    )
+
+    val FROST_DAMAGE_FULL_C = EcologicalParameter(
+        key = "frost.damage_full_c", name = "Minima di danno completo da gelo", value = -2.0,
+        unit = "°C", provenance = ParameterProvenance.EXPERT_PRIOR,
+        reference = "Revisione algoritmi 2026-11-09 (A4) / Nocturnal Frost Gate", domain = "Gelo post-innesco",
+        description = "Minima alla quale una sola notte azzera memoria pluviometrica e maturità degli eventi precedenti; raccordo Hermite C1 fino alla soglia di innesco.",
+    )
+
     val HABITAT_SURFACE_GRID = EcologicalParameter(
         key = "habitat.surface_grid", name = "Risoluzione quadratura superfici", value = 20,
         unit = "passi per semiraggio", provenance = ParameterProvenance.EXPERT_PRIOR,
@@ -271,6 +299,10 @@ object ParameterRegistry {
         CARDINAL_BOUNDARY_POWER,
         WEATHER_MEAN_COVERAGE,
         PHASE_RAIN_ACTIVATION_MM,
+        NOCTURNAL_MIN_OFFSET_C,
+        PHENOLOGY_MEMORY_TAPER_DAYS,
+        FROST_DAMAGE_ONSET_C,
+        FROST_DAMAGE_FULL_C,
         HABITAT_SURFACE_GRID,
         HABITAT_HOST_MODIFIER,
         KNEE_THRESHOLD,

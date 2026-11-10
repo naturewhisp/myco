@@ -53,18 +53,19 @@ class PhenologicalInvariantsTest {
 
     @Test
     fun invariant02_primaryStormBlendsWithEarlierFlushWithoutReset() {
-        // Se un evento precedente è avvenuto 11 giorni fa (25mm), ma compare una nuova pioggia
-        // primaria consistente (28mm >= 0.70 * 25mm) 1 giorno fa, l'innesco attivo SI RESETTA
-        // fisiologicamente alla nuova pioggia primaria (Idratazione miceliare).
+        // Evento precedente di 11 giorni fa (25mm) e nuova pioggia consistente (28mm) 1 giorno fa.
+        // Revisione 2026-11-09 (A1): la nuova pioggia NON azzera il flusso già maturo; l'evento rappresentativo
+        // resta quello di 11 giorni fa e la fase non può essere inferiore a quella del solo evento precedente.
         val days = createSyntheticSeries(
             rainMap = mapOf(13 to 25.0f, 23 to 28.0f),
             avgTemp = 16.0f
         )
 
         val eval = MushroomAlgorithms.evaluateGrowthPhase(days, edulis, dayIndex = 24)
-        assertEquals("La nuova pioggia primaria deve resettare a MYCELIAL_HYDRATION", GrowthStage.MYCELIAL_HYDRATION, eval.stage)
-        assertEquals("L'innesco attivo deve essere l'evento a giorno 23 (1 giorno fa)", 1, eval.daysSinceTrigger)
+        assertEquals("La nuova pioggia non deve azzerare il flusso maturo", GrowthStage.ACTIVE_FRUITING, eval.stage)
+        assertEquals("L'evento rappresentativo deve restare quello di 11 giorni fa", 11, eval.daysSinceTrigger)
         assertTrue(eval.phiBase > MushroomAlgorithms.evaluateGrowthPhase(days.mapIndexed { index, day -> if (index == 13) day.copy(totalPrecip = 0f) else day }, edulis, 24).phiBase)
+        assertTrue(eval.phiBase >= MushroomAlgorithms.evaluateGrowthPhase(days.mapIndexed { index, day -> if (index == 23) day.copy(totalPrecip = 0f) else day }, edulis, 24).phiBase)
     }
 
     @Test
@@ -306,8 +307,10 @@ class PhenologicalInvariantsTest {
         val days = createMindinoHistoricalSeries()
         val evalSep18 = MushroomAlgorithms.evaluateGrowthPhase(days, edulis, dayIndex = 24)
 
-        assertEquals(GrowthStage.MYCELIAL_HYDRATION, evalSep18.stage)
-        assertEquals(1, evalSep18.daysSinceTrigger)
+        // Revisione 2026-11-09 (A1): l'evento rappresentativo è il più maturo attivato; una pioggia successiva
+        // non azzera né abbassa la fase dell'evento precedente.
+        assertEquals(GrowthStage.PRIMORDIA_INCUBATION, evalSep18.stage)
+        assertEquals(8, evalSep18.daysSinceTrigger)
         assertTrue(evalSep18.phiBase > MushroomAlgorithms.evaluateGrowthPhase(days.mapIndexed { index, day -> if (index == 16) day.copy(totalPrecip = 0f) else day }, edulis, 24).phiBase)
 
         val wSep18 = MushroomAlgorithms.calculateWeatherScore(
@@ -341,8 +344,10 @@ class PhenologicalInvariantsTest {
         val evalSep18 = MushroomAlgorithms.evaluateGrowthPhase(days, edulis, dayIndex = 24)
         val evalSep21 = MushroomAlgorithms.evaluateGrowthPhase(days, edulis, dayIndex = 27)
 
-        assertEquals(GrowthStage.MYCELIAL_HYDRATION, evalSep21.stage)
-        assertEquals(4, evalSep21.daysSinceTrigger)
+        // Revisione 2026-11-09 (A1): l'evento rappresentativo è il più maturo attivato; una pioggia successiva
+        // non azzera né abbassa la fase dell'evento precedente.
+        assertEquals(GrowthStage.ACTIVE_FRUITING, evalSep21.stage)
+        assertEquals(11, evalSep21.daysSinceTrigger)
         assertTrue(evalSep21.phiBase >= evalSep18.phiBase)
 
         val wSep18 = MushroomAlgorithms.calculateWeatherScore(

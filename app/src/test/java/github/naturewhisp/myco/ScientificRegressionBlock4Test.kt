@@ -461,8 +461,10 @@ class ScientificRegressionBlock4Test {
 
         // Verifica Liebig growth phase gating sul giorno della visita (18 settembre, dayIndex = 24)
         val evalVisit = MushroomAlgorithms.evaluateGrowthPhase(series, edulis, dayIndex = 24)
-        assertEquals(GrowthStage.MYCELIAL_HYDRATION, evalVisit.stage)
-        assertEquals(1, evalVisit.daysSinceTrigger)
+        // Revisione 2026-11-09 (A1): l'evento rappresentativo è il più maturo attivato; una pioggia successiva
+        // non azzera né abbassa la fase dell'evento precedente.
+        assertEquals(GrowthStage.PRIMORDIA_INCUBATION, evalVisit.stage)
+        assertEquals(8, evalVisit.daysSinceTrigger)
         assertTrue(
             "L'evento precedente deve contribuire senza reset rigido",
             evalVisit.phiBase > MushroomAlgorithms.evaluateGrowthPhase(series.mapIndexed { index, day -> if (index == 16) day.copy(totalPrecip = 0f) else day }, edulis, 24).phiBase

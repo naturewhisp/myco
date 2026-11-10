@@ -8,6 +8,23 @@
 
 ---
 
+## Aggiornamento operativo — 10 novembre 2026
+
+Stato dei rilievi della [revisione degli algoritmi del 9 novembre 2026](revisioni/Revisione_algoritmi_basi_scientifiche_2026-11-09.md). Le correzioni riguardano il solo Percorso A (indice euristico); nessuna è una calibrazione di campo.
+
+| Rilievo | Stato | Nota |
+|---|---|---|
+| A1 — pioggia aggiuntiva riduce l'indice | **Corretto** in `:core` (`layeredPhaseEnsemble`) | Test di monotonia su tutte le specie in `RainMonotonicityAndFrostTest` |
+| A4 — gelo post-innesco non abbatte l'indice e può alzarlo | **Corretto** in `:core` e nel ramo Android non delegato (`frostDamage`, vitalità dello shock) | Soglie `EXPERT_PRIOR` indipendenti dalla specie |
+| A2 — minime notturne giudicate con soglie di media | **Corretto** in `:core` e nel ramo Android non delegato (`NOCTURNAL_MIN_OFFSET_C`) | Scarto unico di 6 °C dalle soglie di media, `EXPERT_PRIOR`; soglie notturne proprie per specie restano un'evoluzione possibile |
+| B1 — gradino del kernel a 26 giorni | **Corretto** in `:core` e nel ramo Android non delegato (`rainMemoryTaper`) | Estinzione C1 sugli ultimi 6 giorni; per le specie a latenza lunga la soluzione piena richiede più storico |
+| A3 — soglie assolute di umidità del suolo | Aperto | Richiede normalizzazione per cella e più storico |
+| A5 — gate Diluvio non garantito dall'ipossia | Aperto | Decidere se resta un requisito |
+| A6 — habitat sconosciuto e query Overpass | Aperto | Tocca repository e core |
+| B2–B6, C1–C3, D | Aperti | Vedi revisione |
+
+Piano di rilascio: A3 e A6 dopo la decisione sull'estensione di `past_days` (utile anche a B1 per le specie a latenza lunga) e della query Overpass; poi B2–B5. XCTest su macOS non eseguiti per queste modifiche: i contratti statici Swift passano, le firme esportate non sono cambiate.
+
 ## Aggiornamento operativo — 6 ottobre 2026
 
 La matrice seguente aggiorna gli stati storici RES/C/REV e prevale sulle precedenti dichiarazioni di chiusura. Dettagli ed evidenze: [Bonifica operativa](revisioni/Bonifica_operativa_2026-10-06.md).

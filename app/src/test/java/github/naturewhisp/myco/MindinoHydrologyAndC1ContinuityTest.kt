@@ -260,9 +260,13 @@ class MindinoHydrologyAndC1ContinuityTest {
     /**
      * 6. Test Confine Temporale Chilling Notturno (C02, C10):
      * La finestra di memoria chilling è rigorosamente governata da [ParameterRegistry.CHILLING_DURATION_DAYS] (5 giorni).
-     * Una notte gelida (Tmin = 4.0°C < 6.0°C) avvenuta 8 giorni prima (fuori dalla finestra [t-5, t))
-     * NON deve innescare l'espansione di latenza di +1.5 giorni (effectiveTauPeak resta 11.0).
-     * Una notte gelida avvenuta 3 giorni prima (dentro la finestra) DEVE espandere la latenza a 12.5.
+     * Una notte fredda (Tmin = 1.0°C) avvenuta 8 giorni prima (fuori dalla finestra [t-5, t))
+     * NON deve innescare l'espansione di latenza (effectiveTauPeak resta 11.0).
+     * Una notte fredda avvenuta 3 giorni prima (dentro la finestra) DEVE espandere la latenza.
+     *
+     * Revisione 2026-11-09 (A2): la notte fredda dello scenario passa da 4°C a 1°C. Con le soglie notturne
+     * dedicate, per B. edulis il freddo inizia sotto 3°C (media tollerata 9°C meno 6°C); 1°C resta sopra la
+     * soglia di innesco del danno da gelo, così il test continua a isolare il solo confine della finestra.
      */
     @Test
     fun testChillingWindow_ColdNightOutside5DaysDoesNotTriggerStasis() {
@@ -271,7 +275,7 @@ class MindinoHydrologyAndC1ContinuityTest {
             github.naturewhisp.myco.core.ProcessedDay(
                 dateIso = "2026-09-${(i + 1).toString().padStart(2, '0')}",
                 avgTemp = 16.0,
-                minTemp = 12.0, // Tutte notti miti > 6°C
+                minTemp = 12.0, // Tutte notti miti
                 maxTemp = 20.0,
                 totalPrecipMm = if (i == 9) 30.0 else 0.0, // Pioggia a t-11 giorni
                 avgHumidityPercent = 75.0,
@@ -279,9 +283,9 @@ class MindinoHydrologyAndC1ContinuityTest {
             )
         }
 
-        // Caso A: Notte fredda (4°C) a t-8 giorni (indice 12), notti in [t-5, t) calde (>= 12°C)
+        // Caso A: Notte fredda (1°C) a t-8 giorni (indice 12), notti in [t-5, t) calde (>= 12°C)
         val daysCold8DaysAgo = baseDays.mapIndexed { idx, day ->
-            if (idx == 12) day.copy(minTemp = 4.0) else day
+            if (idx == 12) day.copy(minTemp = 1.0) else day
         }
         val rainRainNoChilling = MycoAlgorithms.calculateEffectiveRainfall(todayIndex, baseDays, coreEdulis)
         val rainCold8DaysAgo = MycoAlgorithms.calculateEffectiveRainfall(todayIndex, daysCold8DaysAgo, coreEdulis)
@@ -293,9 +297,9 @@ class MindinoHydrologyAndC1ContinuityTest {
             0.001
         )
 
-        // Caso B: Notte fredda (4°C) a t-3 giorni (indice 17, dentro finestra 5 gg)
+        // Caso B: Notte fredda (1°C) a t-3 giorni (indice 17, dentro finestra 5 gg)
         val daysCold3DaysAgo = baseDays.mapIndexed { idx, day ->
-            if (idx == 17) day.copy(minTemp = 4.0) else day
+            if (idx == 17) day.copy(minTemp = 1.0) else day
         }
         val rainCold3DaysAgo = MycoAlgorithms.calculateEffectiveRainfall(todayIndex, daysCold3DaysAgo, coreEdulis)
 

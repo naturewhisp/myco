@@ -924,14 +924,18 @@ class MushroomAlgorithmsTest {
 
         // Il 18 settembre (Day 24, 1 giorno dopo la pioggia di 25.3mm)
         val evalSep18 = MushroomAlgorithms.evaluateGrowthPhase(days, edulis, dayIndex = 24)
-        assertEquals(GrowthStage.MYCELIAL_HYDRATION, evalSep18.stage)
-        assertEquals(1, evalSep18.daysSinceTrigger)
+        // Revisione 2026-11-09 (A1): l'evento rappresentativo è il più maturo attivato; una pioggia successiva
+        // non azzera né abbassa la fase dell'evento precedente.
+        assertEquals(GrowthStage.PRIMORDIA_INCUBATION, evalSep18.stage)
+        assertEquals(8, evalSep18.daysSinceTrigger)
         assertTrue(evalSep18.phiBase > MushroomAlgorithms.evaluateGrowthPhase(days.mapIndexed { index, day -> if (index == 16) day.copy(totalPrecip = 0f) else day }, edulis, 24).phiBase)
+        // La pioggia del 17 settembre non può ridurre la fase rispetto al solo evento del 10 settembre.
+        assertTrue(evalSep18.phiBase >= MushroomAlgorithms.evaluateGrowthPhase(days.mapIndexed { index, day -> if (index == 23) day.copy(totalPrecip = 0f) else day }, edulis, 24).phiBase)
 
-        // Il 21 settembre (Day 27, 4 giorni dopo la pioggia di 25.3mm)
+        // Il 21 settembre (Day 27, 11 giorni dopo il 10 settembre e 4 dopo la pioggia di 25.3mm)
         val evalSep21 = MushroomAlgorithms.evaluateGrowthPhase(days, edulis, dayIndex = 27)
-        assertEquals(GrowthStage.MYCELIAL_HYDRATION, evalSep21.stage)
-        assertEquals(4, evalSep21.daysSinceTrigger)
+        assertEquals(GrowthStage.ACTIVE_FRUITING, evalSep21.stage)
+        assertEquals(11, evalSep21.daysSinceTrigger)
         assertTrue(evalSep21.phiBase >= evalSep18.phiBase)
     }
 

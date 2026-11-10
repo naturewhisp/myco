@@ -411,10 +411,20 @@ object MushroomAlgorithms {
         val chillingLatencyExpansion = github.naturewhisp.myco.core.ParameterRegistry.CHILLING_LATENCY_EXPANSION_DAYS.value
         val hysteresisWindowStart = max(0, dayIndex - chillingWindowDays)
         val recentWindow = allData.subList(hysteresisWindowStart, dayIndex)
-        val hasChillingTrauma = recentWindow.any { it.minTemp < species.toleratedTempMin }
+        // Lockstep con :core (revisione 2026-11-09, A2): soglia notturna = soglia di media meno lo scarto media-minima.
+        val nightToleratedMin = species.toleratedTempMin - github.naturewhisp.myco.core.ParameterRegistry.NOCTURNAL_MIN_OFFSET_C.value
+        val hasChillingTrauma = recentWindow.any { it.minTemp < nightToleratedMin }
         val effectiveTauPeak = if (hasChillingTrauma) species.phenologyLatencyPeakDays + chillingLatencyExpansion else species.phenologyLatencyPeakDays
 
         val memoryWindowStart = max(0, dayIndex - maxMemoryDays)
+        // Lockstep con :core (revisione 2026-11-09, A4): il gelo successivo a una pioggia ne azzera la memoria fenologica.
+        val lastIndex = min(dayIndex, allData.lastIndex)
+        val frostSurvival = DoubleArray(allData.size) { 1.0 }
+        var runningSurvival = 1.0
+        for (i in lastIndex downTo 0) {
+            frostSurvival[i] = runningSurvival
+            runningSurvival *= 1.0 - github.naturewhisp.myco.core.MycoAlgorithms.frostDamage(allData[i].minTemp.toDouble())
+        }
         var weightedRain = 0.0
         val pastDeepSoilList = mutableListOf<Double>()
         for (i in memoryWindowStart until dayIndex) {
@@ -426,7 +436,9 @@ object MushroomAlgorithms {
                     tauPeak = effectiveTauPeak,
                     alpha = species.phenologyShapeAlpha
                 )
-                weightedRain += precip * weight
+                // Lockstep con :core (B1): estinzione C1 della memoria verso il limite della finestra.
+                val taper = github.naturewhisp.myco.core.MycoAlgorithms.rainMemoryTaper(tau, maxMemoryDays)
+                weightedRain += precip * weight * frostSurvival[i] * taper
             }
             allData[i].avgSoilMoisture7To28cm?.toDouble()?.let { pastDeepSoilList.add(it) }
         }
@@ -444,12 +456,8 @@ object MushroomAlgorithms {
      * @return Moltiplicatore continuo nell'intervallo [0.3, 1.0]
      */
     fun nocturnalChillingInhibition(minTemp: Float, species: MushroomSpecies): Double {
-        val idealMin = species.idealTempMin.toDouble()
-        val toleratedMin = species.toleratedTempMin.toDouble()
-        if (minTemp >= idealMin) return 1.0
-        if (minTemp <= toleratedMin) return 0.3
-        
-        return 0.3 + 0.7 * smoothstep(toleratedMin, idealMin, minTemp.toDouble())
+        // Delega al :core (revisione 2026-11-09, A2): soglie notturne dedicate, non soglie di temperatura media.
+        return github.naturewhisp.myco.core.MycoAlgorithms.nocturnalChillingInhibition(minTemp.toDouble(), species.toCore())
     }
 
     /**
@@ -708,7 +716,12 @@ object MushroomAlgorithms {
                         )
                         val dropFactor = ((drop - minDrop) / config.shockDropSaturationSpan).coerceIn(0.0, 1.0)
                         val rainFactor = (effectiveRain / config.shockRainSaturationMm).coerceIn(0.0, 1.0)
-                        val candidateShock = config.thermalShockWeight * dropFactor * rainFactor * phenoWeight
+                        // Lockstep con :core (revisione 2026-11-09, A4): un calo sotto la media tollerata non è induttivo.
+                        val coldViability = github.naturewhisp.myco.core.MycoAlgorithms.shockColdViability(
+                            candidateDay.avgTemp.toDouble(),
+                            species.toCore()
+                        )
+                        val candidateShock = config.thermalShockWeight * dropFactor * rainFactor * phenoWeight * coldViability
                         if (candidateShock > bestShock) {
                             bestShock = candidateShock
                         }
